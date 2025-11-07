@@ -205,12 +205,82 @@ Brief description of the feature or topic covered in this directory.
 - Add table of contents for longer reports
 - Use code blocks, tables, and lists appropriately
 - Ensure content is well-organized and readable
+- **Use Mermaid diagrams** to visualize complex information (see Visual Documentation Standards below)
 
 ### Implementation Notes
 
 - Always confirm the repository root before creating paths
 - Group related reports under the same topic directory
 - Use consistent naming patterns within each topic folder
+
+---
+
+## 4.1. Visual Documentation Standards
+
+### Overview
+**PRIORITY**: Use Mermaid diagrams to enhance report clarity and comprehension. Visual representations significantly improve understanding of complex systems, workflows, and architectures.
+
+### When to Use Diagrams in Reports
+
+**MUST USE diagrams for**:
+- System architecture descriptions
+- Workflow and process flows
+- Data flow and transformations
+- State transitions and lifecycle management
+- Component relationships and dependencies
+- Decision trees and conditional logic
+
+**SHOULD USE diagrams for**:
+- Class hierarchies and object relationships
+- API interaction patterns
+- Database schema and entity relationships
+- Test strategy and coverage visualization
+- Performance analysis and bottleneck identification
+
+### Mermaid Diagram Types for Reports
+
+Use the appropriate diagram type for your content:
+
+- **Flowcharts/Graphs** (`graph TD`): System architecture, process flows, decision trees
+- **Sequence Diagrams** (`sequenceDiagram`): API interactions, component communication
+- **State Diagrams** (`stateDiagram-v2`): Lifecycle management, state transitions
+- **Entity Relationship Diagrams** (`erDiagram`): Database schemas, data models
+- **Class Diagrams** (`classDiagram`): Object-oriented designs, class hierarchies
+
+**Example - Architecture in Analysis Report**:
+````markdown
+```mermaid
+graph TD
+    A[User Interface] --> B[API Layer]
+    B --> C[Business Logic]
+    C --> D[(Database)]
+```
+````
+
+**For complete Mermaid syntax and examples**, see [Documentation Resources - Mermaid Diagrams](./documentation-resources.instructions.md#mermaid-diagrams-primary-standard).
+
+### Best Practices for Diagrams in Reports
+
+#### Placement and Context
+- Introduce diagrams with context before showing them
+- Highlight key points after the diagram
+- Reference specific diagram elements in explanations
+- Keep one concept per diagram
+
+#### Diagram Quality
+- Use clear, descriptive labels
+- Maintain consistent styling within a report
+- Split overly complex diagrams into multiple simpler ones
+- Validate syntax at https://mermaid.live before committing
+
+#### Integration with Report Types
+
+| Report Type | Use Diagrams For |
+|-------------|------------------|
+| **Analysis** | Current vs. proposed architecture, data flows, decision trees |
+| **Test Definition** | Test strategy overview, dependency graphs, execution flow |
+| **Implementation** | Component relationships, integration points, migration paths |
+| **Knowledge Transfer** | System overview, interaction patterns, troubleshooting trees |
 
 ---
 

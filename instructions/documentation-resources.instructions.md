@@ -8,15 +8,23 @@ description: 'Documentation resource management standards for images, diagrams, 
 ## Overview
 This file defines standards for managing non-markdown assets in documentation, including images, diagrams, and other resources.
 
+**Diagram Standard Priority**: Mermaid diagrams are the PRIMARY standard for all new documentation. PlantUML is maintained as a legacy/alternative option for specific use cases.
+
 ## Resource Directory Structure
 
 ```
 docs/resources/
-├── diagrams/                   # PlantUML diagrams
-│   ├── architecture/          # System architecture diagrams
-│   ├── workflows/             # Process and workflow diagrams
-│   ├── api/                   # API interaction diagrams
-│   └── <diagram_name>.puml   # Individual diagram files
+├── diagrams/                   # Diagram source files
+│   ├── mermaid/               # Mermaid diagrams (PRIMARY)
+│   │   ├── architecture/      # System architecture diagrams
+│   │   ├── workflows/         # Process and workflow diagrams
+│   │   ├── api/               # API interaction diagrams
+│   │   └── <diagram_name>.mmd # Individual Mermaid files
+│   └── plantuml/              # PlantUML diagrams (LEGACY)
+│       ├── architecture/      # System architecture diagrams
+│       ├── workflows/         # Process and workflow diagrams
+│       ├── api/               # API interaction diagrams
+│       └── <diagram_name>.puml # Individual PlantUML files
 └── images/                    # Images and other visual assets
     ├── screenshots/           # Application screenshots
     ├── logos/                 # Brand assets and logos
@@ -24,180 +32,260 @@ docs/resources/
     └── <image_name>.png      # Individual image files
 ```
 
-## PlantUML Diagrams
+## Mermaid Diagrams (PRIMARY STANDARD)
 
 ### Overview
-All technical diagrams should be created using PlantUML for consistency, version control, and maintainability.
+**All new technical diagrams MUST be created using Mermaid** for consistency, native rendering, and maintainability.
+
+### Why Mermaid?
+- **Native rendering**: Works directly in GitHub, GitLab, and most markdown viewers
+- **No external dependencies**: No rendering service required
+- **Simpler syntax**: Easier to write and maintain
+- **Better integration**: Works seamlessly with modern documentation tools
+- **Real-time preview**: Supported in most modern IDEs
+- **Version control friendly**: Plain text format with clear diffs
+
+### When to Use Mermaid
+- **All new documentation diagrams** (default choice)
+- **Architecture diagrams** showing system components
+- **Workflow and process diagrams** showing sequential steps
+- **Data flow diagrams** showing information movement
+- **State diagrams** showing system states and transitions
+- **Entity relationship diagrams** for data models
+- **Class diagrams** for object-oriented designs
 
 ### File Standards
-- Write PlantUML diagrams in `docs/resources/diagrams/`
+- Write Mermaid diagrams in `docs/resources/diagrams/mermaid/`
+- Use `.mmd` or `.mermaid` file extension (`.mmd` preferred)
+- Use descriptive filenames that indicate the diagram's purpose
+- Organize diagrams in subdirectories by category or system area
+
+### Basic Structure
+Mermaid diagrams can be embedded directly in markdown or stored in separate files:
+
+**Inline in Markdown** (Recommended):
+````markdown
+```mermaid
+graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+```
+````
+
+**Separate File** (For complex diagrams):
+```mermaid
+graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+```
+
+### Diagram Types and Examples
+
+#### Flowcharts / Graph Diagrams
+For flowcharts and graph diagrams, reference Mermaid documentation at https://mermaid.js.org/syntax/flowchart.html
+
+**Example Structure:**
+```mermaid
+graph TD
+    A[User Request] --> B{Valid Input?}
+    B -->|Yes| C[Process Request]
+    B -->|No| D[Return Error]
+    C --> E[Update Database]
+    E --> F[Return Success]
+    D --> G[Log Error]
+    F --> H[End]
+    G --> H
+```
+
+**Direction Options:**
+- `graph TD` - Top to bottom (default)
+- `graph LR` - Left to right
+- `graph BT` - Bottom to top
+- `graph RL` - Right to left
+
+#### Class Diagrams
+For class diagrams, reference Mermaid documentation at https://mermaid.js.org/syntax/classDiagram.html
+
+**Example Structure:**
+```mermaid
+classDiagram
+    class EnvironmentManager {
+        +create_environment()
+        +list_environments()
+        +activate_environment()
+    }
+
+    class PackageLoader {
+        +load_package()
+        +validate_package()
+        +install_dependencies()
+    }
+
+    EnvironmentManager --> PackageLoader : uses
+```
+
+#### Sequence Diagrams
+For sequence diagrams, reference Mermaid documentation at https://mermaid.js.org/syntax/sequenceDiagram.html
+
+**Example Structure:**
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI
+    participant EnvironmentManager
+    participant PackageLoader
+
+    User->>CLI: hatch install package
+    CLI->>EnvironmentManager: get_active_environment()
+    EnvironmentManager-->>CLI: environment_info
+    CLI->>PackageLoader: load_package(package_name)
+    PackageLoader-->>CLI: package_metadata
+    CLI-->>User: installation_complete
+```
+
+**Arrow Types:**
+- `->` Solid line without arrow
+- `-->` Dotted line without arrow
+- `->>` Solid line with arrowhead
+- `-->>` Dotted line with arrowhead
+- `-x` Solid line with cross at end
+- `--x` Dotted line with cross at end
+
+#### State Diagrams
+For state diagrams, reference Mermaid documentation at https://mermaid.js.org/syntax/stateDiagram.html
+
+**Example Structure:**
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Processing: start_process
+    Processing --> Success: process_complete
+    Processing --> Error: process_failed
+    Success --> [*]
+    Error --> Idle: retry
+    Error --> [*]: abort
+```
+
+#### Entity Relationship Diagrams
+For ER diagrams, reference Mermaid documentation at https://mermaid.js.org/syntax/entityRelationshipDiagram.html
+
+**Example Structure:**
+```mermaid
+erDiagram
+    USER ||--o{ PROJECT : creates
+    USER ||--o{ ENVIRONMENT : manages
+    PROJECT ||--|{ ENVIRONMENT : contains
+    ENVIRONMENT ||--o{ PACKAGE : includes
+
+    USER {
+        string id PK
+        string name
+        string email
+    }
+
+    PROJECT {
+        string id PK
+        string name
+        string user_id FK
+    }
+
+    ENVIRONMENT {
+        string id PK
+        string name
+        string project_id FK
+    }
+```
+
+### Mermaid Best Practices
+
+#### Naming Conventions
+- Use descriptive names that clearly indicate the diagram's purpose
+- Use lowercase with hyphens (e.g., `system-architecture.mmd`)
+- Include the diagram type in the name when helpful (e.g., `user-workflow-sequence.mmd`)
+
+#### Content Guidelines
+- Keep diagrams focused on a single concept or process
+- Use consistent styling and terminology across related diagrams
+- Include appropriate titles using Mermaid's title syntax
+- Use meaningful names for actors, classes, and components
+- Add comments using `%%` prefix for documentation
+
+#### Technical Standards
+- Always specify the diagram type at the start (e.g., `graph TD`, `sequenceDiagram`, `classDiagram`)
+- Use consistent direction for flowcharts within the same documentation
+- Use meaningful node IDs and labels
+- Validate diagram syntax before committing (use Mermaid Live Editor: https://mermaid.live)
+- Keep diagrams readable - split complex diagrams into multiple simpler ones
+
+#### Styling and Theming
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#ff0000'}}}%%
+graph TD
+    A[Styled Node] --> B[Another Node]
+```
+
+### Referencing Mermaid Diagrams
+
+**Inline in Markdown** (Recommended):
+````markdown
+The following diagram illustrates the overall system architecture:
+
+```mermaid
+graph TD
+    CLI[CLI Interface] --> EM[Environment Manager]
+    CLI --> PL[Package Loader]
+    EM --> Docker[Docker]
+    PL --> Registry[Package Registry]
+```
+
+Key components include:
+- **CLI Interface**: User-facing command-line interface
+- **Environment Manager**: Handles virtual environment lifecycle
+- **Package Loader**: Manages package installation and validation
+````
+
+**External File Reference** (For complex diagrams):
+```markdown
+See [System Architecture Diagram](../resources/diagrams/mermaid/system-architecture.mmd)
+```
+
+## PlantUML Diagrams (LEGACY/ALTERNATIVE)
+
+### Overview
+PlantUML is maintained as a legacy option for existing diagrams and specific use cases where Mermaid doesn't provide adequate functionality.
+
+### When to Use PlantUML
+- **Maintaining existing diagrams**: Update existing PlantUML diagrams rather than converting
+- **Complex deployment diagrams**: PlantUML has better support for deployment diagrams
+- **Specific diagram types**: When Mermaid doesn't support a needed diagram type
+- **External tool integration**: When integrating with tools that specifically require PlantUML
+
+### Migration Strategy
+- **New diagrams**: Always use Mermaid
+- **Existing diagrams**: Keep as PlantUML unless major updates are needed
+- **Major updates**: Consider converting to Mermaid during significant revisions
+- **No forced conversion**: Don't convert working PlantUML diagrams just for standardization
+
+### File Standards
+- Write PlantUML diagrams in `docs/resources/diagrams/plantuml/`
 - Use `.puml` file extension
 - Use descriptive filenames that indicate the diagram's purpose
 - Organize diagrams in subdirectories by category or system area
 
 ### Basic Structure
-Use the `@startuml` and `@enduml` tags to define diagrams:
-
 ```plantuml
 @startuml diagram_name
 ' Diagram content goes here
 @enduml
 ```
 
-### Diagram Types and Resources
-
-#### Class Diagrams
-For class diagrams, reference PlantUML documentation at https://plantuml.com/en/class-diagram
-
-**Example Structure:**
-```plantuml
-@startuml class_diagram
-package "Core Components" {
-    class EnvironmentManager {
-        +create_environment()
-        +list_environments()
-        +activate_environment()
-    }
-    
-    class PackageLoader {
-        +load_package()
-        +validate_package()
-        +install_dependencies()
-    }
-}
-
-EnvironmentManager --> PackageLoader : uses
-@enduml
-```
-
-#### Sequence Diagrams
-For sequence diagrams, reference PlantUML documentation at https://plantuml.com/en/sequence-diagram
-
-**Example Structure:**
-```plantuml
-@startuml installation_sequence
-actor User
-participant CLI
-participant EnvironmentManager
-participant PackageLoader
-
-User -> CLI: hatch install package
-CLI -> EnvironmentManager: get_active_environment()
-EnvironmentManager -> CLI: environment_info
-CLI -> PackageLoader: load_package(package_name)
-PackageLoader -> CLI: package_metadata
-CLI -> User: installation_complete
-@enduml
-```
-
-#### Component Diagrams
-For component diagrams, reference PlantUML documentation at https://plantuml.com/en/component-diagram
-
-**Example Structure:**
-```plantuml
-@startuml system_architecture
-package "Hatch Core" {
-    [CLI Interface] as CLI
-    [Environment Manager] as EM
-    [Package Loader] as PL
-}
-
-package "External Systems" {
-    [Docker] as Docker
-    [Package Registry] as Registry
-}
-
-CLI --> EM
-CLI --> PL
-EM --> Docker
-PL --> Registry
-@enduml
-```
-
-#### Activity Diagrams
-For activity diagrams, reference PlantUML documentation at https://plantuml.com/en/activity-diagram-beta
-
-**Example Structure:**
-```plantuml
-@startuml package_installation
-start
-:Parse package specification;
-:Check environment compatibility;
-if (Environment compatible?) then (yes)
-    :Download package;
-    :Validate package integrity;
-    :Install dependencies;
-    :Install package;
-    :Update environment registry;
-    stop
-else (no)
-    :Show compatibility error;
-    stop
-endif
-@enduml
-```
-
-#### Use Case Diagrams
-For use case diagrams, reference PlantUML documentation at https://plantuml.com/en/use-case-diagram
-
-**Example Structure:**
-```plantuml
-@startuml use_cases
-actor "Developer" as Dev
-actor "Package Author" as Author
-
-rectangle "Hatch System" {
-    usecase "Install Package" as UC1
-    usecase "Create Environment" as UC2
-    usecase "Publish Package" as UC3
-    usecase "Manage Dependencies" as UC4
-}
-
-Dev --> UC1
-Dev --> UC2
-Dev --> UC4
-Author --> UC3
-@enduml
-```
-
-### Diagram Best Practices
-
-#### Naming Conventions
-- Use descriptive names that clearly indicate the diagram's purpose
-- Use lowercase with underscores (e.g., `system_architecture.puml`)
-- Include the diagram type in the name when helpful (e.g., `user_workflow_sequence.puml`)
-
-#### Content Guidelines
-- Keep diagrams focused on a single concept or process
-- Use consistent styling and terminology across related diagrams
-- Include appropriate titles and descriptions
-- Use meaningful names for actors, classes, and components
-
-#### Technical Standards
-- Always use `@startuml` and `@enduml` tags
-- Include descriptive comments using `'` prefix
-- Use consistent color schemes and styling
-- Validate diagram syntax before committing
-
-### Referencing Diagrams
-Reference diagrams in documentation using relative paths:
-
-```markdown
-![System Architecture](../resources/diagrams/system_architecture.puml)
-```
-
-Or with more detailed context:
-
-```markdown
-The following diagram illustrates the overall system architecture:
-
-![System Architecture](../resources/diagrams/system_architecture.puml)
-
-Key components include:
-- **CLI Interface**: User-facing command-line interface
-- **Environment Manager**: Handles virtual environment lifecycle
-- **Package Loader**: Manages package installation and validation
-```
+### PlantUML Resources
+- Class diagrams: https://plantuml.com/en/class-diagram
+- Sequence diagrams: https://plantuml.com/en/sequence-diagram
+- Component diagrams: https://plantuml.com/en/component-diagram
+- Activity diagrams: https://plantuml.com/en/activity-diagram-beta
+- Use case diagrams: https://plantuml.com/en/use-case-diagram
+- Deployment diagrams: https://plantuml.com/en/deployment-diagram
 
 ## Image Management
 
@@ -227,9 +315,9 @@ docs/resources/images/
 │   ├── error-icon.png       # Status icons
 │   ├── warning-icon.png
 │   └── success-icon.png
-└── diagrams-rendered/        # Rendered versions of PlantUML diagrams
-    ├── architecture.png     # For contexts where PlantUML isn't supported
-    └── workflows.png
+└── diagrams-rendered/        # Rendered versions (only if needed for special contexts)
+    ├── architecture.png     # PNG exports for presentations or special tools
+    └── workflows.png        # Note: Mermaid renders natively in most contexts
 ```
 
 ### Image Quality Standards
@@ -294,7 +382,14 @@ Include descriptive captions when helpful:
 
 ## Automation and Tools
 
-### PlantUML Integration
+### Mermaid Integration
+- **Native rendering**: No special tools needed for GitHub/GitLab
+- **MkDocs integration**: Use `mkdocs-mermaid2-plugin` for MkDocs sites
+- **Validation**: Use Mermaid CLI or online editor (https://mermaid.live) for syntax validation
+- **CI/CD**: Consider adding Mermaid syntax validation to CI pipeline
+- **IDE support**: Most modern IDEs have Mermaid preview plugins
+
+### PlantUML Integration (Legacy)
 - Consider tools that can render PlantUML in documentation builds
 - Set up validation for PlantUML syntax
 - Automate generation of rendered versions when needed
