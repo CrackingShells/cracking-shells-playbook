@@ -1,6 +1,6 @@
-# GIT WORKFLOW GUIDELINES
+# Git Workflow Guidelines
 
-## CORE PRINCIPLES
+## Core Principles
 
 ### 1. Single Logical Change Per Commit
 
@@ -14,26 +14,63 @@ Standardized commit messages for automated tooling integration and clear communi
 
 Commit history tells a coherent story of development progress and decision-making.
 
+#### Scope Consistency
+
+For a commit sequence to form a meaningful narrative, scopes must be semantically consistent:
+
+**Good Narrative Flow**:
+```plaintext
+feat(kiro): add MCP server discovery
+feat(kiro): implement configuration validation
+fix(kiro): handle connection errors
+docs(kiro): document configuration options
+```
+
+**Bad Narrative Flow**:
+```plaintext
+feat(kiro): add MCP server discovery
+feat(config): update settings format
+fix(connection): handle timeout
+chore: update dependencies
+```
+
+**Key Principles**:
+- Related commits should share the same scope
+- Scope changes indicate a shift in focus
+- Inconsistent scopes break the development story
+- Use consistent naming across related commits
+
 ---
 
-## CONVENTIONAL COMMIT FORMAT
+## Conventional Commit Format
 
 ### Structure
 
 ```plaintext
-<type>[optional scope]: <description>
+<type>(scope): <description>
 
 [optional body]
 
 [optional footer(s)]
 ```
 
-Leverage scopes of the commit types to facilitate categorization. This is typically useful with automated changelog generation and versioning tools. For example:
+**Scope Requirement**: The scope MUST explicitly identify the topic/subject of the commit. This is critical for traceability and automated tooling.
 
-- Indicate whether a feature is for CLI, API, or core functionality
-- whether a fix is for a feature in development, the tests, core feature
-- on what the refactoring applies
-- And so on...
+The scope answers: "What is this commit about?" It should identify:
+- A specific feature (e.g., `kiro`, `codex`)
+- A component/module (e.g., `auth`, `UserService`)
+- A concept (e.g., `rate-limiting`, `unicode-handling`)
+- A file/module (e.g., `config.yml`, `main.py`)
+
+**Good scopes**: `kiro`, `codex`, `auth`, `UserService`, `config`
+**Bad scopes**: `core`, `refactor`, `misc`, `backend` (too generic, no traceability)
+
+This facilitates:
+- Automated changelog generation
+- Versioning tools
+- Commit traceability
+- Development narrative consistency
+=======
 
 ### Types
 
@@ -47,38 +84,42 @@ Leverage scopes of the commit types to facilitate categorization. This is typica
 - **perf**: Performance improvements
 - **style**: Code style changes (formatting, etc.)
 
-### Examples from Wobble Implementation
+### Examples
 
 ```plaintext
-# Feature implementation
-feat: add threaded file writer with queue-based operations
-feat(cli): implement file output arguments with validation
-feat(architecture): add observer pattern for multi-destination output
+# Feature implementation with explicit scopes
+feat(kiro): add MCP server configuration support
+feat(codex): implement API client integration
+feat(auth): add OAuth2 authentication flow
+feat(dashboard): implement real-time metrics visualization
 
-# Bug fixes
-fix: resolve threading deadlock in file writer shutdown
-fix(test): handle unittest _ErrorHolder objects gracefully
-fix(feature-dev): prevent duplicate output in file logging
+# Bug fixes with specific topics
+fix(codex): handle rate limiting errors
+fix(auth): resolve token refresh race condition
+fix(api): prevent duplicate request handling
 
-# Documentation
-docs(user-cli): update CLI reference with file output options
-docs(dev-architecture): add architecture overview for threading system
-docs: enhance error message documentation
+# Documentation with clear subjects
+docs(config): update configuration reference
+docs(auth): document OAuth2 flow
 
-# Testing
-test: add comprehensive threading and file I/O coverage
-test: validate unicode symbol cross-platform compatibility
-test: ensure proper resource cleanup in all scenarios
+# Testing with component focus
+test(auth): add OAuth2 flow validation
+test(api): add integration test coverage
 
-# Refactoring
-refactor(architecture): extract observer pattern for output coordination
-refactor: simplify unicode symbol handling logic
-refactor: remove sys.path.insert statements from test files
+# Refactoring with component identification
+refactor(UserService): extract validation logic
+refactor(utils): clean up helper functions
 ```
+
+**Scope Analysis**:
+- `feat(kiro)`: Explicit feature name
+- `fix(codex)`: Specific component with issue
+- `test(auth)`: Clear test subject
+- `refactor(UserService)`: Component being refactored
 
 ---
 
-## COMMIT STRATEGY PLANNING
+## Commit Strategy Planning
 
 ### Before Starting Work
 
@@ -97,8 +138,9 @@ refactor: remove sys.path.insert statements from test files
 **3. Message Planning**:
 
 - Prepare clear, descriptive commit messages
-- Identify scope and type for each change
+- Identify **explicit topic** for scope and type for each change
 - Plan body content for complex changes
+- **Review commitlint configuration** to ensure compliance with project rules
 
 ### During Development
 
@@ -122,7 +164,7 @@ refactor: remove sys.path.insert statements from test files
 
 ---
 
-## REPOSITORY HYGIENE
+## Repository Hygiene
 
 ### Branch Management
 
@@ -149,177 +191,7 @@ docs/architecture-overview
 - Keep branches focused on single features
 - Regular rebase to maintain clean history
 
-### Special Case: Debugging Workflow
 
-When debugging issues, use a dedicated debugging branch to encourage frequent commits without polluting the main development history.
-
-**Workflow**:
-
-1. **Create debugging branch from current location**:
-   ```bash
-   git checkout -b debugging/<issue-description>
-   # Example: debugging/memory-leak-in-profiler
-   ```
-
-2. **Commit frequently during debugging**:
-   - Commit every hypothesis test
-   - Commit every diagnostic change
-   - Commit every attempted fix
-   - Use descriptive messages: `debug: test hypothesis X`, `debug: add logging for Y`
-
-3. **When bug is fixed**:
-
-   **Option A: Clean commit on original branch** (recommended for simple fixes)
-   ```bash
-   # Identify the fix
-   git log  # Review debugging commits to understand the fix
-
-   # Switch back to original branch
-   git checkout <original-branch>
-
-   # Make ONE clean commit with the fix
-   git add <fixed-files>
-   git commit -m "fix: resolve memory leak in profiler shutdown
-
-   Root cause: ThreadedFileWriter not properly joining threads
-   Solution: Add explicit thread.join() with timeout in shutdown()
-
-   Fixes #123"
-   ```
-
-   **Option B: Sequence of clean commits** (for complex fixes)
-   ```bash
-   # Switch back to original branch
-   git checkout <original-branch>
-
-   # Make a sequence of logical commits
-   git commit -m "refactor: extract thread cleanup logic"
-   git commit -m "fix: add thread join with timeout"
-   git commit -m "test: add thread cleanup validation"
-   ```
-
-4. **Delete debugging branch**:
-   ```bash
-   git branch -D debugging/<issue-description>
-   ```
-
-**Benefits**:
-- Encourages thorough debugging with frequent commits
-- Preserves debugging history for learning (before deletion)
-- Keeps main development history clean and logical
-- Facilitates root cause analysis documentation
-
-**Debugging Commit Format**:
-```plaintext
-debug: <what you're testing/trying>
-
-# Examples:
-debug: test hypothesis that memory leak is in file writer
-debug: add logging to track thread lifecycle
-debug: try alternative shutdown sequence
-```
-
-**Final Fix Commit Format**:
-```plaintext
-fix: <what was fixed>
-
-Root cause: <why the bug occurred>
-Solution: <how it was fixed>
-
-Fixes #<issue-number>
-```
-
-**Cross-Reference**: See `work-ethics.instructions.md` for root cause analysis guidelines.
-
-### Milestone-Based Development Workflow
-
-For projects with formal roadmaps and milestone tracking, use hierarchical branching to organize work by phases, milestones, and tasks.
-
-**Branch Hierarchy**:
-
-```plaintext
-main (production releases only)
-  └── dev (development integration branch)
-      ├── milestone/1.1-short-description
-      │   ├── task/1.1.1-short-description
-      │   ├── task/1.1.2-short-description
-      │   └── task/1.1.3-short-description
-      ├── milestone/1.2-short-description
-      │   └── task/1.2.1-short-description
-      └── milestone/2.1-short-description
-          └── task/2.1.1-short-description
-```
-
-**Workflow Rules**:
-
-1. **All work from `dev` branch** (not `main`)
-   - `main` is production-only, receives merges only at major releases
-   - `dev` is the integration branch for all development work
-
-2. **Milestone branches from `dev`**
-   - Branch naming: `milestone/<milestone-id>-<short-description>`
-   - Example: `milestone/2.1-thread-safe-architecture`
-   - Created when milestone work begins
-   - Deleted after merge back to `dev`
-
-3. **Task branches from milestone branches**
-   - Branch naming: `task/<task-id>-<short-description>`
-   - Example: `task/2.1.1-design-architecture`
-   - Created when task work begins
-   - Deleted after merge back to milestone branch
-
-4. **Merge Hierarchy**:
-   - Task branches → Milestone branch (when task complete)
-   - Milestone branch → `dev` (when ALL milestone tasks complete)
-   - `dev` → `main` (when ready for production release)
-
-5. **Merge Criteria**:
-   - **Task → Milestone**: Task success gates met, task tests pass
-   - **Milestone → dev**: All milestone tasks complete, all milestone tests pass, no regressions
-   - **dev → main**: ALL tests pass (regression, unit, integration, performance), ready for release
-
-6. **Conventional Commits**: Follow organization's conventional commit format to enable automated semantic versioning
-
-**Example Workflow**:
-
-```bash
-# Start milestone work
-git checkout dev
-git checkout -b milestone/1.1-core-functionality
-
-# Start task work
-git checkout -b task/1.1.1-implement-parser
-
-# Work on task with conventional commits
-git commit -m "feat(parser): add basic parsing logic"
-git commit -m "test(parser): add parser validation tests"
-
-# Complete task - merge to milestone
-git checkout milestone/1.1-core-functionality
-git merge task/1.1.1-implement-parser
-git branch -d task/1.1.1-implement-parser
-
-# Complete all milestone tasks, merge to dev
-git checkout dev
-git merge milestone/1.1-core-functionality
-git branch -d milestone/1.1-core-functionality
-
-# When ready for release, merge to main
-git checkout main
-git merge dev
-git tag v1.1.0
-```
-
-**Benefits**:
-- Clear organization of complex multi-phase projects
-- Easy tracking of milestone progress
-- Facilitates parallel development on different milestones
-- Git history reflects roadmap structure
-- Enables automated changelog generation per milestone
-
-**Cross-References**:
-- See `roadmap-generation.instructions.md` for milestone/task structure
-- See `testing.instructions.md` for test requirements at each merge level
 
 ### Merge Strategy
 
@@ -361,7 +233,147 @@ Handled by CI/CD pipelines based on commit content and branch rules.
 
 ---
 
-## COMMIT MESSAGE BEST PRACTICES
+## Scope Naming: Explicit Topic Identification
+
+### Core Principle
+
+The scope must explicitly identify the **topic/subject** of the commit. This creates traceability and enables meaningful commit history analysis.
+
+### Scope Selection Guidelines
+
+**Question to Answer**: "What is this commit primarily about?"
+
+**Good Scope Patterns**:
+- **Feature names**: `kiro`, `codex`, `auth`, `dashboard`
+- **Component/module names**: `UserService`, `api-client`, `database`
+- **Concepts**: `rate-limiting`, `unicode-handling`, `error-recovery`
+- **Files/modules**: `config.yml`, `main.py`, `utils`
+
+**Bad Scope Patterns**:
+- `core` - too generic, no traceability
+- `refactor` - describes action, not subject
+- `misc` - provides zero information
+- `backend` - architectural location, not topic
+
+### Scope Consistency in Development Narrative
+
+Commits about the same topic should use the same scope to create a cohesive development story:
+
+```plaintext
+# Good: Consistent scope creates traceable narrative
+feat(kiro): add MCP server discovery
+feat(kiro): implement configuration validation
+feat(kiro): add error handling
+fix(kiro): handle connection timeout
+
+# Bad: Inconsistent scopes break narrative
+feat(kiro): add MCP server discovery
+feat(config): update settings format
+fix(connection): handle timeout
+```
+
+### Scope Discovery Process
+
+1. Identify the primary subject affected by this change
+2. Use names from:
+   - Requirements/documentation
+   - Existing codebase components
+   - Project-specific naming conventions
+3. Check commitlint configuration for allowed scopes
+4. Use the most specific scope possible
+
+### Examples
+
+```plaintext
+# Working on MCP server support for Kiro
+feat(kiro): add MCP server discovery protocol
+feat(kiro): implement configuration validation
+fix(kiro): handle connection errors gracefully
+
+# Fixing authentication in Codex
+fix(codex): handle expired access tokens
+feat(codex): add token refresh mechanism
+
+# Refactoring user service
+refactor(UserService): extract validation logic
+refactor(UserService): improve error handling
+```
+
+## Commitlint Integration
+
+### Configuration File Requirements
+
+**Mandatory**: All projects MUST include a commitlint configuration file. Common formats:
+- `commitlintrc.json`
+- `.commitlintrc.js`
+- `.commitlintrc.yaml`
+
+**Agent Responsibilities**:
+1. **Locate**: Find and read the commitlint configuration file in the project root
+2. **Comply**: Follow all rules defined in the configuration
+3. **Validate**: Run `npx commitlint --edit` before finalizing commit messages
+4. **Report**: If configuration is missing or incomplete, create/improve it
+
+### Pre-Commit Hook Setup
+
+**Required**: Projects must enforce commitlint via pre-commit hooks.
+
+**Recommended Setup**:
+```bash
+# Install husky and commitlint
+npx husky-init && npm install
+npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+# Create commitlint configuration
+echo "module.exports = { extends: ['@commitlint/config-conventional'] };"> commitlint.config.js
+
+# Add pre-commit hook
+npx husky add .husky/commit-msg 'npx --no -- commitlint --edit $1'
+```
+
+### Common Commitlint Rules
+
+Projects typically enforce:
+- **Type requirements**: Only approved types (feat, fix, docs, etc.)
+- **Scope requirements**: Scopes must match feature/module names
+- **Subject length**: 50-72 characters maximum
+- **Subject case**: Lowercase, start with verb
+- **Body requirements**: Proper indentation and line breaks
+- **Footer format**: `Fixes #123` or `Closes #456`
+
+**Example commitlintrc.json**:
+```json
+{
+  "extends": ["@commitlint/config-conventional"],
+  "rules": {
+    "type-enum": [2, "always", ["feat", "fix", "docs", "refactor", "test", "chore", "ci", "perf", "style"]],
+    "scope-enum": [2, "always", ["kiro", "codex", "auth", "dashboard", "api", "cli"]],
+    "subject-case": [2, "always", "lower-case"],
+    "subject-max-length": [2, "always", 72]
+  }
+}
+```
+
+### Validation Workflow
+
+1. **Before committing**:
+   ```bash
+   npx commitlint --edit $1
+   ```
+
+2. **In CI/CD pipeline**:
+   ```yaml
+   # Example GitHub Actions step
+   - name: Validate commit messages
+     run: npx commitlint --from=HEAD~1 --to=HEAD
+   ```
+
+3. **Local development**:
+   - Install commitlint globally: `npm install -g @commitlint/cli`
+   - Validate current commit: `commitlint --edit`
+   - Validate commit history: `commitlint --from=HEAD~5`
+
+## Commit Message Best Practices
 
 ### Description Guidelines
 
@@ -448,13 +460,14 @@ Closes #789
 
 ---
 
-## QUALITY ASSURANCE
+## Quality Assurance
 
 ### Pre-Commit Checklist
 
 - [ ] Single logical change
-- [ ] Clear, descriptive commit message
+- [ ] Clear, descriptive commit message with **explicit topic in scope**
 - [ ] Conventional commit format
+- [ ] **Commitlint validation passed** (run `npx commitlint --edit`)
 - [ ] All tests pass
 - [ ] No unrelated changes included
 - [ ] Documentation updated if needed
@@ -475,7 +488,7 @@ Closes #789
 
 ---
 
-## AGENT OPTIMIZATION
+## Agent Optimization
 
 ### For AI Coding Agents
 
@@ -491,9 +504,15 @@ Closes #789
 - **Knowledge Transfer**: Commit messages provide context for decisions
 - **Maintenance**: Logical changes make future modifications easier
 
+**Cross-References**:
+- See `git-workflow-debugging.instructions.md` for debugging workflow
+- See `git-workflow-milestone.instructions.md` for milestone-based development
+- See `roadmap-generation.instructions.md` for milestone/task structure
+- See `testing.instructions.md` for test requirements
+
 ---
 
-## SUCCESS METRICS
+## Success Metrics
 
 ### Quality Indicators
 
