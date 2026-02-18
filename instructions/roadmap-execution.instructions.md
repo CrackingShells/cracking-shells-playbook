@@ -41,6 +41,7 @@ When multiple sibling leaves exist at the same level:
 
 When multiple sibling subdirectories exist:
 - Same rule — dispatch each to a subagent if possible
+  - WARNING: 1 subagent per subdirectory can overflow memory. Escalating back to orchestrating agent might be more advisable unless depth of the implementation tree is small.
 - Each subagent recursively applies this algorithm within its subdirectory
 
 ---
