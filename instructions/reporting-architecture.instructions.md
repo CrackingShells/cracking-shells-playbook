@@ -44,6 +44,6 @@ For each major decision:
 - What tradeoffs were accepted
 
 ## 5. Roadmap handoff
-If the effort is complex/multi-phase, end the Phase 1 report with a roadmap handoff:
-- Create a roadmap under `__design__/..._roadmap_vN.md` using:
+If the effort is complex/multi-phase, end the Stage 1 report with a roadmap handoff:
+- Create a roadmap directory tree under `__roadmap__/<campaign>/` using:
   - [roadmap-generation.instructions.md](./roadmap-generation.instructions.md)
