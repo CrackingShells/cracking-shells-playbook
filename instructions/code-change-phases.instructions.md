@@ -1,172 +1,125 @@
 ---
 applyTo: '**/*'
-description: 'Validated Systematic Workflow Pattern for High-Quality Development'
+description: '3-stage code-change workflow: Analysis → Roadmap → Execution'
 ---
 
-# DEVELOPMENT WORKFLOW DOCUMENTATION
+# Development Workflow
 
-Based on direct implementation experience, this workflow pattern consistently delivered high-quality results:
+All code changes follow a 3-stage workflow: **Analysis → Roadmap → Execution**. The stages are sequential — each has clear deliverables and exit criteria before the next begins.
 
-## Phase 1: Architectural Analysis
+---
 
-1. **Current Codebase State Assessment**
-   - Comprehensive code review and dependency analysis
-   - Identification of existing patterns and architectural decisions
-   - Assessment of technical debt and improvement opportunities
+## Stage 1: Analysis (iterative, agent-reviewed)
 
-2. **Industry Standards Research**
-   - Investigation of established patterns for similar problems
-   - Comparison with industry best practices and standards
-   - Evaluation of alternative approaches and trade-offs
+Understand the problem, design the solution, define the tests.
 
-3. **Critical Assessment of Requirements**
-   - Deep analysis of functional and non-functional requirements
-   - Identification of edge cases and integration challenges
-   - Validation of requirements against technical constraints
+```
+Architecture Report (v0) → Agent Review → Architecture Report (v1) → ...
+Test Definition (v0) → Agent Review → Test Definition (v1) → ...
+```
 
-4. **Recommended Improvements**
-   - Proposal of architectural enhancements and optimizations
-   - Documentation of design decisions and rationale
-   - Creation of implementation roadmap with clear milestones
-   - **For complex projects**: Consider creating a formal roadmap following [roadmap generation guidelines](./roadmap-generation.instructions.md)
+**Agents**: Any combination of human stakeholders, LLM agents, or automated review tools. "Agent" is used generically throughout.
 
-5. **Iterative Refinement**
-   - Stakeholder feedback integration and requirement clarification
-   - Architecture adjustment based on implementation discoveries
-   - Continuous validation against original objectives
+### Activities
 
-6. **Analysis Accuracy Verification**
-   - **File References**: Confirm all referenced file paths exist and are spelled correctly
-   - **Line Numbers**: Validate line number references against current file state (not historical commits)
-   - **Code Snippets**: Verify code snippets match actual implementation (copy-paste from files, don't paraphrase)
-   - **Configuration Values**: Read configuration files directly rather than inferring from commit messages
-   - **Dependencies**: Check actual dependency versions in package files (pyproject.toml, requirements.txt, etc.)
-   - **Context Timestamp**: Document when analysis was performed (commit SHA or date) for future reference
+1. **Codebase assessment** — code review, dependency analysis, existing patterns
+2. **Requirements analysis** — functional/non-functional requirements, edge cases, constraints
+3. **Architecture design** — proposed changes, contracts/invariants, alternatives, risks
+4. **Test strategy** — risk-driven test matrix, fixtures strategy, regression set
+5. **Iterative refinement** — stakeholder feedback, architecture adjustments
+
+### Analysis Accuracy Verification
+
+- **File references**: confirm all referenced paths exist and are spelled correctly
+- **Code snippets**: verify against actual implementation (copy-paste, don't paraphrase)
+- **Dependencies**: check actual versions in package files
+- **Context timestamp**: document when analysis was performed (commit SHA or date)
 
 ### Deliverables
 
-Versioned reports on relevant topics following [org's reporting guidelines](./reporting.instructions.md)
+Versioned reports in `__reports__/<topic>/` following [reporting guidelines](./reporting.instructions.md):
+- Architecture reports: [reporting-architecture.instructions.md](./reporting-architecture.instructions.md)
+- Test definition reports: [reporting-tests.instructions.md](./reporting-tests.instructions.md)
 
-## Phase 2: Comprehensive Test Suite Development
+### Exit Criteria
 
-1. **Test-Driven Development**
-   - Comprehensive tests definition based on vetted architecture design reports (ADRs)
-   - Edge case identification and test coverage validation
-   - Mock and integration test development
+Reviewing agent approves the architecture and test strategy.
 
-1. **Unit Test Coverage**
-   - Individual component testing with 100% coverage target
-   - Mock object creation and dependency isolation
-   - Performance and resource utilization testing
+---
 
-2. **Integration Testing**
-   - End-to-end workflow validation
-   - Cross-component interaction testing
-   - Real-world scenario simulation
+## Stage 2: Roadmap (plan the work)
 
-3. **Edge Case Validation**
-   - Boundary condition testing and error scenario validation
-   - Platform compatibility and environment variation testing
-   - Load testing and performance validation
+Translate the approved design into an executable directory tree.
 
-4. **Iterative Refinement**
-   - Stakeholder feedback integration and requirement clarification
-   - Tests adjustment based on target use cases 
-   - Continuous validation against major design decisions
+### Activities
+
+1. Create `__roadmap__/<campaign>/` directory
+2. Write root `README.md` with context, reference documents, goal, pre-conditions, success gates
+3. Identify the dependency graph of the work
+4. Map the dependency graph to a directory tree:
+   - Parallel work → sibling leaves
+   - Sequential dependencies → nesting depth (dependent work goes deeper)
+   - Diamond dependencies → place dependent node deeper than all parents
+5. For each leaf task: write Goal, Pre-conditions, Success Gates, Steps with Implementation Logic and References
+6. Verify the 1:1 mapping invariant (README.md nodes = filesystem entries)
 
 ### Deliverables
 
-A series of versioned test definition reports for every iteration following [org's reporting guidelines](./reporting.instructions.md)
+Complete `__roadmap__/<campaign>/` directory tree per [roadmap generation guidelines](./roadmap-generation.instructions.md).
 
-## Phase 3: Core Feature Implementation
+### Exit Criteria
 
-1. **Documentation & Test driven implementation**
-   - Focus on final design decisions
-   - Leverage test suite to bound actual implementation
-   - Satisfy guidelines over over-engineering
+Reviewing agent approves. All leaf tasks have Implementation Logic and References. 1:1 mapping holds. Tree structure correctly encodes all dependencies.
 
-2. **Incremental Implementation**
-   - Small, focused changes with immediate validation
-   - Continuous integration and testing at each step
-   - Regular checkpoint commits with clear progress markers
+---
 
-3. **Proper Error Handling**
-   - Comprehensive exception handling and graceful degradation
-   - Input validation and boundary condition management
-   - Logging and debugging infrastructure implementation
+## Stage 3: Execution (breadth-first tree traversal)
 
+Navigate the roadmap tree and implement.
 
-## Phase 4: Persistent Debugging to 100% Test Pass Rate
+### The Algorithm
 
-1. **Systematic Issue Investigation**
-   - Root cause analysis for every test failure
-   - Fairly re-assess the couple (test, implementation): which is at fault?
-   - Design decision-based reporting
-   - Evidence-based debugging with comprehensive logging
-   - Iterative refinement until all tests pass
+1. Enter the directory, read `README.md`
+2. Execute all **leaf files** at this level (they are parallel — can be assigned to parallel agents)
+3. When all leaves are done, enter each **subdirectory** (parallel with each other)
+4. Within each subdirectory, recurse from step 1
+5. Within a leaf task, for each step:
+   - Read Implementation Logic and References
+   - Produce the deliverables
+   - Run consistency checks
+   - Commit with the prescribed message (**1 step = 1 commit**)
+6. When a leaf task's success gates are met: merge task branch into milestone
+7. When all nodes in a directory are done: mark the directory node as `done` in the parent `README.md`
+8. If amendment needed: follow the amendment workflow in [roadmap-generation.instructions.md](./roadmap-generation.instructions.md)
+9. Repeat until all nodes at all levels are `done`
 
-2. **Performance Optimization**
-   - Bottleneck identification and resolution
-   - Resource utilization optimization
-   - Scalability validation and improvement
+### Git Integration
 
-3. **Quality Assurance**
-   - Code review and architectural validation
-   - Documentation accuracy verification
-   - Deployment readiness assessment
+- `milestone/<campaign>` branch from `dev` — single integration branch
+- `task/<name>` branches from milestone — one per leaf task, flat hierarchy
+- Breadth-first merge order: all depth-d tasks merge before depth d+1 begins
+- See [git-workflow-milestone.instructions.md](./git-workflow-milestone.instructions.md) for details
 
 ### Deliverables
 
-A series of versioned test execution and validation reports for every iteration following [org's reporting guidelines](./reporting.instructions.md)
+Code, tests, documentation — all as prescribed by task files. Test logs for agent review.
 
-## Phase 5: Focused, Logical Git Commits
+### Exit Criteria
 
-Refer to [Git Workflow Instructions](./git-workflow.md) for detailed commit message standards.
+All nodes `done` at every level. All tests pass. Final agent review.
 
-1. **Commit Strategy Planning**
-   - Logical change grouping and dependency analysis
-   - Commit message standardization and clarity
-   - Rollback strategy and recovery planning
+---
 
-2. **Incremental Commits**
-   - Single-purpose commits with clear rationale
-   - Conventional commit format adherence
-   - Comprehensive commit message documentation
+## What This Replaces
 
-3. **Repository Hygiene**
-   - Branch management and merge strategy
-   - Conflict resolution and history preservation
-   - Tag creation and release preparation
+| Previous Model | Current Model | Why |
+|:---|:---|:---|
+| Phase 1: Architectural Analysis | Stage 1: Analysis | Same purpose, now explicitly iterative with agent review |
+| Phase 2: Test Suite Development | Stage 1: Analysis (test definition reports) | Tests defined in analysis, implemented during execution |
+| Phase 3: Core Implementation | Stage 3: Execution | Driven by breadth-first tree traversal, not a phase |
+| Phase 4: Debugging to 100% | Stage 3: Execution (consistency checks per step) | Integrated into each step |
+| Phase 5: Git Commits | Stage 3: Execution (commit per step) | Prescribed in task files |
+| Phase 6: Documentation | Stage 3: Execution (doc tasks in tree) | Documentation tasks are leaf nodes |
+| Phase 7: Doc Commits | Stage 3: Execution | No separate phase needed |
 
-## Phase 6: Documentation Creation and Updates
-
-1. **User Documentation**
-   - Feature documentation and usage examples
-   - Installation and configuration guides
-   - Troubleshooting and FAQ development
-
-2. **Developer Documentation**
-   - API documentation and code examples
-   - Architecture documentation and design decisions
-   - Contribution guidelines and development setup
-
-3. **Knowledge Transfer**
-   - Implementation insights and lessons learned
-   - Future development enablers and extension points
-   - Troubleshooting guides and common issues
-
-### Deliverables
-
-Versioned modification reports following [org's reporting guidelines](./reporting.instructions.md)
-
-## Phase 7: Documentation Commits Separate from Code Changes
-
-1. **Documentation Review**
-   - Accuracy validation against current implementation
-   - Completeness assessment and gap identification
-   - User experience and clarity optimization
-
-2. **Separate Documentation Commits**
-   - Documentation changes isolated from code changes
-   - Clear commit messages indicating documentation updates
-   - Version synchronization and consistency validation
+Everything after analysis is encoded in the roadmap directory tree. Tests, code, documentation, and commits are all steps in leaf task files, ordered by tree depth. The tree IS the execution plan.
