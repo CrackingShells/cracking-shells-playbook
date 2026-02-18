@@ -12,7 +12,7 @@ Save reports under:
 - `__reports__/<topic>/<round>-<descriptive_name>_v<version>.md`
 
 Where:
-- `<topic>` is a descriptive snake_case folder name (prefer prefixes: `feature_`, `bug_fix_`, `refactor_`, `analysis_`).
+- `<topic>` is a descriptive snake_case folder name (descriptive names preferred; type prefixes like `feature_`, `bug_fix_` are optional).
 - `<round>` is `00`, `01`, `02`, … (increments per user prompt/work session).
 - `<descriptive_name>` is snake_case and describes the report.
 - `<version>` is `v0`, `v1`, `v2`, … (increments per iteration/refinement of the same report).
@@ -23,7 +23,15 @@ Save long-lived design artifacts under:
 
 Use `__design__/` for:
 - Architecture overviews and stable design decisions
-- Roadmaps and long-term plans
+
+### Roadmaps (living implementation plans)
+Save roadmap directory trees under:
+- `__roadmap__/<campaign>/`
+
+Use `__roadmap__/` for:
+- Living implementation plans structured as directory trees
+- Each directory contains a `README.md` with status and context
+- See [roadmap-generation.instructions.md](./roadmap-generation.instructions.md) for the full model
 
 Use `__reports__/` for:
 - Iterative analysis and test definitions during active work
