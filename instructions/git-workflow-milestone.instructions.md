@@ -1,89 +1,73 @@
 # Git Workflow: Milestone-Based Development
 
-For projects with formal roadmaps and milestone tracking, use hierarchical branching to organize work by phases, milestones, and tasks.
+For projects with formal roadmaps, use a flat branching model where all task branches come from and merge back to a single milestone branch. The roadmap directory tree governs execution order — git stays flat.
 
 ## Branch Hierarchy
 
 ```plaintext
 main (production releases only)
   └── dev (development integration branch)
-      ├── milestone/1.1-short-description
-      │   ├── task/1.1.1-short-description
-      │   ├── task/1.1.2-short-description
-      │   └── task/1.1.3-short-description
-      ├── milestone/1.2-short-description
-      │   └── task/1.2.1-short-description
-      └── milestone/2.1-short-description
-          └── task/2.1.1-short-description
+      └── milestone/<campaign>
+          ├── task/<descriptive-name>
+          ├── task/<descriptive-name>
+          ├── task/<descriptive-name>
+          └── ...
 ```
 
 ## Workflow Rules
 
-1. **All work from `dev` branch** (not `main`)
-   - `main` is production-only, receives merges only at major releases
-   - `dev` is the integration branch for all development work
+1. **Campaign branch from `dev`**: `milestone/<campaign>` is the single integration branch for the entire campaign.
 
-2. **Milestone branches from `dev`**
-   - Branch naming: `milestone/<milestone-id>-<short-description>`
-   - Example: `milestone/2.1-thread-safe-architecture`
-   - Created when milestone work begins
-   - Deleted after merge back to `dev`
+2. **Task branches from milestone**: Every leaf task file in the roadmap gets a `task/<descriptive-name>` branch created from `milestone/<campaign>`. Branch names use kebab-case versions of the roadmap filesystem names.
 
-3. **Task branches from milestone branches**
-   - Branch naming: `task/<task-id>-<short-description>`
-   - Example: `task/2.1.1-design-architecture`
-   - Created when task work begins
-   - Deleted after merge back to milestone branch
+3. **Breadth-first merge order**: Agents create and work on task branches following the roadmap tree's breadth-first order. All depth-d sibling leaves can be branched and worked in parallel. They must all merge back to milestone before depth d+1 task branches are created.
 
-4. **Merge Hierarchy**:
-   - Task branches → Milestone branch (when task complete)
-   - Milestone branch → `dev` (when ALL milestone tasks complete)
-   - `dev` → `main` (when ready for production release)
+4. **Merge back to milestone**: When a task's success gates are met, its branch merges directly into `milestone/<campaign>`.
 
-5. **Merge Criteria**:
-   - **Task → Milestone**: Task success gates met, task tests pass
-   - **Milestone → dev**: All milestone tasks complete, all milestone tests pass, no regressions
-   - **dev → main**: ALL tests pass (regression, unit, integration, performance), ready for release
+5. **Merge criteria**:
+   - **Task → Milestone**: Task success gates met, step consistency checks pass
+   - **Milestone → dev**: All campaign nodes done, full test suite passes, final agent review
+   - **dev → main**: Release-ready, all tests pass
 
 6. **Conventional Commits**: Follow organization's conventional commit format to enable automated semantic versioning
 
 ## Example Workflow
 
 ```bash
-# Start milestone work
+# Start campaign
 git checkout dev
-git checkout -b milestone/1.1-core-functionality
+git checkout -b milestone/cli-ux-normalization
 
-# Start task work
-git checkout -b task/1.1.1-implement-parser
+# Work on depth-0 leaves (parallel)
+git checkout -b task/test-setup
+git commit -m "test(cli): add test infrastructure setup"
+git checkout milestone/cli-ux-normalization
+git merge task/test-setup
+git branch -d task/test-setup
 
-# Work on task with conventional commits
-git commit -m "feat(parser): add basic parsing logic"
-git commit -m "test(parser): add parser validation tests"
+# All depth-0 leaves merged, proceed to depth-1
+git checkout -b task/color-system
+git commit -m "test(cli): add color system tests"
+git commit -m "feat(cli): implement color system"
+git checkout milestone/cli-ux-normalization
+git merge task/color-system
+git branch -d task/color-system
 
-# Complete task - merge to milestone
-git checkout milestone/1.1-core-functionality
-git merge task/1.1.1-implement-parser
-git branch -d task/1.1.1-implement-parser
-
-# Complete all milestone tasks, merge to dev
+# When all campaign work done, merge to dev
 git checkout dev
-git merge milestone/1.1-core-functionality
-git branch -d milestone/1.1-core-functionality
-
-# When ready for release, merge to main
-git checkout main
-git merge dev
-git tag v1.1.0
+git merge milestone/cli-ux-normalization
+git branch -d milestone/cli-ux-normalization
 ```
 
 ## Benefits
-- Clear organization of complex multi-phase projects
-- Easy tracking of milestone progress
-- Facilitates parallel development on different milestones
-- Git history reflects roadmap structure
-- Enables automated changelog generation per milestone
+- Flat branch model — no nested component branches to manage
+- Execution order governed by roadmap tree, not branch hierarchy
+- Parallel task branches for sibling leaves at each depth
+- Clear merge criteria at each level
+- Git history reflects breadth-first execution order
+- Enables automated changelog generation per campaign
 
 **Cross-References**:
-- See `roadmap-generation.instructions.md` for milestone/task structure
+- See `roadmap-generation.instructions.md` for the directory-tree roadmap model
+- See `code-change-phases.instructions.md` for the 3-stage workflow
 - See `testing.instructions.md` for test requirements at each merge level
