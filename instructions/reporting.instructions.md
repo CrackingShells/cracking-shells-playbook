@@ -10,7 +10,7 @@ This is the **always-apply** reporting contract. It is intentionally short to pr
 Reports exist to align stakeholders on **architecture** and **validation**, not to duplicate implementation code.
 
 ## When to produce reports
-- Generate reports at key phases (especially Phase 1 and Phase 2) as described in [code-change-phases.instructions.md](./code-change-phases.instructions.md), or when explicitly requested.
+- Generate reports at key stages (especially Stage 1: Analysis) as described in [code-change-phases.instructions.md](./code-change-phases.instructions.md), or when explicitly requested.
 
 ## Where reports go
 - Default location:
@@ -43,6 +43,6 @@ Allowed:
 - Templates: [reporting-templates.instructions.md](reporting-templates.instructions.md)
 
 ## Roadmaps (when needed)
-If Phase 1 reveals a complex multi-phase effort, prefer creating a formal roadmap in `__design__/` using:
+If Stage 1 analysis reveals a complex multi-phase effort, prefer creating a formal roadmap directory tree in `__roadmap__/` using:
 - [roadmap-generation.instructions.md](roadmap-generation.instructions.md)
 
