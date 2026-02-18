@@ -281,3 +281,12 @@ A campaign in `__roadmap__/` typically has a corresponding topic in `__reports__
 - Leaf task References point to `__reports__/` for architecture context
 - `README.md` Reference Documents link to reports that inform each level
 - Gap analyses in `__reports__/` reference `__roadmap__/` for the plan they amend
+
+---
+
+## Cross-References
+
+- [roadmap-execution.instructions.md](./roadmap-execution.instructions.md) — how to navigate and execute against a roadmap tree
+- [roadmap-composition-examples.annex.md](./roadmap-composition-examples.annex.md) — worked examples at each tier
+- [code-change-phases.instructions.md](./code-change-phases.instructions.md) — the 3-stage workflow
+- [git-workflow-milestone.instructions.md](./git-workflow-milestone.instructions.md) — flat branching model
