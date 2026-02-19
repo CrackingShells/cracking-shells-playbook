@@ -31,4 +31,4 @@ A Knowledge Transfer (KT) report captures what happened during a cycle and, crit
 
 ## What not to do
 - Don’t paste large code blocks.
-- Don’t rewrite the full architecture; link to Phase 1 artifacts.
+- Don’t rewrite the full architecture; link to Stage 1 analysis artifacts.

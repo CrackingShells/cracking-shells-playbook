@@ -15,7 +15,7 @@ Reports exist to align stakeholders on **architecture** and **validation**, not 
 ## Where reports go
 - Default location:
   - `__reports__/<topic>/<round>-<descriptive_name>_v<version>.md`
-- Use `__design__/` for durable design/roadmaps.
+- Use `__design__/` for durable architectural decisions.
 
 Details (structure, naming, README conventions):
 - [reporting-structure.instructions.md](reporting-structure.instructions.md)
@@ -29,16 +29,16 @@ Allowed:
 - Signatures, schemas, pseudo-code, and small snippets strictly necessary to clarify a contract or invariant.
 
 ### 2) Default artifacts
-- Phase 1: Mermaid diagrams + contracts/invariants + alternatives + risks.
-- Phase 2: Risk-driven test matrix + fixtures strategy + minimal must-run regression set.
+- Architecture reports: Mermaid diagrams + contracts/invariants + alternatives + risks.
+- Test definition reports: Risk-driven test matrix + fixtures strategy + minimal must-run regression set.
 
 ### 3) Keep reports reviewable
 - Prefer tables, diagrams, and short sections.
 - Avoid enumerating exhaustive permutations; use equivalence classes, boundary sets, and consolidation.
 
 ## Specialized reporting guidance
-- Phase 1 architecture guidance: [reporting-architecture.instructions.md](reporting-architecture.instructions.md)
-- Phase 2 test definition reports: [reporting-tests.instructions.md](reporting-tests.instructions.md)
+- Architecture reporting guidance: [reporting-architecture.instructions.md](reporting-architecture.instructions.md)
+- Test definition reporting guidance: [reporting-tests.instructions.md](reporting-tests.instructions.md)
 - Knowledge transfer (LLM cycle learnings): [reporting-knowledge-transfer.instructions.md](reporting-knowledge-transfer.instructions.md)
 - Templates: [reporting-templates.instructions.md](reporting-templates.instructions.md)
 

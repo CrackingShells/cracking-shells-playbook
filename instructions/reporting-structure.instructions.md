@@ -46,7 +46,7 @@ Use `__reports__/` for:
 Each `__reports__/<topic>/` should include a `README.md` that:
 - Lists documents in chronological order
 - Marks the latest versions as current
-- Provides a short “status” section (Phase 1/2/3 etc.)
+- Provides a short “status” section (Analysis / Roadmap / Execution stages)
 
 ## 4. Minimal naming examples
 - `__reports__/feature_version_command/00-architecture_analysis_v0.md`

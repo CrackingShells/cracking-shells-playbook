@@ -131,7 +131,7 @@ def test_local_environment_only(self):
 
 This document is the **technical testing standard** (framework, structure, decorators, and execution conventions).
 
-For how to *define* a test plan (risk-driven scope control, consolidation heuristics, trust boundaries, and the Phase 2 report format + test matrix), follow:
+For how to *define* a test plan (risk-driven scope control, consolidation heuristics, trust boundaries, and the test definition report format + test matrix), follow:
 - [reporting-tests.instructions.md](./reporting-tests.instructions.md)
 
 ## 3. Standard Testing Framework

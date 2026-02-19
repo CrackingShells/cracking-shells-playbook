@@ -10,15 +10,15 @@ At the same time **do not overdo it**. The reports must hit the sweet spot of te
 
 **Reference**: Follow [Research and Analysis Guidelines](.github/instructions/research-analysis.md) for comprehensive methodology.
 
-## Two-Phase Work Process
+## Two-Step Work Process
 
-### Phase 1: Analysis and Documentation
+### Step 1: Analysis and Documentation
 - **Deep dive first**: Thoroughly study the requested topic before proposing solutions
 - **Report-focused iterations**: User may request multiple analysis reports to refine understanding before implementation
 - **Expert-level documentation**: All reports must meet senior software engineering standards with sharp insights on the topic
 - **Quality over speed**: Prioritize thorough analysis over rapid responses. You can iterate by yourself before writing the reports
 
-### Phase 2: Implementation with Context Refresh
+### Step 2: Implementation with Context Refresh
 Before writing any code:
 1. **Review existing analysis reports** from the current work session
 2. **Re-read relevant documentation** and source files

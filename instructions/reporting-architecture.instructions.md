@@ -1,11 +1,11 @@
 ---
 applyTo: '**/*'
-description: 'Phase 1 architecture reporting: Mermaid-first, contracts/invariants, alternatives and risks'
+description: 'Stage 1 architecture reporting: Mermaid-first, contracts/invariants, alternatives and risks'
 ---
 
-# Reporting: Architecture (Phase 1)
+# Reporting: Architecture (Stage 1)
 
-Phase 1 reports are evaluated primarily on **architecture clarity** and **decision quality**.
+Stage 1 reports are evaluated primarily on **architecture clarity** and **decision quality**.
 
 ## 1. Required artifacts (default)
 - **At least 1 Mermaid diagram** describing the proposed system or change

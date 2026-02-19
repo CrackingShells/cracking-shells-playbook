@@ -1,0 +1,377 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "roadmap-document-schema",
+  "title": "Roadmap Document Schema",
+  "description": "Structural contract for roadmap directory tree documents: README.md, Leaf Task files, and Steps. These are markdown documents — this schema defines the logical sections and fields that must/may appear.",
+
+  "$defs": {
+
+    "status_value": {
+      "type": "string",
+      "enum": ["done", "inprogress", "planned", "amendment", "blocked"],
+      "description": "Node status. Maps to Mermaid classDef styling."
+    },
+
+    "status_display": {
+      "type": "string",
+      "enum": ["✅ Done", "🔄 In Progress", "⬜ Planned", "🔵 Amendment", "🚫 Blocked"],
+      "description": "Human-readable status for the Nodes table."
+    },
+
+    "node_type": {
+      "type": "string",
+      "enum": ["📄 Leaf Task", "📁 Directory"],
+      "description": "Whether the node is a leaf task file (.md) or a subdirectory."
+    },
+
+    "mermaid_class_def": {
+      "type": "object",
+      "description": "Mermaid classDef color definitions. All five statuses must be defined in every status visualization.",
+      "properties": {
+        "done":       { "const": "fill:#166534,color:#bbf7d0" },
+        "inprogress": { "const": "fill:#854d0e,color:#fef08a" },
+        "planned":    { "const": "fill:#374151,color:#e5e7eb" },
+        "amendment":  { "const": "fill:#1e3a5f,color:#bfdbfe" },
+        "blocked":    { "const": "fill:#7f1d1d,color:#fecaca" }
+      },
+      "required": ["done", "inprogress", "planned"]
+    },
+
+    "mermaid_node": {
+      "type": "object",
+      "description": "A node in the Mermaid status graph. ID must match the filesystem name (without .md or /).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Node ID = filesystem name in snake_case (without .md extension or trailing /)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label shown in the graph node."
+        },
+        "status": { "$ref": "#/$defs/status_value" },
+        "amendment_id": {
+          "type": "string",
+          "pattern": "^A\\d+$",
+          "description": "If this node was added by an amendment, the amendment ID (e.g., 'A1'). Optional."
+        }
+      },
+      "required": ["id", "label", "status"]
+    },
+
+    "nodes_table_entry": {
+      "type": "object",
+      "description": "A row in the Nodes table. Must have a 1:1 correspondence with filesystem entries and Mermaid nodes.",
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "Filesystem name: `name.md` for leaf tasks, `name/` for directories."
+        },
+        "type": { "$ref": "#/$defs/node_type" },
+        "status": { "$ref": "#/$defs/status_display" }
+      },
+      "required": ["node", "type", "status"]
+    },
+
+    "amendment_log_entry": {
+      "type": "object",
+      "description": "A row in the Amendment Log table.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^A\\d+$",
+          "description": "Sequential amendment ID (A1, A2, …)."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the amendment was approved (YYYY-MM-DD)."
+        },
+        "source": {
+          "type": "string",
+          "description": "Relative path to the source document in __reports__/ that justifies this amendment."
+        },
+        "nodes_added": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "List of filesystem names added by this amendment."
+        },
+        "rationale": {
+          "type": "string",
+          "description": "One-line explanation of why the amendment was needed."
+        }
+      },
+      "required": ["id", "date", "source", "nodes_added", "rationale"]
+    },
+
+    "progress_entry": {
+      "type": "object",
+      "description": "A row in the Progress table. Tracks git branch and commit info per node.",
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "Filesystem name of the node."
+        },
+        "branch": {
+          "type": ["string", "null"],
+          "description": "Git branch name (task/<name> for leaves, null or '—' for directories)."
+        },
+        "commits": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Number of commits on the branch. Null or '—' if not applicable."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Free-text notes (e.g., '✅ Merged', '🔄 In progress')."
+        }
+      },
+      "required": ["node"]
+    },
+
+    "reference": {
+      "type": "object",
+      "description": "A reference to an analysis report or external document.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Reference identifier, e.g., 'R01-v3 §3.3' or 'Issue #42'."
+        },
+        "path": {
+          "type": "string",
+          "description": "Relative path to the referenced document."
+        },
+        "description": {
+          "type": "string",
+          "description": "One-line description of what to find at this reference."
+        }
+      },
+      "required": ["id", "path", "description"]
+    },
+
+    "consistency_check": {
+      "type": "object",
+      "description": "A verification command with its expected outcome.",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command to run (e.g., 'pytest tests/test_foo.py -k bar')."
+        },
+        "expected": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"],
+          "description": "Expected outcome. FAIL is valid for TDD test steps."
+        }
+      },
+      "required": ["command", "expected"]
+    },
+
+    "commit_message": {
+      "type": "string",
+      "pattern": "^(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\\(.+\\): .+$",
+      "description": "Conventional commit message. Format: type(scope): description."
+    },
+
+    "step": {
+      "type": "object",
+      "description": "A single step within a leaf task. 1 step = 1 commit (strict bijection).",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Step number (sequential within the task)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short descriptive title for the step."
+        },
+        "goal": {
+          "type": "string",
+          "description": "REQUIRED. Unique change intent for this step — what makes this commit distinct."
+        },
+        "implementation_logic": {
+          "type": "string",
+          "description": "REQUIRED. Natural language description of WHAT to build/test/change and WHY. No code dumps. Use numbered pseudocode for non-trivial logic. This section constrains scope: if it's not described here, it shouldn't be implemented."
+        },
+        "references": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reference" },
+          "description": "Optional at step level. Points to the specific report section relevant to this step."
+        },
+        "deliverables": {
+          "type": "string",
+          "description": "REQUIRED. File paths to create/modify with approximate LOC estimate."
+        },
+        "consistency_checks": {
+          "$ref": "#/$defs/consistency_check",
+          "description": "REQUIRED. Verification command with expected outcome."
+        },
+        "commit": {
+          "$ref": "#/$defs/commit_message",
+          "description": "REQUIRED. Conventional commit message for this step."
+        },
+        "requires": {
+          "type": "string",
+          "description": "Optional. Only for genuinely non-obvious prerequisites beyond sequential ordering (e.g., 'running database instance', 'API key in .env'). Do NOT use for 'previous step done' — that's tautological."
+        },
+        "custom_sections": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional context-specific sections (e.g., 'parser_flags', 'test_cases'). The template is a minimum, not a maximum."
+        }
+      },
+      "required": ["number", "title", "goal", "implementation_logic", "deliverables", "consistency_checks", "commit"]
+    },
+
+    "leaf_task": {
+      "type": "object",
+      "description": "A leaf task file — the atomic unit of work. Contains sequential steps, each targeting exactly one commit.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "REQUIRED. Component or topic name."
+        },
+        "goal": {
+          "type": "string",
+          "description": "REQUIRED. One-line objective for the task."
+        },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "REQUIRED. Measurable entry criteria (e.g., sibling leaves complete, branch created, environmental state)."
+        },
+        "success_gates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "REQUIRED. Measurable completion criteria for the whole task."
+        },
+        "references": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reference" },
+          "minItems": 1,
+          "description": "REQUIRED. Task-level references to architecture report sections."
+        },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" },
+          "minItems": 1,
+          "maxItems": 5,
+          "description": "REQUIRED. Sequential steps (1–5). If >5 steps needed, promote to a subdirectory."
+        }
+      },
+      "required": ["title", "goal", "preconditions", "success_gates", "references", "steps"]
+    },
+
+    "readme": {
+      "type": "object",
+      "description": "A README.md file — the entry point for a roadmap directory level. Provides context, status, and a map of what exists.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "REQUIRED. Descriptive title for this level."
+        },
+        "context": {
+          "type": "string",
+          "description": "REQUIRED. 1–2 sentences: where this node fits in the parent campaign, what it depends on, what it produces, who consumes it."
+        },
+        "reference_documents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reference" },
+          "minItems": 1,
+          "description": "REQUIRED. Links to analysis reports in __reports__/ that inform this level."
+        },
+        "goal": {
+          "type": "string",
+          "description": "REQUIRED. One-line objective for this level."
+        },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "REQUIRED. Measurable entry criteria."
+        },
+        "success_gates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "REQUIRED. Measurable completion criteria."
+        },
+        "gotchas": {
+          "type": "string",
+          "description": "OPTIONAL. Known issues, edge cases, or implementation notes that apply to all tasks within this directory. Omit section entirely if nothing to flag."
+        },
+        "status_graph": {
+          "type": "object",
+          "description": "REQUIRED. Mermaid graph TD visualization.",
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/mermaid_node" },
+              "minItems": 1,
+              "description": "All nodes in the status graph. Must have 1:1 correspondence with filesystem entries."
+            },
+            "class_defs": { "$ref": "#/$defs/mermaid_class_def" },
+            "edges": {
+              "const": [],
+              "description": "MUST be empty. No edges between siblings — siblings are always parallel. Ordering comes from tree structure (leaves before subdirectories)."
+            }
+          },
+          "required": ["nodes", "class_defs"]
+        },
+        "nodes_table": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nodes_table_entry" },
+          "minItems": 1,
+          "description": "REQUIRED. 1:1 mapping with filesystem entries and status graph nodes."
+        },
+        "amendment_log": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/amendment_log_entry" },
+          "description": "REQUIRED (may be empty). Log of all amendments at this level."
+        },
+        "progress": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/progress_entry" },
+          "description": "REQUIRED. Tracks branch names, commit counts, and notes per node."
+        }
+      },
+      "required": [
+        "title",
+        "context",
+        "reference_documents",
+        "goal",
+        "preconditions",
+        "success_gates",
+        "status_graph",
+        "nodes_table",
+        "amendment_log",
+        "progress"
+      ]
+    }
+  },
+
+  "type": "object",
+  "description": "Top-level schema. Use '$defs/readme' for README.md files, '$defs/leaf_task' for leaf task files, '$defs/step' for individual steps.",
+  "properties": {
+    "document_type": {
+      "type": "string",
+      "enum": ["readme", "leaf_task"],
+      "description": "Which document type this instance represents."
+    },
+    "readme": { "$ref": "#/$defs/readme" },
+    "leaf_task": { "$ref": "#/$defs/leaf_task" }
+  },
+  "oneOf": [
+    {
+      "properties": { "document_type": { "const": "readme" } },
+      "required": ["document_type", "readme"]
+    },
+    {
+      "properties": { "document_type": { "const": "leaf_task" } },
+      "required": ["document_type", "leaf_task"]
+    }
+  ]
+}

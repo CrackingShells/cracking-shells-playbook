@@ -77,6 +77,8 @@ Reviewing agent approves. All leaf tasks have Implementation Logic and Reference
 
 Navigate the roadmap tree and implement.
 
+For the detailed operational manual (failure handling, subagent dispatch, status updates), see [roadmap-execution.instructions.md](./roadmap-execution.instructions.md).
+
 ### The Algorithm
 
 1. Enter the directory, read `README.md`

@@ -1,11 +1,11 @@
 ---
 applyTo: '**/*'
-description: 'Phase 2 Test Definition Reports: format + scope control (risk-driven, trust boundaries, consolidation)'
+description: 'Test Definition Reports: format + scope control (risk-driven, trust boundaries, consolidation)'
 ---
 
-# Reporting: Test Definition (Phase 2)
+# Reporting: Test Definition (Stage 1)
 
-This document defines how to write stakeholder-reviewable **Test Definition Reports** (typically Phase 2 in [code change phases](./code-change-phases.instructions.md)).
+This document defines how to write stakeholder-reviewable **Test Definition Reports** (typically during Stage 1 — Analysis — per [code change phases](./code-change-phases.instructions.md)).
 
 **Primary goal**: clearly prove that the proposed implementation can be validated with a *risk-driven*, *non-excessive* test plan.
 
@@ -43,7 +43,7 @@ If multiple cases can be covered by a single parameterized/structured test witho
 ## 3. What to Test vs What Not to Test (and why)
 
 ### 3.1 What to test (healthy targets)
-Test cases should map to one of these categories; if a test doesn’t fit, it usually doesn’t belong in the Phase 2 plan.
+Test cases should map to one of these categories; if a test doesn’t fit, it usually doesn’t belong in the test definition plan.
 
 - **Business rules / invariants you own**
 	- Examples: validation rules, merging logic, precedence rules, normalization, idempotency.
@@ -154,7 +154,7 @@ In the report, explicitly label each proposed test with:
 - Scope (for integration): component | service | end_to_end
 - Required conditions (if any): api keys, external services, skip_ci, slow
 
-## 7. Recommended report format (Phase 2)
+## 7. Recommended report format
 
 ### 7.1 Executive Summary (required)
 - What must be proven for stakeholder approval
@@ -218,7 +218,7 @@ If the plan exceeds these ranges, include a short justification (risk, criticali
 - Add 2–6 regression tests for key behaviors and failure modes.
 - Use parameterization to cover representative cases without multiplying test count.
 
-## 10. Output and execution conventions (for later Phase 4 reports)
+## 10. Output and execution conventions (during execution)
 When tests are eventually executed, capture results via Wobble log files as defined in [testing.instructions.md](./testing.instructions.md).
 
-In Phase 2, it’s sufficient to state which Wobble commands you expect to run (high level), without pasting huge outputs.
+In the test definition report, it’s sufficient to state which Wobble commands you expect to run (high level), without pasting huge outputs.

@@ -1,6 +1,6 @@
 ---
 applyTo: '**/*'
-description: 'Copy/paste templates for Phase 1 architecture, Phase 2 test definition, and knowledge transfer reports'
+description: 'Copy/paste templates for architecture analysis, test definition, and knowledge transfer reports'
 ---
 
 # Reporting Templates
@@ -9,7 +9,7 @@ These templates are designed to be stakeholder-reviewable and to prevent “code
 
 ---
 
-## Template: Phase 1 — Architecture Analysis
+## Template: Architecture Analysis
 
 ````markdown
 # <Topic> — Architecture Analysis (vN)
@@ -60,7 +60,7 @@ sequenceDiagram
 - Risk 2:
 
 ## Roadmap Recommendation
-- If complex, create `__design__/<topic>_roadmap_vN.md` using `instructions/roadmap-generation.instructions.md`.
+- If complex, create a roadmap directory tree under `__roadmap__/<campaign>/` using `instructions/roadmap-generation.instructions.md`.
 - Milestone sketch (if not creating a full roadmap):
   - Milestone 1:
   - Milestone 2:
@@ -68,7 +68,7 @@ sequenceDiagram
 
 ---
 
-## Template: Phase 2 — Test Definition
+## Template: Test Definition
 
 ````markdown
 # <Topic> — Test Definition (vN)
