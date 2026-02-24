@@ -75,11 +75,12 @@ See [references/graph-model.md](references/graph-model.md) for the complete FSM 
 
 ## Key Principles
 
-1. **Consistency over Convenience**: The status view is the single source of truth for graph state.
-2. **Explicit Dependencies**: Use graph depth, not ad-hoc edges or node names, for ordering.
-3. **Breadth-First Discipline**: Complete all siblings before descending to the next depth level.
-4. **Execution Transparency**: Every step snapshot recorded, every status updated immediately.
-5. **Living Documentation**: Status views evolve with the work as each node completes.
-6. **Progressive Disclosure**: Core invariants in SKILL.md, detailed specs in backend reference files.
-7. **Iterative Improvement**: Amended graphs share the same model — only nodes are added, never removed.
-8. **Detection before Correction**: Exhaust the failure escalation ladder before raising an amendment.
+1. **Parallelize First**: Default to siblings; use sequential depth only when a concrete dependency requires it (see [references/dirtree-authoring.md § Dependency Signals](references/dirtree-authoring.md)).
+2. **Consistency over Convenience**: The status view is the single source of truth for graph state.
+3. **Explicit Dependencies**: Use graph depth, not ad-hoc edges or node names, for ordering.
+4. **Breadth-First Discipline**: Complete all siblings before descending to the next depth level.
+5. **Execution Transparency**: Every step snapshot recorded, every status updated immediately.
+6. **Living Documentation**: Status views evolve with the work as each node completes.
+7. **Progressive Disclosure**: Core invariants in SKILL.md, detailed specs in backend reference files.
+8. **Iterative Improvement**: Amended graphs share the same model — only nodes are added, never removed.
+9. **Detection before Correction**: Exhaust the failure escalation ladder before raising an amendment.

@@ -30,6 +30,29 @@
 
 See [dirtree-tier-examples.md](dirtree-tier-examples.md) for worked examples at each tier.
 
+### Dependency Signals
+
+Use these heuristics when deciding placement — the implementation context determines which apply:
+
+| Signal | Structure |
+|:-------|:----------|
+| No shared files, no cross-references | Siblings |
+| Both tasks edit the same files | Sequential — merge conflicts at branch integration |
+| B's steps cannot execute without A's output existing | Sequential — runtime dependency |
+
+After parallel siblings that produce cross-references (imports, shared interfaces), add a verification leaf at next depth to check mutual consistency.
+
+**Anti-pattern — sequential by default:**
+
+```
+# Wrong: depth-nesting independent tasks
+auth.md  →  next/billing.md  →  next/final/notifications.md
+
+# Right: siblings + verification gate
+auth.md  billing.md  notifications.md    (parallel leaves)
+integration/verify_contracts.md          (depth +1, after leaves)
+```
+
 ---
 
 ## File Structure Specifications
@@ -127,12 +150,13 @@ graph TD
 
 1. **Identify campaign** and understand requirements
 2. **Choose tier level** (patch vs feature vs campaign)
-3. **Create root directory**: `__roadmap__/<campaign_name>/`
-4. **Write root README.md** with context, references, and status graph
-5. **Create leaf tasks** (1-5 steps each) or subdirectories
-6. **For subdirectories**: Add README.md with goal, pre-conditions, success gates
-7. **For multiple depth levels**: Follow breadth-first required order
-8. **No numeric prefixes** in names
+3. **Analyze dependencies**: Partition work into parallel siblings vs. sequential depths using dependency signals (see [Dependency Signals](#dependency-signals))
+4. **Create root directory**: `__roadmap__/<campaign_name>/`
+5. **Write root README.md** with context, references, and status graph
+6. **Create leaf tasks** (1-5 steps each) or subdirectories
+7. **For subdirectories**: Add README.md with goal, pre-conditions, success gates
+8. **For multiple depth levels**: Follow breadth-first required order
+9. **No numeric prefixes** in names
 
 ---
 
