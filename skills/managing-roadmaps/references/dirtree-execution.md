@@ -10,6 +10,7 @@
 - [Step Execution](#step-execution)
 - [Progress Tracking](#progress-tracking)
 - [Failure Handling](#failure-handling)
+- [Subagent Dispatch Protocol](#subagent-dispatch-protocol)
 - [Completion Checklist](#completion-checklist)
 - [Key References](#key-references)
 
@@ -55,6 +56,18 @@ ENTER directory
   MARK this directory as done in parent README.md
 EXIT directory
 ```
+
+### Parallelization Discipline
+
+When multiple sibling leaves exist at the same level:
+- **Dispatch each to a subagent** with the leaf task file content and any referenced reports as context
+- The dispatching agent waits for all subagents to complete before proceeding to subdirectories
+- If subagents are not available, execute leaves sequentially — but document that parallelism was not exploited
+
+When multiple sibling subdirectories exist:
+- Same rule — dispatch each to a subagent if possible
+  - WARNING: 1 subagent per subdirectory can overflow memory. Escalating back to orchestrating agent might be more advisable unless depth of the implementation tree is small.
+- Each subagent recursively applies this algorithm within its subdirectory
 
 ---
 
@@ -144,6 +157,31 @@ When a consistency check fails unexpectedly, follow this escalation ladder in or
 - UX/API usability issues (log for future campaign)
 - "Nice to have" improvements out of scope
 - Speculative problems without evidence
+
+---
+
+## Subagent Dispatch Protocol
+
+When dispatching work to subagents (parallel leaf execution or parallel subdirectory execution):
+
+### What to Provide
+
+1. **The leaf task file** (or subdirectory path for recursive execution)
+2. **Referenced reports** — the architecture report sections cited in the task's References
+3. **Parent README.md context** — so the subagent understands where this task fits
+4. **Git instructions** — branch name to create, milestone branch to merge into
+
+### What to Expect Back
+
+1. Commits on the task branch (1 per step)
+2. Confirmation that success gates are met
+3. Any failure escalation (see Failure Handling) if consistency checks failed unexpectedly
+
+### Coordination
+
+- The dispatching agent is responsible for waiting on all parallel subagents before proceeding to the next depth level
+- The dispatching agent updates the parent README.md status after subagents complete
+- If a subagent raises a level 5 escalation (amendment), the dispatching agent pauses execution at that level until the amendment is reviewed
 
 ---
 
