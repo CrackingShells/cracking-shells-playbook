@@ -1,7 +1,7 @@
 ---
 name: reporting
 description: >
-  Guides production of stakeholder-reviewable reports at key stages of software development work: architecture analysis, test definition, and knowledge transfer. Use when: (1) analyzing a proposed code change and producing an architecture report with Mermaid diagrams, contracts, alternatives, and risks; (2) defining a test plan with a risk-driven test matrix, fixtures strategy, and must-run regression set; (3) capturing post-cycle knowledge transfer notes covering wins, pain points, root causes, and next-cycle changes. Applies an architecture-first, no-code-dump contract: lead with diagrams and schemas, never include full class, module, or function bodies. Saves reports under __reports__/<topic>/ using round-versioned naming.
+  Guides production of stakeholder-reviewable reports at key stages of software development work: architecture analysis, test definition, and knowledge transfer. Use when: (1) analyzing a proposed code change and producing an architecture report with Mermaid diagrams, contracts, alternatives, and risks; (2) defining a test plan with a risk-driven test matrix, fixtures strategy, and must-run regression set; (3) capturing post-cycle knowledge transfer notes covering wins, pain points, root causes, and next-cycle changes. Applies an architecture-first, no-code-dump contract: lead with diagrams and schemas, never include full class, module, or function bodies. Saves reports under __reports__/TOPIC/ using round-versioned naming.
 ---
 
 # Reporting Skill
