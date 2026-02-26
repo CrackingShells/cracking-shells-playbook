@@ -34,7 +34,7 @@ Build, validate, and package the `committing-changes` Agent Skill.
 graph TD
     content_mapping[content_mapping.md]:::done
     init_skill[init_skill.md]:::done
-    implement[implement/]:::inprogress
+    implement[implement/]:::done
     classDef done fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned fill:#374151,color:#e5e7eb
@@ -48,7 +48,7 @@ graph TD
 |:-----|:-----|:-------|
 | `content_mapping.md` | 📄 Leaf Task | ✅ Done |
 | `init_skill.md` | 📄 Leaf Task | ✅ Done |
-| `implement/` | 📁 Directory | 🔄 In Progress |
+| `implement/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 

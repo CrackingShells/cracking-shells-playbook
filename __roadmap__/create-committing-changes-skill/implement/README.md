@@ -38,7 +38,7 @@ Author `SKILL.md` and `references/git-workflow.md` with content specified by the
 graph TD
     git_workflow_ref[git_workflow_ref.md]:::done
     skill_md[skill_md.md]:::done
-    finalize[finalize/]:::planned
+    finalize[finalize/]:::done
     classDef done fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned fill:#374151,color:#e5e7eb
@@ -52,7 +52,7 @@ graph TD
 |:-----|:-----|:-------|
 | `git_workflow_ref.md` | 📄 Leaf Task | ✅ Done |
 | `skill_md.md` | 📄 Leaf Task | ✅ Done |
-| `finalize/` | 📁 Directory | ⬜ Planned |
+| `finalize/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 
