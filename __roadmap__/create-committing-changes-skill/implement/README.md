@@ -37,7 +37,7 @@ Author `SKILL.md` and `references/git-workflow.md` with content specified by the
 ```mermaid
 graph TD
     git_workflow_ref[git_workflow_ref.md]:::done
-    skill_md[skill_md.md]:::planned
+    skill_md[skill_md.md]:::done
     finalize[finalize/]:::planned
     classDef done fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -51,7 +51,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `git_workflow_ref.md` | 📄 Leaf Task | ✅ Done |
-| `skill_md.md` | 📄 Leaf Task | ⬜ Planned |
+| `skill_md.md` | 📄 Leaf Task | ✅ Done |
 | `finalize/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
@@ -64,5 +64,5 @@ graph TD
 | Node | Branch | Commits | Notes |
 |:-----|:-------|:--------|:------|
 | `git_workflow_ref.md` | `task/git-workflow-ref` | 1 | 389-line reference file; all 10 sections present |
-| `skill_md.md` | `task/skill-md` | 0 | — |
+| `skill_md.md` | `task/skill-md` | 1 | Frontmatter PASS: name=committing-changes, desc=559 chars, body=37 lines |
 | `finalize/` | — | — | — |
