@@ -1,85 +1,46 @@
 ---
 name: committing-changes
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: Generates and executes a git commit following Conventional Commits format and org narrative conventions. Enforces WHY-focused message writing, explicit-topic scope naming, scope consistency across related commits, and history-aware style matching. Use when the user asks to commit changes, create a commit, or stage and commit work — including slash-command invocation like /commit or /committing-changes. Also applies when the user has completed a feature, fix, or refactor and needs to record it with a semantically meaningful, commitlint-compliant message.
 ---
 
 # Committing Changes
 
-## Overview
+## Primary Directive
 
-[TODO: 1-2 sentences explaining what this skill enables]
+**WHY over WHAT.** The commit message description must answer *why* this change exists — not just what changed. The diff shows what; only the message captures intent.
 
-## Structuring This Skill
+## Commit Workflow
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+Read `references/git-workflow.md` before drafting any commit message. Then execute these steps in order:
 
-**1. Workflow-Based** (best for sequential processes)
-- Works well when there are clear step-by-step procedures
-- Example: DOCX skill with "Workflow Decision Tree" → "Reading" → "Creating" → "Editing"
-- Structure: ## Overview → ## Workflow Decision Tree → ## Step 1 → ## Step 2...
+**Step 1 — Check for dirty pre-existing files**
+Run `git status`. If modified files unrelated to the current change are present, commit them first in a separate focused commit before staging new work. Each commit must address exactly one logical change.
 
-**2. Task-Based** (best for tool collections)
-- Works well when the skill offers different operations/capabilities
-- Example: PDF skill with "Quick Start" → "Merge PDFs" → "Split PDFs" → "Extract Text"
-- Structure: ## Overview → ## Quick Start → ## Task Category 1 → ## Task Category 2...
+**Step 2 — Inspect staged diff for secrets**
+Run `git diff --staged` and scan for `.env` files, API keys, passwords, private key material (`*.pem`, `*.key`, `id_rsa`), or credential files. If found: warn, halt, and advise the user to remove the sensitive content and add the file to `.gitignore`.
 
-**3. Reference/Guidelines** (best for standards or specifications)
-- Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" → "Colors" → "Typography" → "Features"
-- Structure: ## Overview → ## Guidelines → ## Specifications → ## Usage...
+**Step 3 — Read commit history**
+Run `git log --oneline -10`. Observe the scope names, tense, casing, and description style already in use. Match that style — do not introduce new scope naming patterns without checking existing conventions first.
 
-**4. Capabilities-Based** (best for integrated systems)
-- Works well when the skill provides multiple interrelated features
-- Example: Product Management with "Core Capabilities" → numbered capability list
-- Structure: ## Overview → ## Core Capabilities → ### 1. Feature → ### 2. Feature...
+**Step 4 — Read `references/git-workflow.md`**
+Load the full rule set before drafting. This file contains: scope naming rules, scope consistency principles, WHY directive, sensitive file advisory, dirty file separation, commitlint compliance, and concrete examples.
 
-Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
+**Step 5 — Draft the commit message**
+Format: `type(scope): WHY-focused description`
+- Scope is **mandatory** and must identify the explicit topic (feature name, component, concept)
+- Description: imperative mood, lowercase, ≤72 chars
+- Add body if the change is complex, breaking, or needs context beyond 72 chars
+- Add footers for issue references (`Resolves #123`) or breaking changes (`BREAKING CHANGE:`)
 
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
+**Step 6 — Check commitlint config**
+Look for `commitlintrc.json`, `.commitlintrc.js`, `.commitlintrc.yaml`, or `commitlint.config.js` in the project root. If found, validate the draft: `echo "<message>" | npx commitlint`. Fix any violations before proceeding.
 
-## [TODO: Replace with the first main section based on chosen structure]
-
-[TODO: Add content here. See examples in existing skills:
-- Code samples for technical skills
-- Decision trees for complex workflows
-- Concrete examples with realistic user requests
-- References to scripts/templates/references as needed]
-
-## Resources
-
-This skill includes example resource directories that demonstrate how to organize different types of bundled resources:
-
-### scripts/
-Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
-
-**Examples from other skills:**
-- PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
-- DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
-
-**Appropriate for:** Python scripts, shell scripts, or any executable code that performs automation, data processing, or specific operations.
-
-**Note:** Scripts may be executed without loading into context, but can still be read by Claude for patching or environment adjustments.
-
-### references/
-Documentation and reference material intended to be loaded into context to inform Claude's process and thinking.
-
-**Examples from other skills:**
-- Product management: `communication.md`, `context_building.md` - detailed workflow guides
-- BigQuery: API reference documentation and query examples
-- Finance: Schema documentation, company policies
-
-**Appropriate for:** In-depth documentation, API references, database schemas, comprehensive guides, or any detailed information that Claude should reference while working.
-
-### assets/
-Files not intended to be loaded into context, but rather used within the output Claude produces.
-
-**Examples from other skills:**
-- Brand styling: PowerPoint template files (.pptx), logo files
-- Frontend builder: HTML/React boilerplate project directories
-- Typography: Font files (.ttf, .woff2)
-
-**Appropriate for:** Templates, boilerplate code, document templates, images, icons, fonts, or any files meant to be copied or used in the final output.
+**Step 7 — Execute**
+```bash
+git add <intended files>
+git commit -m "<message>"
+```
 
 ---
 
-**Any unneeded directories can be deleted.** Not every skill requires all three types of resources.
+For complete scope naming rules, narrative consistency principles, sensitive file advisory details, dirty file separation procedure, and examples → `references/git-workflow.md`
