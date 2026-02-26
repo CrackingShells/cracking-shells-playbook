@@ -33,7 +33,7 @@ Build, validate, and package the `committing-changes` Agent Skill.
 ```mermaid
 graph TD
     content_mapping[content_mapping.md]:::done
-    init_skill[init_skill.md]:::inprogress
+    init_skill[init_skill.md]:::done
     implement[implement/]:::planned
     classDef done fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -47,7 +47,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `content_mapping.md` | 📄 Leaf Task | ✅ Done |
-| `init_skill.md` | 📄 Leaf Task | 🔄 In Progress |
+| `init_skill.md` | 📄 Leaf Task | ✅ Done |
 | `implement/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
@@ -60,5 +60,5 @@ graph TD
 | Node | Branch | Commits | Notes |
 |:-----|:-------|:--------|:------|
 | `content_mapping.md` | `task/content-mapping` | 1 | Synthesis report produced |
-| `init_skill.md` | `task/init-skill` | 0 | — |
+| `init_skill.md` | `task/init-skill` | 1 | Scaffolded at skills/committing-changes/ |
 | `implement/` | — | — | — |
