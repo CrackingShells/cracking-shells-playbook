@@ -1,5 +1,5 @@
 ---
-applyTo: 'mkdocs.yml, .readthedocs.yaml, docs/requirements.txt, pyproject.toml'
+applyTo: 'mkdocs.yml, .readthedocs.yaml, docs/requirements.txt, pyproject.toml, docs/stylesheets/brand.css, overrides/main.html'
 description: 'MkDocs setup and configuration standards for automated documentation generation.'
 ---
 
@@ -137,6 +137,7 @@ mkdocstrings
 mkdocstrings-python
 mkdocs-material
 mkdocs-print-site-plugin
+pymdown-extensions
 ```
 
 #### Package Descriptions
@@ -163,6 +164,105 @@ docs = [ "mkdocs>=1.4.0", "mkdocstrings[python]>=0.20.0" ]
 - Enables local development and testing of documentation
 - Allows developers to build documentation without separate dependency management
 - Integrates with standard Python development workflows
+
+## Brand Theme
+
+All CrackingShells documentation sites must use the organization brand theme instead of the default Material colors. The canonical theme files are maintained in the [`.github` repository](https://github.com/CrackingShells/.github) under `theme-preview/`.
+
+### Source Files
+
+| File | Source path in `.github` repo | Destination in your repo |
+|------|-------------------------------|--------------------------|
+| CSS variables | `theme-preview/docs/stylesheets/brand.css` | `docs/stylesheets/brand.css` |
+| Logo swap script | `theme-preview/overrides/main.html` | `overrides/main.html` |
+
+Copy both files verbatim — do not modify them. If the brand theme is updated in `.github`, re-copy these files to pick up changes.
+
+### Logo Selection
+
+Brand logos live in the `.github` repository under `resources/images/`. Copy the relevant logos for your product into `docs/resources/images/`.
+
+**Naming convention**: `light_bg` logos are dark-colored (for use on light backgrounds); `dark_bg` logos are light-colored (for use on dark backgrounds).
+
+| Product | Site logo (nav header) | Dark-mode logo | Favicon |
+|---------|------------------------|----------------|---------|
+| CrackingShells org | `cs_wide_light_bg.png` | `cs_wide_dark_bg.png` | `cs_core_dark_bg.png` |
+| Hatch! | `hatch_wide_light_bg_transparent.png` | `hatch_wide_dark_bg_transparent.png` | `hatch_icon_light_bg_transparent.png` |
+| Hatchling | `hatchling_core_light_bg.png` | `hatchling_core_dark_bg.png` | `hatchling_core_dark_bg.png` |
+
+### `mkdocs.yml` Theme Block
+
+Replace the bare `theme:` block in the standard configuration with the full brand configuration:
+
+```yaml
+theme:
+  name: material
+  custom_dir: overrides                          # enables logo swap script
+  logo: resources/images/<product>_wide_light_bg.png
+  favicon: resources/images/<product>_core_dark_bg.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: egg-shell                          # brand light theme
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate                              # Material base + brand overrides
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.tabs
+    - navigation.top
+    - toc.follow
+
+extra_css:
+  - stylesheets/brand.css
+```
+
+> **Important — dark scheme name**: The dark palette must use `scheme: slate` (Material's built-in dark base). Using a custom name loses Material's dark-mode base styles and renders body text as black.
+
+### Additional `markdown_extensions`
+
+The brand theme requires pymdown extensions. Replace the extensions block with:
+
+```yaml
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - fenced_code
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+```
+
+### Palette Schemes Reference
+
+| Scheme | Role | Nav color | Page bg | Body text | Links/accents |
+|--------|------|-----------|---------|-----------|---------------|
+| `egg-shell` | Light | Amber `#E8B84B` | Warm cream `#F7F3EA` | Dark green `#1D3328` | Amber `#D4952A` |
+| `slate` | Dark | Deep green `#2A3D32` | Near-black `#111D18` | Off-white `#E8DFC8` | Gold `#E8B84B` |
+
+### Preview and Validation
+
+To preview the theme locally before deploying:
+
+```bash
+git clone https://github.com/CrackingShells/.github
+cd .github/theme-preview
+uv venv .venv && source .venv/bin/activate
+uv pip install -r requirements.txt
+mkdocs serve
+```
+
+Open `http://127.0.0.1:8000` and use the brightness toggle in the nav bar to switch between light and dark modes.
 
 ## Local Development Setup
 
