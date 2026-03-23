@@ -7,60 +7,62 @@ description: "Creates, executes, and amends graph-based campaign roadmaps. Use w
 
 # Managing Roadmaps
 
-This skill provides complete lifecycle guidance for roadmap management: creation, execution, and amendment.
+## The One Rule
 
-## Navigation
+**Never write or edit files under `__roadmap__/` by hand.** Use `dirtree-rdm` for every mutation:
 
-| Intent | File |
-|:-------|:-----|
-| Understand the graph model (node types, FSM, traversal contract) | [references/graph-model.md](references/graph-model.md) |
-| Create a roadmap (structure, templates, naming rules) | [references/dirtree-authoring.md](references/dirtree-authoring.md) |
-| Execute tasks (BFS traversal, step discipline, git workflow) | [references/dirtree-execution.md](references/dirtree-execution.md) |
-| Manage amendments (cycle, gap analysis, approval) | [references/amendments.md](references/amendments.md) |
-| Validate compliance (naming, schema, step rules) | [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) |
-| See worked examples (Tier 1/2/3) | [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) |
-| Mutate nodes without corrupting README.md (add/update/move/insert) | [references/dirtree-cli.md](references/dirtree-cli.md) |
-| Debug a validation failure (BNF grammar spec) | [references/dirtree-bnf.md](references/dirtree-bnf.md) |
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh <command> [args]
+```
+
+Manual edits corrupt the Mermaid graph and Nodes table. `dirtree-rdm` validates the BNF grammar before and after every write — no silent corruption.
 
 ---
 
-## Roadmap Architecture
+## What Are You Doing?
 
-### Core Concept
+Read the listed files **before starting**. Each contains the file format, rules, and examples required to do the task correctly. Do not proceed on intuition.
 
-Roadmaps are **rooted DAGs** where depth encodes execution ordering, siblings are parallel, and leaves execute before branches at each level.
-
-The default (and only implemented) backend is the **directory tree** under `__roadmap__/`.
-
-### Core Invariants
-
-1. **Generic Agent Model**: "Agent" instructions apply universally to any entity (human, LLM, automated program, team role) capable of executing work. The roadmap does not specify WHO performs work, only WHAT must be done and in what order.
-2. **1:1 Representation Mapping**: Every node has exactly one representation in the backend store; the status view is the authoritative inventory.
-3. **Depth IS Ordering**: A node at depth N+1 depends on completion of all nodes at depth N within the same parent.
-4. **Sibling Parallelism**: Children of the same parent carry no mutual ordering — always execute concurrently.
-5. **Leaf-Before-Branch**: Leaf nodes execute before branch nodes at each level.
-6. **Flat Execution Contexts**: Task contexts branch flat off milestone context, not hierarchically.
-7. **Step-Commit Bijection**: Each step produces exactly one git commit; never batch two steps or skip one silently.
-8. **Stable Node Identity**: Node IDs are immutable after creation; naming convention is backend-defined.
-9. **Status Completeness**: Every branch node exposes a status view of all children.
+| Task | Read before starting | Also useful |
+|:-----|:---------------------|:------------|
+| **Create a roadmap** — new campaign, milestone, or leaf tasks | [dirtree-authoring.md](references/dirtree-authoring.md) — structure rules, dependency signals, templates | [dirtree-tier-examples.md](references/dirtree-tier-examples.md) for Tier 1/2/3 worked examples |
+| **Add, update, move, or insert nodes** (any mutation) | [dirtree-cli.md](references/dirtree-cli.md) — all `dirtree-rdm` commands with examples | — |
+| **Execute tasks** — BFS traversal, step-by-step work, git workflow | [dirtree-execution.md](references/dirtree-execution.md) — traversal algorithm, progress tracking, failure handling | — |
+| **Amend a roadmap** — add nodes due to scope change or gap | [amendments.md](references/amendments.md) — gap analysis, approval cycle, amendment log format | — |
+| **Debug a validation failure** — `dirtree-rdm validate` reported errors | [dirtree-bnf.md](references/dirtree-bnf.md) — BNF grammar, line-by-line production names | — |
+| **Understand the graph model** — node types, FSM, traversal contract | [graph-model.md](references/graph-model.md) — formal edge semantics, status machine, step model | — |
 
 ---
 
-## Status Lifecycle
+## Critical Concept: Depth Is Ordering — Not Mermaid Edges
 
-`planned → inprogress → done` (normal path)
-`amendment → inprogress → done` (newly-added nodes introduced via amendment)
-`planned | inprogress → blocked` (terminal within a campaign)
+Siblings are **parallel**. Sequential dependencies are encoded by **directory depth**, not by Mermaid `-->` edges.
 
-See [references/graph-model.md](references/graph-model.md) for the complete FSM with all valid transitions.
+`-->` edges between siblings are **forbidden by the BNF** and will cause `dirtree-rdm` to reject the file.
+
+If task B must follow task A, place B one directory level deeper — not as a sibling with an arrow:
+
+```
+# Wrong — edges between siblings
+task_a[Task A]:::planned --> task_b[Task B]:::planned
+
+# Right — B is deeper; BFS guarantees A finishes before B's level runs
+__roadmap__/campaign/task_a.md        ← leaf (runs first)
+__roadmap__/campaign/next/task_b.md   ← one level deeper (runs after)
+```
+
+Read [graph-model.md § Edge Semantics](references/graph-model.md) before designing any roadmap structure.
 
 ---
 
-## Key Principles
+## Status Values
 
-1. **Parallelize First**: Default to siblings; use sequential depth only when a concrete dependency requires it (see [references/dirtree-authoring.md § Dependency Signals](references/dirtree-authoring.md)).
-2. **Consistency over Convenience**: The status view is the single source of truth for graph state.
-3. **Execution Transparency**: Every step snapshot recorded, every status updated immediately.
-4. **Progressive Disclosure**: Core invariants in SKILL.md, detailed specs in backend reference files.
-5. **Iterative Improvement**: Amended graphs share the same model — only nodes are added, never removed.
-6. **Detection before Correction**: Exhaust the failure escalation ladder before raising an amendment.
+| Value | Emoji | Meaning |
+|:------|:------|:--------|
+| `planned` | ⬜ | Not yet started |
+| `inprogress` | 🔄 | Currently being executed |
+| `done` | ✅ | Complete and success gates met |
+| `amendment` | 🔵 | Birth state of nodes added via the amendment process |
+| `blocked` | 🚫 | Terminal — work cannot proceed; never delete, mark blocked instead |
+
+Full FSM with all valid transitions: [graph-model.md § Status State Machine](references/graph-model.md).
