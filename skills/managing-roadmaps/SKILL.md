@@ -1,6 +1,6 @@
 ---
 name: managing-roadmaps
-description: "Guides roadmap creation, execution, and amendment for graph-based campaign planning. Supports multiple backends (directory tree, graph database). Use when: (1) defining a campaign roadmap graph (including __roadmap__/ directory trees), (2) authoring leaf tasks and step sequences, (3) executing a campaign via BFS traversal, (4) updating roadmap status, or (5) managing amendments."
+description: "Creates, executes, and amends graph-based campaign roadmaps stored as directory trees under __roadmap__/. Includes dirtree-rdm, a compiled CLI with BNF-validated README.md mutations. Use when: (1) defining or structuring a __roadmap__/ directory tree, (2) authoring leaf task files with steps, (3) running BFS traversal execution, (4) updating node status (planned/inprogress/done/blocked), (5) adding/moving/inserting roadmap nodes, (6) validating README.md structure, or (7) managing amendments."
 ---
 
 ---

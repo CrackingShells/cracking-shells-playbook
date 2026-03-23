@@ -1,5 +1,20 @@
 # dirtree-rdm CLI Reference
 
+## Contents
+
+- [Invocation](#invocation)
+- [add — Create a new node](#add--create-a-new-node)
+- [status — Read current status (read-only)](#status--read-a-nodes-current-status-read-only)
+- [update — Change a node's status](#update--change-a-nodes-status)
+- [move — Move a node to a different parent](#move--move-a-node-to-a-different-parent)
+- [insert — Create an intermediate directory](#insert--create-an-intermediate-directory-wrapping-one-node)
+- [validate — Check against BNF grammar (read-only)](#validate--check-a-readmemd-against-the-bnf-grammar-read-only)
+- [ls — List nodes (read-only)](#ls--list-nodes-in-a-directory-read-only)
+- [Error Handling](#error-handling)
+- [BNF Grammar](#bnf-grammar)
+
+---
+
 `dirtree-rdm` is a compiled Rust CLI that provides safe CRUD operations for dirtree roadmap nodes. Every mutating command:
 
 1. **Pre-flight validates** the affected README.md against the BNF grammar — aborts if invalid

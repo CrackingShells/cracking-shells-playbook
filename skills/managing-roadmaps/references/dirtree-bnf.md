@@ -1,5 +1,21 @@
 # Dirtree BNF Grammar Reference
 
+## Contents
+
+- [README.md Grammar](#readmemd-grammar)
+  - [Section Order](#section-order-enforced)
+  - [Mermaid Block](#mermaid-block--status)
+  - [Nodes Table](#nodes-table--nodes)
+  - [Amendment Log Table](#amendment-log-table--amendment-log)
+  - [Progress Table](#progress-table--progress)
+- [Leaf Task Grammar](#leaf-task-grammar)
+  - [Task Header Fields](#task-header-fields-all-required)
+  - [Step Structure](#step-structure)
+- [Terminal Patterns](#terminal-patterns)
+- [Status Emoji Map](#status-emoji-map)
+
+---
+
 This document is the human/agent-readable mirror of the canonical grammar files:
 - `scripts/dirtree-rdm/grammar/readme.bnf` — README.md productions
 - `scripts/dirtree-rdm/grammar/leaf.bnf` — Leaf task .md productions
