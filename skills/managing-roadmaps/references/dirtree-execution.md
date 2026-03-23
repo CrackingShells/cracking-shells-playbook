@@ -18,12 +18,31 @@
 
 ## CRUD: Update
 
-**Status updates** (during execution):
-- Starting task: Set node as `:::inprogress`
-- Completing task: Set node as `:::done`, update Progress table
-- Starting directory: Set node as `:::inprogress`
-- Completing directory: Set node as `:::done`
-- Discovering blocker: Set node as `:::blocked` with note
+**Status updates** — use `dirtree-rdm update`, do not hand-edit README.md:
+```bash
+# Starting a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md inprogress
+
+# Completing a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md done
+
+# Marking blocked
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+```
+
+**Read current status** (read-only):
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh status __roadmap__/<campaign>/node.md
+```
+
+**Restructure nodes** (move/insert):
+```bash
+# Move a node to a different parent
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh move __roadmap__/<campaign>/node.md __roadmap__/<campaign>/new-parent/
+
+# Insert an intermediate directory wrapping one node
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh insert __roadmap__/<campaign>/new-group --wraps __roadmap__/<campaign>/node.md
+```
 
 **Amendment workflow** (planned changes):
 1. Produce gap analysis report in `__reports__/`
@@ -37,9 +56,12 @@
 
 ## CRUD: Delete
 
-- Never delete or rename roadmap nodes
-- Mark abandoned work as `:::blocked`
-- Embed reason in node notes
+- Never physically delete or rename roadmap nodes
+- Mark abandoned work as `blocked` using `dirtree-rdm update`:
+  ```bash
+  bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+  ```
+- Embed reason in the Progress table notes column
 
 ---
 
@@ -73,10 +95,7 @@ When multiple sibling subdirectories exist:
 
 ## Execution Rules
 
-1. **Leaves before subdirectories**: Always execute files first
-2. **Siblings are parallel**: Never execute sequentially what tree says is parallel
-3. **All depth N complete before depth N+1**: Wait for sibling leaves to complete
-4. **Dispatch workers**: Use subagents for parallel execution, document if not possible
+These invariants are enforced by the BFS traversal algorithm above. See [references/graph-model.md](graph-model.md) for the abstract contract.
 
 ---
 
@@ -166,22 +185,18 @@ When dispatching work to subagents (parallel leaf execution or parallel subdirec
 
 ### What to Provide
 
-1. **The leaf task file** (or subdirectory path for recursive execution)
-2. **Referenced reports** — the architecture report sections cited in the task's References
-3. **Parent README.md context** — so the subagent understands where this task fits
-4. **Git instructions** — branch name to create, milestone branch to merge into
+- **Git instructions**: branch name to create (`task/<name>`), milestone branch to merge into after completion
+- **Referenced reports**: architecture report sections cited in the task's References field
 
 ### What to Expect Back
 
-1. Commits on the task branch (1 per step)
-2. Confirmation that success gates are met
-3. Any failure escalation (see Failure Handling) if consistency checks failed unexpectedly
+- Commits on the task branch (1 per step) and confirmation that success gates are met
+- Any level 5 escalation report if a consistency check could not be resolved at levels 1–4
 
 ### Coordination
 
-- The dispatching agent is responsible for waiting on all parallel subagents before proceeding to the next depth level
-- The dispatching agent updates the parent README.md status after subagents complete
-- If a subagent raises a level 5 escalation (amendment), the dispatching agent pauses execution at that level until the amendment is reviewed
+- Pause execution at the current depth level if any subagent raises a level 5 escalation (amendment); do not proceed to the next depth until the amendment is reviewed and approved
+- Update the parent README.md status only after all parallel subagents at that level have completed
 
 ---
 

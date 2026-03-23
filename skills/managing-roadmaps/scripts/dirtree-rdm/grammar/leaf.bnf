@@ -1,0 +1,90 @@
+# BNF Grammar: Leaf Task (.md)
+#
+# Conventions: same as readme.bnf
+
+# ---------------------------------------------------------------------------
+# Top-level document
+# ---------------------------------------------------------------------------
+
+<leaf-task> ::= <h1-title>
+                BLANK_LINE+
+                <task-header>
+                BLANK_LINE*
+                <step>+
+                EOF
+
+# ---------------------------------------------------------------------------
+# Task header fields (order-insensitive block before steps)
+# The validator checks all 4 required fields are present; order may vary.
+# ---------------------------------------------------------------------------
+
+<task-header> ::= <header-field>+
+
+<header-field> ::= <field-goal>
+                 | <field-preconditions>
+                 | <field-success-gates>
+                 | <field-references>
+
+<field-goal>          ::= /^\*\*Goal\*\*: .+/ EOL
+
+<field-preconditions> ::= /^\*\*Pre-conditions\*\*:$/ EOL
+                          <checkbox-item>+
+
+<field-success-gates> ::= /^\*\*Success Gates\*\*:$/ EOL
+                          <gate-item>+
+
+<field-references>    ::= /^\*\*References\*\*: .+/ EOL
+
+<checkbox-item>       ::= /^\- \[[ x]\] .+/ EOL
+
+<gate-item>           ::= /^\- (✅|⬜) .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Step
+# ---------------------------------------------------------------------------
+
+<step> ::= <step-heading>
+           BLANK_LINE*
+           <step-field>+
+
+<step-heading> ::= /^## Step [1-5]: .+/ EOL
+
+# All step fields are required; order may vary within a step block.
+# Validator checks all 5 required fields are present per step.
+
+<step-field> ::= <step-field-goal>
+               | <step-field-impl-logic>
+               | <step-field-references>?
+               | <step-field-deliverables>
+               | <step-field-consistency>
+               | <step-field-commit>
+               | <step-field-requires>?
+
+<step-field-goal>        ::= /^\*\*Goal\*\*: .+/ EOL
+
+<step-field-impl-logic>  ::= /^\*\*Implementation Logic\*\*:$/ EOL
+                             <non-blank-line>+
+
+<step-field-references>  ::= /^\*\*References\*\*: .+/ EOL
+
+<step-field-deliverables>::= /^\*\*Deliverables\*\*: .+/ EOL
+
+<step-field-consistency> ::= /^\*\*Consistency Checks\*\*: .+\(expected: (PASS|FAIL)\)$/ EOL
+
+<step-field-commit>      ::= /^\*\*Commit\*\*: `(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\([a-z][a-z0-9_-]*\): .+`$/ EOL
+
+<step-field-requires>    ::= /^\*\*Requires\*\*: .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Step count constraint (enforced by validator logic, not expressible in BNF)
+# ---------------------------------------------------------------------------
+# CONSTRAINT: step count must be in range [1, 5]
+# CONSTRAINT: step numbers must be sequential starting at 1
+
+# ---------------------------------------------------------------------------
+# Shared terminals
+# ---------------------------------------------------------------------------
+
+<h1-title>       ::= /^# .+/ EOL
+
+<non-blank-line> ::= /^.+/ EOL

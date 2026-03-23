@@ -23,7 +23,7 @@ Two node types exist. Every node is one or the other — never both.
 
 | Field | Required | Description |
 |:------|:--------:|:------------|
-| `id` | ✓ | Stable identifier; pattern `^[a-z][a-z0-9_]*$` |
+| `id` | ✓ | Stable identifier; pattern `^[a-z][a-z0-9_-]*$` |
 | `title` | ✓ | Descriptive name for this level |
 | `context` | ✓ | Where this node fits in the parent campaign |
 | `goal` | ✓ | One-line objective |
@@ -64,16 +64,17 @@ Valid statuses: `planned`, `inprogress`, `done`, `blocked`, `amendment`.
 
 ```
 planned ──→ inprogress ──→ done
-   │              │
-   └──→ amendment ┘
-         (returns to inprogress on approval)
 
 planned ──→ blocked
 inprogress ──→ blocked
+
+(new amendment node) ──→ inprogress ──→ done
+      amendment
 ```
 
 Rules:
-- `amendment` is a transient state; node returns to `inprogress` after amendment is approved.
+- `amendment` is the **initial status of newly-added nodes** introduced via the amendment process. Existing nodes are never transitioned to `amendment`.
+- The lifecycle for amendment nodes is: `amendment → inprogress → done`.
 - `blocked` is terminal within a campaign; never auto-resolve.
 - `done` is immutable; reopen only via a new amendment node.
 

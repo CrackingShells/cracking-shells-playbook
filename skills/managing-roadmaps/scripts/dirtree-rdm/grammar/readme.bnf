@@ -1,0 +1,199 @@
+# BNF Grammar: README.md (Directory Node)
+#
+# Conventions:
+#   <rule>       ::= production
+#   TERMINAL     = literal text or regex pattern (wrapped in / /)
+#   ?            = optional (0 or 1)
+#   *            = zero or more
+#   +            = one or more
+#   |            = alternation
+#   (...)        = grouping
+#   BLANK_LINE   = a line containing only optional whitespace
+#   EOL          = end of line
+#   EOF          = end of file
+
+# ---------------------------------------------------------------------------
+# Top-level document
+# ---------------------------------------------------------------------------
+
+<readme> ::= <h1-title>
+             BLANK_LINE+
+             <section-context>
+             <section-reference-documents>?
+             <section-goal>
+             <section-preconditions>
+             <section-success-gates>
+             <section-gotchas>?
+             <section-status>
+             <section-nodes>
+             <section-amendment-log>
+             <section-progress>
+             EOF
+
+# ---------------------------------------------------------------------------
+# Section: Title
+# ---------------------------------------------------------------------------
+
+<h1-title> ::= /^# .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Context
+# ---------------------------------------------------------------------------
+
+<section-context> ::= <h2-context> BLANK_LINE* <context-body>
+
+<h2-context>      ::= /^## Context$/ EOL
+
+<context-body>    ::= <non-blank-line>+
+
+# ---------------------------------------------------------------------------
+# Section: Reference Documents (optional)
+# ---------------------------------------------------------------------------
+
+<section-reference-documents> ::= <h2-reference-documents> BLANK_LINE* <reference-list>
+
+<h2-reference-documents>      ::= /^## Reference Documents$/ EOL
+
+<reference-list>              ::= <reference-item>+
+
+<reference-item>              ::= /^\- \[R\d{2} .+\]\(.+\) — .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Goal
+# ---------------------------------------------------------------------------
+
+<section-goal> ::= <h2-goal> BLANK_LINE* <goal-body>
+
+<h2-goal>      ::= /^## Goal$/ EOL
+
+<goal-body>    ::= <non-blank-line>
+
+# ---------------------------------------------------------------------------
+# Section: Pre-conditions
+# ---------------------------------------------------------------------------
+
+<section-preconditions> ::= <h2-preconditions> BLANK_LINE* <checkbox-list>
+
+<h2-preconditions>      ::= /^## Pre-conditions$/ EOL
+
+<checkbox-list>         ::= <checkbox-item>+
+
+<checkbox-item>         ::= /^\- \[[ x]\] .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Success Gates
+# ---------------------------------------------------------------------------
+
+<section-success-gates> ::= <h2-success-gates> BLANK_LINE* <gate-list>
+
+<h2-success-gates>      ::= /^## Success Gates$/ EOL
+
+<gate-list>             ::= <gate-item>+
+
+<gate-item>             ::= /^\- (✅|⬜) .+/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Gotchas (optional)
+# ---------------------------------------------------------------------------
+
+<section-gotchas> ::= <h2-gotchas> BLANK_LINE* <non-blank-line>+
+
+<h2-gotchas>      ::= /^## Gotchas$/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Status (Mermaid diagram)
+# ---------------------------------------------------------------------------
+
+<section-status> ::= <h2-status> BLANK_LINE* <mermaid-block>
+
+<h2-status>      ::= /^## Status$/ EOL
+
+<mermaid-block>  ::= MERMAID_OPEN EOL
+                     <mermaid-graph-decl>
+                     <mermaid-node-decl>*
+                     <mermaid-classdef-done>
+                     <mermaid-classdef-inprogress>
+                     <mermaid-classdef-planned>
+                     <mermaid-classdef-amendment>
+                     <mermaid-classdef-blocked>
+                     MERMAID_CLOSE EOL
+
+MERMAID_OPEN             ::= /^```mermaid$/
+MERMAID_CLOSE            ::= /^```$/
+
+<mermaid-graph-decl>     ::= /^graph TD$/ EOL
+
+<mermaid-node-decl>      ::= /^    [a-z][a-z0-9_-]*\[.+\]:::(done|inprogress|planned|amendment|blocked)$/ EOL
+
+<mermaid-classdef-done>       ::= /^    classDef done +fill:#166534,color:#bbf7d0$/ EOL
+<mermaid-classdef-inprogress> ::= /^    classDef inprogress +fill:#854d0e,color:#fef08a$/ EOL
+<mermaid-classdef-planned>    ::= /^    classDef planned +fill:#374151,color:#e5e7eb$/ EOL
+<mermaid-classdef-amendment>  ::= /^    classDef amendment +fill:#1e3a5f,color:#bfdbfe$/ EOL
+<mermaid-classdef-blocked>    ::= /^    classDef blocked +fill:#7f1d1d,color:#fecaca$/ EOL
+
+# Siblings must NOT have edges between them (no --> lines allowed in node-decl section)
+# The validator enforces: no /-->/ lines appear between graph TD and first classDef
+
+# ---------------------------------------------------------------------------
+# Section: Nodes table
+# ---------------------------------------------------------------------------
+
+<section-nodes> ::= <h2-nodes> BLANK_LINE* <nodes-table>
+
+<h2-nodes>      ::= /^## Nodes$/ EOL
+
+<nodes-table>   ::= <table-header-nodes>
+                    <table-separator>
+                    <nodes-table-row>+
+
+<table-header-nodes> ::= /^\| Node +\| Type +\| Status +\|$/ EOL
+
+<table-separator>    ::= /^\|[-: |]+\|$/ EOL
+
+<nodes-table-row>    ::= /^\| `[a-z][a-z0-9_./-]*` \| (📄 Leaf Task|📁 Directory) \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Amendment Log
+# ---------------------------------------------------------------------------
+
+<section-amendment-log> ::= <h2-amendment-log> BLANK_LINE* <amendment-table>
+
+<h2-amendment-log>      ::= /^## Amendment Log$/ EOL
+
+<amendment-table> ::= <table-header-amendment>
+                      <table-separator>
+                      <amendment-row>*
+
+<table-header-amendment> ::= /^\| ID +\| Date +\| Source +\| Nodes Added +\| Rationale +\|$/ EOL
+
+<amendment-row>          ::= /^\| A\d+ \| \d{4}-\d{2}-\d{2} \| .+ \| .+ \| .+ \|$/ EOL
+
+# ---------------------------------------------------------------------------
+# Section: Progress
+# ---------------------------------------------------------------------------
+
+<section-progress> ::= <h2-progress> BLANK_LINE* <progress-table>
+
+<h2-progress>      ::= /^## Progress$/ EOL
+
+<progress-table> ::= <table-header-progress>
+                     <table-separator>
+                     <progress-row>*
+
+<table-header-progress> ::= /^\| Node +\| Branch +\| Commits +\| Notes +\|$/ EOL
+
+<progress-row>          ::= /^\| `[a-z][a-z0-9_./-]*` \| (task\/[a-z0-9_-]+|---?) \| (\d+|---?) \| .* \|$/ EOL
+
+# ---------------------------------------------------------------------------
+# Terminals
+# ---------------------------------------------------------------------------
+
+<non-blank-line> ::= /^.+/ EOL
+
+<status-value>   ::= "done" | "inprogress" | "planned" | "amendment" | "blocked"
+
+<node-id>        ::= /^[a-z][a-z0-9_-]*$/
+
+<node-name-file> ::= /^[a-z][a-z0-9_-]*\.md$/
+
+<node-name-dir>  ::= /^[a-z][a-z0-9_-]*$/
