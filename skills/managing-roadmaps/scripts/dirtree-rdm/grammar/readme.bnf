@@ -56,7 +56,7 @@
 
 <reference-list>              ::= <reference-item>+
 
-<reference-item>              ::= /^\- \[R\d{2} .+\]\(.+\) --- .+/ EOL
+<reference-item>              ::= /^\- \[R\d{2} .+\]\(.+\) — .+/ EOL
 
 # ---------------------------------------------------------------------------
 # Section: Goal

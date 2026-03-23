@@ -141,7 +141,7 @@ The Rust validator (`dirtree-rdm`) embeds these files at compile time and valida
 **Commit**: `<type>(<scope>): <description>`
 ```
 
-**Required step fields:** Goal, Implementation Logic, Deliverables, Consistency Checks, Commit
+**Required step fields (5):** Goal, Implementation Logic, Deliverables, Consistency Checks, Commit
 
 **Commit type** must be one of: `feat fix test docs chore refactor style perf ci build revert`
 

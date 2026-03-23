@@ -233,69 +233,14 @@ When work is abandoned:
 
 ## Common Amendment Patterns
 
-### Pattern 1: Missing Dependency
+All patterns follow the same cycle. Trigger determines when to raise the amendment.
 
-**Scenario:** Implementation reveals missing prerequisite work
-
-**Solution:**
-1. Identify missing component
-2. Create report: "Revealed missing validation"
-3. Create new leaf at appropriate depth
-4. Update README.md
-
-**Example:**
-```markdown
-# OAuth2 Support (Level: email-config)
-
-## Amendment Log
-| A1 | 2026-02-21 | oauth2-github-google-gap.md | ["google.md", "db-fields.md"] |
-```
-
-### Pattern 2: Performance Issue
-
-**Scenario:** Optimization revealed during testing
-
-**Solution:**
-1. Create performance analysis report
-2. Add optimization task at deeper depth
-3. Update arrays in status graph.js
-4. Log amendment
-
-**Example:**
-```markdown
-# CLI-UX Normalization (Level: advanced-components)
-
-## Amendment Log
-| A1 | 2026-03-01 | cli-ux-performance-audit.md | ["cache-output.md"] | Performance audit showed caching needed for expensive output |
-```
-
-### Pattern 3: Security Requirement
-
-**Scenario:** Security audit adds new security layer
-
-**Solution:**
-1. Security analysis report in `__reports__/security/`
-2. Add security task at appropriate depth
-3. Update references
-4. Log amendment
-
-**Example:**
-```markdown
-# API Gateway Redesign (Level: security-layer)
-
-## Amendment Log
-| A1 | 2026-04-01 | gateway-fips-req.md | ["tls-mtls.md"] | FIPS compliance requires mutual TLS |
-```
-
-### Pattern 4: Technical Debt
-
-**Scenario:** Refactoring needs organizational priority
-
-**Solution:**
-1. Technical debt analysis report
-2. Create refactoring tasks in new campaign
-3. Maintain original roadmap unchanged
-4. Link refactoring campaign to original work
+| Pattern | Trigger | Report focus |
+|:--------|:--------|:-------------|
+| Missing Dependency | A required task was omitted from the original plan | Dependency gap analysis |
+| Performance Issue | A step reveals unexpected performance constraints | Benchmark evidence + mitigation plan |
+| Security Requirement | A security concern surfaces mid-execution | Threat assessment + remediation nodes |
+| Technical Debt | Existing code blocks progress beyond planned scope | Debt scope + cleanup tasks |
 
 ---
 
@@ -341,33 +286,24 @@ Before submitting amendment for review:
 **Status Progression:**
 
 ```
-:::amendment (initially added)
+:::amendment (birth state — newly-added nodes only)
     ↓
 :::inprogress (when work begins)
     ↓
 :::done (when executed and verified)
 ```
 
+`:::amendment` is the **initial status assigned to newly-added nodes** created during an amendment cycle. It exists solely to visually distinguish recently approved additions from pre-existing nodes. **Existing nodes are never transitioned to `:::amendment`**; they remain in whatever state they are currently in.
+
 **Status Graph Notes:**
 
 When adding amendment nodes:
-1. Use `:::amendment` classDef initially
+1. Use `:::amendment` classDef on creation — this is the starting state for new nodes only
 2. Transition to `:::inprogress` when work starts
 3. Transition to `:::done` when complete
-4. Never change status to `:::blocked` for an amendment (deprecated nodes should remain as originally planned)
+4. Do **not** retroactively mark a node `:::blocked` solely because a later amendment supersedes it. Only mark a node `:::blocked` when its work is genuinely impossible to complete. Abandoned amendment-added nodes follow the same rule as any other node: if the work is truly abandoned, mark it `:::blocked`.
 
 **Nodes Table:**
 
 Amended nodes show status "🔵 Amendment" initially, then "✅ Done" when complete.
 
----
-
-## Summary
-
-The amendment process ensures:
-- **Evidence-based**: All changes validated with reports
-- **Proper review**: Formal approval before roadmap changes
-- **Consistent structure**: New nodes follow existing patterns
-- **Transparent tracking**: Amendment log records all changes
-- **Dependency management**: Placement preserves breadth-first execution
-- **No destruction**: Existing work preserved, never deleted

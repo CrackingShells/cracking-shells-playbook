@@ -50,7 +50,7 @@
 <step-heading> ::= /^## Step [1-5]: .+/ EOL
 
 # All step fields are required; order may vary within a step block.
-# Validator checks all 6 required fields are present per step.
+# Validator checks all 5 required fields are present per step.
 
 <step-field> ::= <step-field-goal>
                | <step-field-impl-logic>

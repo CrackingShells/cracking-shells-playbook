@@ -20,41 +20,11 @@ This document provides complete validation requirements for roadmap documents.
 
 ### README.md (Directory Level)
 
-**Required Sections:**
-
-1. **title**: Descriptive title for this level
-2. **context**: 1-2 sentences about parent campaign dependencies and context
-3. **reference_documents**: Links to analysis reports in __reports__/
-4. **goal**: One-line objective for this level
-5. **preconditions**: Measurable entry criteria
-6. **success_gates**: Measurable completion criteria
-7. **status_graph**: Mermaid graph with nodes and class_defs
-8. **nodes_table**: 1:1 mapping with filesystem entries and status graph
-9. **amendment_log**: Log of all amendments (may be empty)
-10. **progress**: Track branch names, commit counts per node
+Required sections: see [dirtree-authoring.md § File Structure Specifications](dirtree-authoring.md) for the complete template.
 
 ### Leaf Task (.md)
 
-**Required Sections:**
-
-1. **title**: Component or topic name
-2. **goal**: One-line objective for the task
-3. **preconditions**: Measurable entry criteria
-4. **success_gates**: Measurable completion criteria for whole task
-5. **references**: Task-level references to architecture reports
-6. **steps**: Array of steps (1-5 max)
-
-**Step Requirements:**
-
-1. **number**: Sequential step number (1-N)
-2. **title**: Short descriptive title
-3. **goal**: Unique change intent
-4. **implementation_logic**: Description of WHAT and WHY (constrains scope)
-5. **deliverables**: File paths and LOC estimate
-6. **consistency_checks**: Command with expected outcome (PASS|FAIL)
-7. **commit**: Conventional commit message format
-8. **references**: Optional step-level references (may be empty array)
-9. **requires**: Optional (non-obvious prerequisites only)
+Required sections and step fields: see [dirtree-authoring.md § File Structure Specifications](dirtree-authoring.md).
 
 ---
 
@@ -77,7 +47,7 @@ This document provides complete validation requirements for roadmap documents.
 
 **Node IDs** (Mermaid graph):
 - Must match filesystem names (without .md for files, without / for directories)
-- Pattern: `^[a-z][a-z0-9_]*$`
+- Pattern: `^[a-z][a-z0-9_-]*$`
 
 ---
 

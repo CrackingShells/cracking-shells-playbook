@@ -9,15 +9,18 @@ description: "Creates, executes, and amends graph-based campaign roadmaps. Use w
 
 This skill provides complete lifecycle guidance for roadmap management: creation, execution, and amendment.
 
-## Quick Use Cases
+## Navigation
 
-- **Understanding the graph model**: See [references/graph-model.md](references/graph-model.md) for node types, status FSM, traversal contract, and backend operations
-- **Creating a roadmap** (directory tree): See [references/dirtree-authoring.md](references/dirtree-authoring.md) for structure, templates, and CRUD Create
-- **Executing tasks** (directory tree): See [references/dirtree-execution.md](references/dirtree-execution.md) for BFS traversal, step discipline, and git workflow
-- **Making changes**: See [references/amendments.md](references/amendments.md) for the amendment cycle
-- **Validating compliance** (directory tree): See [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) for naming rules and schema requirements
-- **Worked examples** (directory tree): See [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) for Tier 1/2/3 examples
-- **Mutating dirtree nodes** (add/update/move/insert/validate): Use `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh`; see [references/dirtree-cli.md](references/dirtree-cli.md) for command reference and [references/dirtree-bnf.md](references/dirtree-bnf.md) for the grammar spec
+| Intent | File |
+|:-------|:-----|
+| Understand the graph model (node types, FSM, traversal contract) | [references/graph-model.md](references/graph-model.md) |
+| Create a roadmap (structure, templates, naming rules) | [references/dirtree-authoring.md](references/dirtree-authoring.md) |
+| Execute tasks (BFS traversal, step discipline, git workflow) | [references/dirtree-execution.md](references/dirtree-execution.md) |
+| Manage amendments (cycle, gap analysis, approval) | [references/amendments.md](references/amendments.md) |
+| Validate compliance (naming, schema, step rules) | [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) |
+| See worked examples (Tier 1/2/3) | [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) |
+| Mutate nodes without corrupting README.md (add/update/move/insert) | [references/dirtree-cli.md](references/dirtree-cli.md) |
+| Debug a validation failure (BNF grammar spec) | [references/dirtree-bnf.md](references/dirtree-bnf.md) |
 
 ---
 
@@ -26,6 +29,8 @@ This skill provides complete lifecycle guidance for roadmap management: creation
 ### Core Concept
 
 Roadmaps are **rooted DAGs** where depth encodes execution ordering, siblings are parallel, and leaves execute before branches at each level.
+
+The default (and only implemented) backend is the **directory tree** under `__roadmap__/`.
 
 ### Core Invariants
 
@@ -44,35 +49,10 @@ Roadmaps are **rooted DAGs** where depth encodes execution ordering, siblings ar
 ## Status Lifecycle
 
 `planned → inprogress → done` (normal path)
-`planned → amendment → inprogress → done` (after an approved amendment)
+`amendment → inprogress → done` (newly-added nodes introduced via amendment)
 `planned | inprogress → blocked` (terminal within a campaign)
 
 See [references/graph-model.md](references/graph-model.md) for the complete FSM with all valid transitions.
-
----
-
-## Backend Strategies
-
-| Backend | Status | Authoring | Execution | Validation | Examples |
-|:--------|:-------|:----------|:----------|:-----------|:---------|
-| Directory Tree | **default** | [dirtree-authoring.md](references/dirtree-authoring.md) | [dirtree-execution.md](references/dirtree-execution.md) | [dirtree-schema-validation.md](references/dirtree-schema-validation.md) | [dirtree-tier-examples.md](references/dirtree-tier-examples.md) |
-| ArangoDB | TBD | — | — | — | — |
-| JSON | TBD | — | — | — | — |
-
----
-
-## Cross-References
-
-| Reference | What it covers |
-|:----------|:---------------|
-| [references/graph-model.md](references/graph-model.md) | Abstract graph semantics: node types, edge rules, status FSM, BFS traversal, step model, amendment algebra, failure escalation, backend contract |
-| [references/amendments.md](references/amendments.md) | Full amendment cycle: discovery, gap analysis, review, roadmap update, tracking |
-| [references/dirtree-authoring.md](references/dirtree-authoring.md) | Directory structure rules, README and leaf task templates, CRUD Create and Read |
-| [references/dirtree-execution.md](references/dirtree-execution.md) | BFS traversal algorithm, step execution, git workflow, progress tracking, failure handling, CRUD Update and Delete |
-| [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) | Naming conventions, node ID patterns, step validation, status values, compliance rules |
-| [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) | Worked examples for Tier 1 (patch), Tier 2 (feature), Tier 3 (campaign) |
-| [references/dirtree-cli.md](references/dirtree-cli.md) | `dirtree-rdm` CLI: all commands, arguments, examples, and error handling |
-| [references/dirtree-bnf.md](references/dirtree-bnf.md) | Formal BNF grammar for README.md and leaf task files; terminal patterns |
 
 ---
 
@@ -80,10 +60,7 @@ See [references/graph-model.md](references/graph-model.md) for the complete FSM 
 
 1. **Parallelize First**: Default to siblings; use sequential depth only when a concrete dependency requires it (see [references/dirtree-authoring.md § Dependency Signals](references/dirtree-authoring.md)).
 2. **Consistency over Convenience**: The status view is the single source of truth for graph state.
-3. **Explicit Dependencies**: Use graph depth, not ad-hoc edges or node names, for ordering.
-4. **Breadth-First Discipline**: Complete all siblings before descending to the next depth level.
-5. **Execution Transparency**: Every step snapshot recorded, every status updated immediately.
-6. **Living Documentation**: Status views evolve with the work as each node completes.
-7. **Progressive Disclosure**: Core invariants in SKILL.md, detailed specs in backend reference files.
-8. **Iterative Improvement**: Amended graphs share the same model — only nodes are added, never removed.
-9. **Detection before Correction**: Exhaust the failure escalation ladder before raising an amendment.
+3. **Execution Transparency**: Every step snapshot recorded, every status updated immediately.
+4. **Progressive Disclosure**: Core invariants in SKILL.md, detailed specs in backend reference files.
+5. **Iterative Improvement**: Amended graphs share the same model — only nodes are added, never removed.
+6. **Detection before Correction**: Exhaust the failure escalation ladder before raising an amendment.
