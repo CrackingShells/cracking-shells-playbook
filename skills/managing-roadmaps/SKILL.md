@@ -17,6 +17,7 @@ This skill provides complete lifecycle guidance for roadmap management: creation
 - **Making changes**: See [references/amendments.md](references/amendments.md) for the amendment cycle
 - **Validating compliance** (directory tree): See [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) for naming rules and schema requirements
 - **Worked examples** (directory tree): See [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) for Tier 1/2/3 examples
+- **Mutating dirtree nodes** (add/update/move/insert/validate): Use `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh`; see [references/dirtree-cli.md](references/dirtree-cli.md) for command reference and [references/dirtree-bnf.md](references/dirtree-bnf.md) for the grammar spec
 
 ---
 
@@ -70,6 +71,8 @@ See [references/graph-model.md](references/graph-model.md) for the complete FSM 
 | [references/dirtree-execution.md](references/dirtree-execution.md) | BFS traversal algorithm, step execution, git workflow, progress tracking, failure handling, CRUD Update and Delete |
 | [references/dirtree-schema-validation.md](references/dirtree-schema-validation.md) | Naming conventions, node ID patterns, step validation, status values, compliance rules |
 | [references/dirtree-tier-examples.md](references/dirtree-tier-examples.md) | Worked examples for Tier 1 (patch), Tier 2 (feature), Tier 3 (campaign) |
+| [references/dirtree-cli.md](references/dirtree-cli.md) | `dirtree-rdm` CLI: all commands, arguments, examples, and error handling |
+| [references/dirtree-bnf.md](references/dirtree-bnf.md) | Formal BNF grammar for README.md and leaf task files; terminal patterns |
 
 ---
 

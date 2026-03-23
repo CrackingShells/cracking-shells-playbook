@@ -153,10 +153,15 @@ graph TD
 3. **Analyze dependencies**: Partition work into parallel siblings vs. sequential depths using dependency signals (see [Dependency Signals](#dependency-signals))
 4. **Create root directory**: `__roadmap__/<campaign_name>/`
 5. **Write root README.md** with context, references, and status graph
-6. **Create leaf tasks** (1-5 steps each) or subdirectories
-7. **For subdirectories**: Add README.md with goal, pre-conditions, success gates
-8. **For multiple depth levels**: Follow breadth-first required order
-9. **No numeric prefixes** in names
+6. **Add nodes using `dirtree-rdm`** — do not hand-edit README.md Nodes tables or Mermaid blocks:
+   ```bash
+   bash skills/managing-roadmaps/scripts/dirtree-rdm.sh add __roadmap__/<campaign>/node.md --title "Title"
+   bash skills/managing-roadmaps/scripts/dirtree-rdm.sh add __roadmap__/<campaign>/subdir --type dir --title "Title"
+   ```
+7. **For multiple depth levels**: Follow breadth-first required order
+8. **No numeric prefixes** in names
+
+See [dirtree-cli.md](dirtree-cli.md) for full `dirtree-rdm` command reference.
 
 ---
 

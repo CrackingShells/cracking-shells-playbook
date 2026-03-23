@@ -18,12 +18,31 @@
 
 ## CRUD: Update
 
-**Status updates** (during execution):
-- Starting task: Set node as `:::inprogress`
-- Completing task: Set node as `:::done`, update Progress table
-- Starting directory: Set node as `:::inprogress`
-- Completing directory: Set node as `:::done`
-- Discovering blocker: Set node as `:::blocked` with note
+**Status updates** — use `dirtree-rdm update`, do not hand-edit README.md:
+```bash
+# Starting a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md inprogress
+
+# Completing a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md done
+
+# Marking blocked
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+```
+
+**Read current status** (read-only):
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh status __roadmap__/<campaign>/node.md
+```
+
+**Restructure nodes** (move/insert):
+```bash
+# Move a node to a different parent
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh move __roadmap__/<campaign>/node.md __roadmap__/<campaign>/new-parent/
+
+# Insert an intermediate directory wrapping one node
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh insert __roadmap__/<campaign>/new-group --wraps __roadmap__/<campaign>/node.md
+```
 
 **Amendment workflow** (planned changes):
 1. Produce gap analysis report in `__reports__/`
@@ -37,9 +56,12 @@
 
 ## CRUD: Delete
 
-- Never delete or rename roadmap nodes
-- Mark abandoned work as `:::blocked`
-- Embed reason in node notes
+- Never physically delete or rename roadmap nodes
+- Mark abandoned work as `blocked` using `dirtree-rdm update`:
+  ```bash
+  bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+  ```
+- Embed reason in the Progress table notes column
 
 ---
 
