@@ -185,7 +185,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         skip_blank(&lines, &mut pos);
         if pos < lines.len() && lines[pos] == "## Reference Documents" {
             pos += 1;
-            let ref_item = re(r"^\- \[R\d{2} .+\]\(.+\) --- .+");
+            let ref_item = re(r"^\- \[R\d{2} .+\]\(.+\) \u{2014} .+");
             check!(expect_one_or_more(
                 &lines,
                 &mut pos,
@@ -277,8 +277,10 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &re(r"^\| Node\s*\| Type\s*\| Status\s*\|$"),
         "table-header-nodes"
     ));
-    let nodes_row = re(r"^\| `[a-z][a-z0-9_./-]*` \| (📄 Leaf Task|📁 Directory) \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$");
-    while pos < lines.len() && nodes_row.is_match(lines[pos]) {
+    // Leaf rows end in .md; directory rows end in /  (enforced by BNF).
+    let nodes_leaf_row = re(r"^\| `[a-z][a-z0-9_-]*\.md` \| 📄 Leaf Task \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$");
+    let nodes_dir_row  = re(r"^\| `[a-z][a-z0-9_-]*/` \| 📁 Directory \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$");
+    while pos < lines.len() && (nodes_leaf_row.is_match(lines[pos]) || nodes_dir_row.is_match(lines[pos])) {
         pos += 1;
     }
     // 0 rows is valid (empty directory at creation time)
@@ -579,6 +581,95 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
     }
 
     Ok(violations)
+}
+
+// ── tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal valid README with an optional Reference Documents section.
+    fn readme_with_refs(refs: &str) -> String {
+        format!(
+            "# Test Roadmap\n\n\
+             ## Context\nSome context text here.\n\n\
+             ## Reference Documents\n{refs}\n\n\
+             ## Goal\nOne-line goal.\n\n\
+             ## Pre-conditions\n- [ ] criteria met\n\n\
+             ## Success Gates\n- \u{2705} gate\n\n\
+             ## Status\n\
+             ```mermaid\n\
+             graph TD\n\
+             \x20   classDef done       fill:#166534,color:#bbf7d0\n\
+             \x20   classDef inprogress fill:#854d0e,color:#fef08a\n\
+             \x20   classDef planned    fill:#374151,color:#e5e7eb\n\
+             \x20   classDef amendment  fill:#1e3a5f,color:#bfdbfe\n\
+             \x20   classDef blocked    fill:#7f1d1d,color:#fecaca\n\
+             ```\n\n\
+             ## Nodes\n\
+             | Node | Type | Status |\n\
+             |:-----|:-----|:-------|\n\n\
+             ## Amendment Log\n\
+             | ID | Date | Source | Nodes Added | Rationale |\n\
+             |:---|:-----|:-------|:------------|:----------|\n\n\
+             ## Progress\n\
+             | Node | Branch | Commits | Notes |\n\
+             |:-----|:-------|:--------|:------|\n"
+        )
+    }
+
+    // ── Bug 1: reference-item separator must be em dash (—), not --- ──────
+
+    #[test]
+    fn test_reference_item_emdash_accepted() {
+        let readme = readme_with_refs(
+            "- [R01 Foo](../../some/path.md) \u{2014} description here",
+        );
+        let violations = validate_readme_str(&readme).unwrap();
+        assert!(
+            violations.is_empty(),
+            "em-dash reference item with ../../ path should be valid; got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_reference_item_absolute_path_accepted() {
+        let readme = readme_with_refs(
+            "- [R01 sensor.md](/absolute/path/sensor.md) \u{2014} description",
+        );
+        let violations = validate_readme_str(&readme).unwrap();
+        assert!(
+            violations.is_empty(),
+            "em-dash reference item with absolute path should be valid; got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_reference_item_triple_dash_rejected() {
+        // Three ASCII hyphens must NOT be accepted — only em dash is valid per BNF.
+        let readme = readme_with_refs(
+            "- [R01 Foo](../../some/path.md) --- description here",
+        );
+        let violations = validate_readme_str(&readme).unwrap();
+        assert!(
+            !violations.is_empty(),
+            "triple-dash separator should be rejected (BNF requires em dash)"
+        );
+    }
+
+    #[test]
+    fn test_reference_item_multiple_entries() {
+        let readme = readme_with_refs(
+            "- [R01 Foo](../../foo.md) \u{2014} first\n\
+             - [R02 Bar](../bar/baz.md) \u{2014} second",
+        );
+        let violations = validate_readme_str(&readme).unwrap();
+        assert!(
+            violations.is_empty(),
+            "multiple em-dash reference items should be valid; got: {violations:?}"
+        );
+    }
 }
 
 // ── public entry points ────────────────────────────────────────────────────

@@ -144,13 +144,18 @@ MERMAID_CLOSE            ::= /^```$/
 
 <nodes-table>   ::= <table-header-nodes>
                     <table-separator>
-                    <nodes-table-row>+
+                    <nodes-table-row>*
 
 <table-header-nodes> ::= /^\| Node +\| Type +\| Status +\|$/ EOL
 
 <table-separator>    ::= /^\|[-: |]+\|$/ EOL
 
-<nodes-table-row>    ::= /^\| `[a-z][a-z0-9_./-]*` \| (📄 Leaf Task|📁 Directory) \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$/ EOL
+# Leaf rows use the .md filename; directory rows use a trailing slash.
+<nodes-table-row>      ::= <nodes-table-leaf-row> | <nodes-table-dir-row>
+
+<nodes-table-leaf-row> ::= /^\| `[a-z][a-z0-9_-]*\.md` \| 📄 Leaf Task \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$/ EOL
+
+<nodes-table-dir-row>  ::= /^\| `[a-z][a-z0-9_-]*\/` \| 📁 Directory \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$/ EOL
 
 # ---------------------------------------------------------------------------
 # Section: Amendment Log

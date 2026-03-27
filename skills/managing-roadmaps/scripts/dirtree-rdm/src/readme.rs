@@ -154,9 +154,10 @@ pub fn add_node(
         bail!("README.md Mermaid block is missing classDef lines; run validate to diagnose");
     }
 
-    // insert Nodes table row at end of table
+    // Directory nodes are stored with a trailing slash in the Nodes table.
+    let table_name = if is_dir { format!("{fs_name}/") } else { fs_name.to_string() };
     let type_label = if is_dir { "📁 Directory" } else { "📄 Leaf Task" };
-    let new_row = format!("| `{fs_name}` | {type_label} | ⬜ Planned |");
+    let new_row = format!("| `{table_name}` | {type_label} | ⬜ Planned |");
     if let Some(end_idx) = find_nodes_table_end(&lines) {
         lines.insert(end_idx, new_row);
     } else {
@@ -172,6 +173,7 @@ pub fn update_node_status(
     readme_path: &Path,
     node_id: &str,
     fs_name: &str,
+    is_dir: bool,
     new_status: &str,
 ) -> Result<()> {
     validate_status(new_status)?;
@@ -191,8 +193,9 @@ pub fn update_node_status(
         bail!("node '{node_id}' not found in Mermaid block of {}", readme_path.display());
     }
 
-    // update Nodes table row
-    if let Some(idx) = find_nodes_table_row(&lines, fs_name) {
+    // Directory nodes are stored with a trailing slash in the Nodes table.
+    let table_name = if is_dir { format!("{fs_name}/") } else { fs_name.to_string() };
+    if let Some(idx) = find_nodes_table_row(&lines, &table_name) {
         let emoji_re = regex::Regex::new(
             r"(✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked)",
         )
@@ -201,7 +204,7 @@ pub fn update_node_status(
             .replace(&lines[idx], status_emoji(new_status))
             .to_string();
     } else {
-        bail!("node '{fs_name}' not found in Nodes table of {}", readme_path.display());
+        bail!("node '{table_name}' not found in Nodes table of {}", readme_path.display());
     }
 
     let violations = atomic_write(readme_path, &lines)?;
@@ -214,6 +217,7 @@ pub fn remove_node(
     readme_path: &Path,
     node_id: &str,
     fs_name: &str,
+    is_dir: bool,
 ) -> Result<String> {
     pre_flight(readme_path)?;
 
@@ -235,11 +239,12 @@ pub fn remove_node(
     if let Some(idx) = find_mermaid_node(&lines, node_id) {
         lines.remove(idx);
     }
-    // remove Nodes table row
-    if let Some(idx) = find_nodes_table_row(&lines, fs_name) {
+    // Directory nodes are stored with a trailing slash in the Nodes table.
+    let table_name = if is_dir { format!("{fs_name}/") } else { fs_name.to_string() };
+    if let Some(idx) = find_nodes_table_row(&lines, &table_name) {
         lines.remove(idx);
     } else {
-        bail!("node '{fs_name}' not found in Nodes table of {}", readme_path.display());
+        bail!("node '{table_name}' not found in Nodes table of {}", readme_path.display());
     }
 
     let violations = atomic_write(readme_path, &lines)?;
@@ -263,12 +268,13 @@ pub fn read_node_status(readme_path: &Path, node_id: &str) -> Result<String> {
 /// Read all rows from the Nodes table.
 pub fn read_nodes_table(readme_path: &Path) -> Result<Vec<(String, String, String)>> {
     let content = std::fs::read_to_string(readme_path)?;
-    let re = regex::Regex::new(
-        r"^\| `([a-z][a-z0-9_./-]*)` \| (📄 Leaf Task|📁 Directory) \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$"
+    // Leaf rows end in .md; directory rows end in /  (per BNF).
+    let row_re = regex::Regex::new(
+        r"^\| `([a-z][a-z0-9_-]*(?:\.md|/))` \| (📄 Leaf Task|📁 Directory) \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$"
     ).unwrap();
     let mut rows = Vec::new();
     for line in content.lines() {
-        if let Some(caps) = re.captures(line) {
+        if let Some(caps) = row_re.captures(line) {
             rows.push((
                 caps[1].to_string(),
                 caps[2].to_string(),
@@ -311,6 +317,120 @@ fn report_violations_or_ok(path: &Path, violations: Vec<Violation>) -> Result<()
             msg.push_str(&format!("  {v}\n"));
         }
         bail!("{}", msg)
+    }
+}
+
+// ── tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Bug 2: directory nodes must be stored/found with trailing slash ────
+
+    #[test]
+    fn test_find_nodes_table_row_dir_with_slash() {
+        let lines: Vec<String> = vec![
+            "| `optimize/` | 📁 Directory | ⬜ Planned |".to_string(),
+        ];
+        assert!(
+            find_nodes_table_row(&lines, "optimize/").is_some(),
+            "should find directory row by 'name/'"
+        );
+    }
+
+    #[test]
+    fn test_find_nodes_table_row_leaf_no_slash() {
+        let lines: Vec<String> = vec![
+            "| `work.md` | 📄 Leaf Task | ⬜ Planned |".to_string(),
+        ];
+        assert!(
+            find_nodes_table_row(&lines, "work.md").is_some(),
+            "should find leaf row by 'name.md'"
+        );
+    }
+
+    #[test]
+    fn test_add_node_writes_dir_with_slash() {
+        // Build a minimal valid README in a temp file, call add_node for a dir,
+        // and confirm the Nodes table row ends with `/`.
+        let tmp = std::env::temp_dir().join("dirtree_rdm_test_add_dir.md");
+        let content = "# Test\n\n\
+            ## Context\nsome context\n\n\
+            ## Goal\nsome goal\n\n\
+            ## Pre-conditions\n- [ ] criteria\n\n\
+            ## Success Gates\n- \u{2705} gate\n\n\
+            ## Status\n\
+            ```mermaid\n\
+            graph TD\n\
+            \x20   classDef done       fill:#166534,color:#bbf7d0\n\
+            \x20   classDef inprogress fill:#854d0e,color:#fef08a\n\
+            \x20   classDef planned    fill:#374151,color:#e5e7eb\n\
+            \x20   classDef amendment  fill:#1e3a5f,color:#bfdbfe\n\
+            \x20   classDef blocked    fill:#7f1d1d,color:#fecaca\n\
+            ```\n\n\
+            ## Nodes\n\
+            | Node | Type | Status |\n\
+            |:-----|:-----|:-------|\n\n\
+            ## Amendment Log\n\
+            | ID | Date | Source | Nodes Added | Rationale |\n\
+            |:---|:-----|:-------|:------------|:----------|\n\n\
+            ## Progress\n\
+            | Node | Branch | Commits | Notes |\n\
+            |:-----|:-------|:--------|:------|\n";
+        std::fs::write(&tmp, content).unwrap();
+
+        add_node(&tmp, "mydir", "mydir", true, "My Dir").unwrap();
+
+        let written = std::fs::read_to_string(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            written.contains("| `mydir/` |"),
+            "add_node should write directory with trailing slash; got:\n{written}"
+        );
+    }
+
+    #[test]
+    fn test_update_node_status_dir_with_slash() {
+        // README has a directory row with trailing slash; update_node_status must find it.
+        let tmp = std::env::temp_dir().join("dirtree_rdm_test_update_dir.md");
+        let content = "# Test\n\n\
+            ## Context\nsome context\n\n\
+            ## Goal\nsome goal\n\n\
+            ## Pre-conditions\n- [ ] criteria\n\n\
+            ## Success Gates\n- \u{2705} gate\n\n\
+            ## Status\n\
+            ```mermaid\n\
+            graph TD\n\
+            \x20   optimize[Optimize]:::planned\n\
+            \x20   classDef done       fill:#166534,color:#bbf7d0\n\
+            \x20   classDef inprogress fill:#854d0e,color:#fef08a\n\
+            \x20   classDef planned    fill:#374151,color:#e5e7eb\n\
+            \x20   classDef amendment  fill:#1e3a5f,color:#bfdbfe\n\
+            \x20   classDef blocked    fill:#7f1d1d,color:#fecaca\n\
+            ```\n\n\
+            ## Nodes\n\
+            | Node | Type | Status |\n\
+            |:-----|:-----|:-------|\n\
+            | `optimize/` | 📁 Directory | ⬜ Planned |\n\n\
+            ## Amendment Log\n\
+            | ID | Date | Source | Nodes Added | Rationale |\n\
+            |:---|:-----|:-------|:------------|:----------|\n\n\
+            ## Progress\n\
+            | Node | Branch | Commits | Notes |\n\
+            |:-----|:-------|:--------|:------|\n";
+        std::fs::write(&tmp, content).unwrap();
+
+        let result = update_node_status(&tmp, "optimize", "optimize", true, "inprogress");
+        let written = std::fs::read_to_string(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(result.is_ok(), "update_node_status should succeed for dir with slash; err: {result:?}");
+        assert!(
+            written.contains("| `optimize/` | 📁 Directory | 🔄 In Progress |"),
+            "Nodes table row should be updated; got:\n{written}"
+        );
     }
 }
 

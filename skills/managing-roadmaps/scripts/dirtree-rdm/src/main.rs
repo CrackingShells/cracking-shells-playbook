@@ -164,11 +164,11 @@ fn cmd_status(node_path: &Path) -> Result<()> {
 
 fn cmd_update(node_path: &Path, status: &str) -> Result<()> {
     readme::validate_status(status)?;
-    let (_, readme, node_id, fs_name, _) = readme::parse_node_path(node_path)?;
+    let (_, readme, node_id, fs_name, is_dir) = readme::parse_node_path(node_path)?;
     if !readme.exists() {
         bail!("README.md not found at {}", readme.display());
     }
-    readme::update_node_status(&readme, &node_id, &fs_name, status)?;
+    readme::update_node_status(&readme, &node_id, &fs_name, is_dir, status)?;
     println!("updated  {} → {status}", node_path.display());
     Ok(())
 }
@@ -209,7 +209,7 @@ fn cmd_move(source_path: &Path, dest_parent: &Path) -> Result<()> {
         .unwrap_or_else(|| node_id.clone());
 
     // Remove from source README (captures status)
-    let current_status = readme::remove_node(&src_readme, &node_id, &fs_name)?;
+    let current_status = readme::remove_node(&src_readme, &node_id, &fs_name, is_dir)?;
     println!("removed  {node_id} from {}", src_readme.display());
 
     // Move filesystem entry
@@ -221,7 +221,7 @@ fn cmd_move(source_path: &Path, dest_parent: &Path) -> Result<()> {
     readme::add_node(&dest_readme, &node_id, &fs_name, is_dir, &title)?;
     // Set preserved status (add_node sets :::planned by default)
     if current_status != "planned" {
-        readme::update_node_status(&dest_readme, &node_id, &fs_name, &current_status)?;
+        readme::update_node_status(&dest_readme, &node_id, &fs_name, is_dir, &current_status)?;
     }
     println!("updated  {} (status: {current_status})", dest_readme.display());
     Ok(())
@@ -298,7 +298,7 @@ fn cmd_insert(new_dir_path: &Path, wraps: &Path, title: &str) -> Result<()> {
     let wrap_status = readme::read_node_status(&grandparent_readme, &wrap_node_id)?;
 
     // Remove wrapped node from grandparent README
-    readme::remove_node(&grandparent_readme, &wrap_node_id, &wrap_fs_name)?;
+    readme::remove_node(&grandparent_readme, &wrap_node_id, &wrap_fs_name, wrap_is_dir)?;
     println!("removed  {wrap_node_id} from {}", grandparent_readme.display());
 
     // Create new intermediate directory
@@ -319,7 +319,7 @@ fn cmd_insert(new_dir_path: &Path, wraps: &Path, title: &str) -> Result<()> {
     // Add wrapped node to new README
     readme::add_node(&new_readme, &wrap_node_id, &wrap_fs_name, wrap_is_dir, &wrap_title)?;
     if wrap_status != "planned" {
-        readme::update_node_status(&new_readme, &wrap_node_id, &wrap_fs_name, &wrap_status)?;
+        readme::update_node_status(&new_readme, &wrap_node_id, &wrap_fs_name, wrap_is_dir, &wrap_status)?;
     }
     println!("updated  {} (child: {wrap_node_id})", new_readme.display());
 
