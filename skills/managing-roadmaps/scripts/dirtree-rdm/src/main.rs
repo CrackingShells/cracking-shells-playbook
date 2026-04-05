@@ -74,6 +74,12 @@ enum Command {
         #[arg(default_value = ".")]
         dir_path: PathBuf,
     },
+    /// (Read-only) Print the BNF grammar for readme or leaf documents
+    Grammar {
+        /// Which grammar to print: readme | leaf
+        #[arg(default_value = "readme")]
+        kind: String,
+    },
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
@@ -95,6 +101,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Insert { new_dir_path, wraps, title } => cmd_insert(&new_dir_path, &wraps, &title),
         Command::Validate { path }                 => cmd_validate(&path),
         Command::Ls { dir_path }                   => cmd_ls(&dir_path),
+        Command::Grammar { kind }                  => cmd_grammar(&kind),
     }
 }
 
@@ -348,6 +355,16 @@ fn cmd_validate(path: &Path) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+// ── grammar ────────────────────────────────────────────────────────────────
+
+fn cmd_grammar(kind: &str) -> Result<()> {
+    match kind {
+        "readme" => { print!("{}", grammar::README_BNF); Ok(()) }
+        "leaf"   => { print!("{}", grammar::LEAF_BNF);   Ok(()) }
+        other    => bail!("unknown grammar kind {other:?}; expected: readme | leaf"),
+    }
 }
 
 // ── ls ─────────────────────────────────────────────────────────────────────

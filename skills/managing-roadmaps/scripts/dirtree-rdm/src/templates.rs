@@ -56,7 +56,7 @@ pub fn leaf_template(title: &str) -> String {
 **Goal**: <Unique change intent>
 **Implementation Logic**:
 <WHAT and WHY. Describe scope.>
-**Deliverables**: <file paths> (~N LOC)
+**Deliverables**: <file paths — for each, list the named symbols it will contain: function/method names, type names, exported identifiers, endpoint paths, component names>
 **Consistency Checks**: `<command>` (expected: PASS)
 **Commit**: `feat(<scope>): <description>`
 "#
