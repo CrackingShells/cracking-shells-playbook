@@ -114,10 +114,12 @@ After task:  Verify success gates → Merge task into milestone → Update READM
 For each step:
 1. **Read step**: Goal, Implementation Logic, References
 2. **Produce**: Generate deliverables
-3. **Check consistency**: Run required commands
+3. **Check consistency**: Run the listed commands AND verify that every named deliverable appears in the changed files — search for the specific symbol, file, or artifact by name. For each deliverable and each runnable gate, record a verdict before committing: `PASS` (found, evidence cited), `DEVIATION` (present but differs from spec — document the delta), `MISSING` (not in diff), or `BLOCKED` (requires a running system or human observation — flag explicitly). Do not proceed to step 4 until all deliverables are `PASS` and all runnable gates are `PASS`.
 4. **Commit immediately**: Use exact commit message from task file
 5. **Update progress**: Record in parent README.md Progress table
 6. **If checks fail**: Diagnostic ladder (see Failure Handling)
+
+The four verdict acts serve a specific purpose: `DEVIATION` and `MISSING` are not the same failure. A deviation means the intent was understood but executed differently — worth examining before deciding if it matters. Missing means the step was skipped or incomplete. `BLOCKED` is honest acknowledgment that some gates (behavioral, visual, integration) can only be confirmed with more infrastructure than is available at commit time — surfacing them explicitly is better than silently skipping them.
 
 ---
 

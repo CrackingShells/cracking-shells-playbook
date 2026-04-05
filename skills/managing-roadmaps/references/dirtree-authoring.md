@@ -133,7 +133,7 @@ graph TD
 **Goal**: <Unique change intent>
 **Implementation Logic**: <WHAT and WHY. Describe scope. Use numbered pseudocode if needed.>
 **References**: [R<nn> §<section>](<path>) — <what to find>
-**Deliverables**: <file paths> (~LOC estimate)
+**Deliverables**: <file paths, each annotated with the named symbols they will contain: function/method names, type/struct/interface names, endpoint paths, exported identifiers, component names — whatever the mode produces. Name the artifact, not its size.>
 **Consistency Checks**: `<command>` (expected: PASS|FAIL)
 **Commit**: `<type>(<scope>): <description>`
 ```
@@ -143,6 +143,14 @@ graph TD
 - 1 step = 1 commit (strict bijection)
 - Implementation Logic must describe WHAT and WHY — if not described here, it should not be implemented
 - TDD pattern recommended: Test (FAIL) → Implementation (PASS) → Verification (PASS)
+
+**Writing effective Deliverables and Success Gates:**
+
+Deliverables are a checklist for verification — name the symbols, not the size. A reader who hasn't seen the code should be able to search for each named artifact and confirm it exists. If you can't name a specific symbol, the step's Implementation Logic probably needs more precision first.
+
+Success Gates describe observable outcomes. Prefer gates that can be confirmed by running a command or searching for a named artifact. If a gate requires a running system, a rendered interface, or human observation, note what setup is needed — otherwise a verifier has no way to distinguish "untested" from "passing." Optionally tag each gate `[run]`, `[static]`, or `[behavioral]` to signal how it should be checked.
+
+A consistency check that would pass even if the step's deliverable was never implemented is tautological and provides false confidence. A workspace build passing does not confirm a type was added — it confirms nothing broke. Prefer commands that directly exercise the new artifact: a test that imports the new type, a command that invokes the new endpoint, a type-check that uses the new interface at a real call site.
 
 ---
 

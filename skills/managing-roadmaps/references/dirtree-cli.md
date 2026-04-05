@@ -10,6 +10,7 @@
 - [insert — Create an intermediate directory](#insert--create-an-intermediate-directory-wrapping-one-node)
 - [validate — Check against BNF grammar (read-only)](#validate--check-a-readmemd-against-the-bnf-grammar-read-only)
 - [ls — List nodes (read-only)](#ls--list-nodes-in-a-directory-read-only)
+- [grammar — Print the BNF grammar source (read-only)](#grammar--print-the-bnf-grammar-source-read-only)
 - [Error Handling](#error-handling)
 - [BNF Grammar](#bnf-grammar)
 
@@ -171,6 +172,29 @@ dirtree-rdm.sh ls __roadmap__/oauth/
 # -----------------------------------------
 # database_migration  📄 Leaf Task  ✅ Done
 # providers           📁 Directory  🔄 In Progress
+```
+
+---
+
+### `grammar` — Print the BNF grammar source (read-only)
+
+```bash
+dirtree-rdm.sh grammar [readme|leaf]
+```
+
+Prints the full BNF grammar for either document type to stdout. Defaults to `readme` when no argument is given.
+
+Use this when a `validate` error names a production you don't recognise — pipe it through `grep` to find the exact production rule:
+
+```bash
+dirtree-rdm.sh grammar readme | grep "mermaid-classdef"
+dirtree-rdm.sh grammar leaf   | grep "step-field"
+```
+
+**Example:**
+```bash
+dirtree-rdm.sh grammar readme   # full README.md grammar
+dirtree-rdm.sh grammar leaf     # full leaf task grammar
 ```
 
 ---
