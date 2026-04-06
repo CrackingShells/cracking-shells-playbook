@@ -22,6 +22,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Bootstrap a new campaign directory with a BNF-valid template README.md (no parent README required)
+    Init {
+        /// Path for the new campaign directory (e.g. __roadmap__/my-campaign)
+        campaign_path: PathBuf,
+    },
     /// Create a new leaf task (.md) or directory node and update the parent README.md
     Add {
         /// Path to the new node (leaf: path/to/name.md, dir: path/to/name/ or path/to/name)
@@ -94,6 +99,7 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::Init { campaign_path }            => cmd_init(&campaign_path),
         Command::Add { node_path, r#type, title } => cmd_add(&node_path, &r#type, &title),
         Command::Status { node_path }              => cmd_status(&node_path),
         Command::Update { node_path, status }      => cmd_update(&node_path, &status),
@@ -103,6 +109,44 @@ fn run(cli: Cli) -> Result<()> {
         Command::Ls { dir_path }                   => cmd_ls(&dir_path),
         Command::Grammar { kind }                  => cmd_grammar(&kind),
     }
+}
+
+// ── init ───────────────────────────────────────────────────────────────────
+
+fn cmd_init(campaign_path: &Path) -> Result<()> {
+    let campaign_clean = PathBuf::from(
+        campaign_path.to_str().unwrap_or("").trim_end_matches('/'),
+    );
+
+    if campaign_clean.exists() {
+        bail!("campaign directory already exists: {}", campaign_clean.display());
+    }
+
+    let parent = campaign_clean
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("campaign path has no parent"))?;
+
+    if !parent.exists() {
+        bail!("parent directory does not exist: {}", parent.display());
+    }
+
+    let campaign_name = campaign_clean
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("invalid campaign path: {}", campaign_clean.display()))?;
+
+    readme::validate_node_name(campaign_name)?;
+
+    std::fs::create_dir_all(&campaign_clean)
+        .with_context(|| format!("creating {}", campaign_clean.display()))?;
+    println!("created  {}/", campaign_clean.display());
+
+    let readme_path = campaign_clean.join("README.md");
+    std::fs::write(&readme_path, templates::readme_template(campaign_name))
+        .with_context(|| format!("writing {}", readme_path.display()))?;
+    println!("created  {}", readme_path.display());
+    println!("hint     fill in Context, Goal, Pre-conditions, and Success Gates, then use 'add' to create nodes");
+    Ok(())
 }
 
 // ── add ────────────────────────────────────────────────────────────────────
@@ -136,6 +180,9 @@ fn cmd_add(node_path: &Path, node_type: &str, title: &str) -> Result<()> {
         std::fs::create_dir_all(&node_path_clean)
             .with_context(|| format!("creating directory {}", node_path_clean.display()))?;
         let child_readme = node_path_clean.join("README.md");
+        if child_readme.exists() {
+            bail!("README.md already exists at {}; use 'validate' to inspect it", child_readme.display());
+        }
         std::fs::write(&child_readme, templates::readme_template(effective_title))
             .with_context(|| format!("writing {}", child_readme.display()))?;
         println!("created  {}/", node_path_clean.display());

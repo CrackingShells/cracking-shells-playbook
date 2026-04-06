@@ -14,7 +14,7 @@ pub fn readme_template(title: &str) -> String {
 - [ ] <Measurable entry criteria>
 
 ## Success Gates
-- ⬜ <Measurable completion criteria>
+- ✅ <Measurable completion criteria>
 
 ## Status
 ```mermaid
