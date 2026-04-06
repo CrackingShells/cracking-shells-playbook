@@ -156,11 +156,16 @@ A consistency check that would pass even if the step's deliverable was never imp
 
 ## CRUD: Create
 
+> **`__roadmap__/` must NOT have its own README.md.** It is a plain container directory. Only campaign subdirectories have README.md files.
+
 1. **Identify campaign** and understand requirements
 2. **Choose tier level** (patch vs feature vs campaign)
 3. **Analyze dependencies**: Partition work into parallel siblings vs. sequential depths using dependency signals (see [Dependency Signals](#dependency-signals))
-4. **Create root directory**: `__roadmap__/<campaign_name>/`
-5. **Write root README.md** with context, references, and status graph
+4. **Bootstrap the campaign** using `dirtree-rdm init` — creates the directory and a BNF-valid template README.md without requiring a parent README:
+   ```bash
+   bash skills/managing-roadmaps/scripts/dirtree-rdm.sh init __roadmap__/<campaign_name>
+   ```
+5. **Fill in the campaign README.md** prose sections — `init` creates the scaffold; author the Context, Goal, Pre-conditions, and Success Gates. Do not touch the Mermaid block, Nodes table, or Amendment Log by hand.
 6. **Add nodes using `dirtree-rdm`** — do not hand-edit README.md Nodes tables or Mermaid blocks:
    ```bash
    bash skills/managing-roadmaps/scripts/dirtree-rdm.sh add __roadmap__/<campaign>/node.md --title "Title"

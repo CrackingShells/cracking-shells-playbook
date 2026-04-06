@@ -9,13 +9,21 @@ description: "Creates, executes, and amends graph-based campaign roadmaps. Use w
 
 ## The One Rule
 
-**Never write or edit files under `__roadmap__/` by hand.** Use `dirtree-rdm` for every mutation:
+Use `dirtree-rdm` for all structural mutations. Never touch BNF-managed sections by hand:
 
 ```bash
 bash skills/managing-roadmaps/scripts/dirtree-rdm.sh <command> [args]
 ```
 
-Manual edits corrupt the Mermaid graph and Nodes table. `dirtree-rdm` validates the BNF grammar before and after every write — no silent corruption.
+| Section type | Who writes it | Why |
+|:-------------|:--------------|:----|
+| Mermaid status block, Nodes table, Amendment Log, Progress table | **`dirtree-rdm` only** | BNF grammar is strict; manual edits corrupt the graph silently |
+| Context, Goal, Pre-conditions, Success Gates, Gotchas | **Agent-authored** | Free prose; no tool manages this content |
+| Leaf step fields (Goal, Implementation Logic, Deliverables…) | **Agent-authored** | Free prose; no tool manages this content |
+
+**Never create a leaf `.md` or a directory `README.md` from scratch by hand.** Use `dirtree-rdm init` to bootstrap a new campaign, and `dirtree-rdm add` for all subsequent nodes. The tool scaffolds BNF-valid files and validates every write.
+
+`__roadmap__/` itself must NOT have a `README.md`. It is a plain container directory.
 
 ---
 
@@ -25,7 +33,7 @@ Read the listed files **before starting**. Each contains the file format, rules,
 
 | Task | Read before starting | Also useful |
 |:-----|:---------------------|:------------|
-| **Create a roadmap** — new campaign, milestone, or leaf tasks | [dirtree-authoring.md](references/dirtree-authoring.md) — structure rules, dependency signals, templates | [dirtree-tier-examples.md](references/dirtree-tier-examples.md) for Tier 1/2/3 worked examples |
+| **Create a roadmap** — bootstrap with `dirtree-rdm init`, then add milestones and leaf tasks | [dirtree-authoring.md](references/dirtree-authoring.md) — structure rules, dependency signals, CRUD workflow | [dirtree-tier-examples.md](references/dirtree-tier-examples.md) for Tier 1/2/3 worked examples |
 | **Add, update, move, or insert nodes** (any mutation) | [dirtree-cli.md](references/dirtree-cli.md) — all `dirtree-rdm` commands with examples | — |
 | **Execute tasks** — BFS traversal, step-by-step work, git workflow | [dirtree-execution.md](references/dirtree-execution.md) — traversal algorithm, progress tracking, failure handling | — |
 | **Amend a roadmap** — add nodes due to scope change or gap | [amendments.md](references/amendments.md) — gap analysis, approval cycle, amendment log format | — |

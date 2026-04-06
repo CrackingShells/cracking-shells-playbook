@@ -3,6 +3,7 @@
 ## Contents
 
 - [Invocation](#invocation)
+- [init — Bootstrap a new campaign](#init--bootstrap-a-new-campaign)
 - [add — Create a new node](#add--create-a-new-node)
 - [status — Read current status (read-only)](#status--read-a-nodes-current-status-read-only)
 - [update — Change a node's status](#update--change-a-nodes-status)
@@ -37,6 +38,27 @@ The wrapper auto-detects the platform and dispatches to the correct pre-compiled
 ---
 
 ## Commands
+
+### `init` — Bootstrap a new campaign
+
+```bash
+dirtree-rdm.sh init <campaign-path>
+```
+
+Creates `<campaign-path>/` and a BNF-valid template `README.md` inside it. Unlike `add`, this command does **not** require a parent `README.md` — it is the correct entry point for starting a new campaign.
+
+- `<campaign-path>`: path to the new campaign directory (e.g. `__roadmap__/my-campaign`)
+- Campaign name must match `^[a-z][a-z0-9_-]*$`
+- Parent directory must exist (typically `__roadmap__/`), but must NOT have a `README.md`
+- After `init`, fill in the prose sections of the generated `README.md` (Context, Goal, Pre-conditions, Success Gates), then use `add` to create child nodes
+
+**Example:**
+```bash
+dirtree-rdm.sh init __roadmap__/oauth-support
+dirtree-rdm.sh init __roadmap__/fix-threading-deadlock
+```
+
+---
 
 ### `add` — Create a new node
 
