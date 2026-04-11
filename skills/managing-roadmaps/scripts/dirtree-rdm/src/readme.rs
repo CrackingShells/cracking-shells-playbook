@@ -301,7 +301,7 @@ fn pre_flight(readme_path: &Path) -> Result<()> {
     for v in &violations {
         msg.push_str(&format!("  {v}\n"));
     }
-    msg.push_str("Fix the README.md manually or run `dirtree-rdm validate <dir>` for details.");
+    msg.push_str("Run `dirtree-rdm validate <dir>` for details. Do not edit the Mermaid block, Nodes table, or Amendment Log by hand.");
     bail!("{}", msg)
 }
 

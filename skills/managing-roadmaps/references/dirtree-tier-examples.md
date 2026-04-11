@@ -15,6 +15,14 @@ This document provides worked examples at each complexity tier for understanding
 **Complexity:** Simple, single leaf task, flat structure
 **Use Case:** Bug fixes, chores, minor improvements
 
+### Bootstrap
+
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh init __roadmap__/fix-threading-deadlock
+```
+
+Then fill in the generated `README.md` (Context, Goal, Pre-conditions, Success Gates), and use `add` to create leaf nodes.
+
 ### Directory Tree
 
 ```
@@ -139,6 +147,14 @@ Run the full test suite to confirm nothing else broke.
 **Use Case**: New features, refactors with intermediate states
 **Parallelism**: Internal parallelism within subdirectories
 
+### Bootstrap
+
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh init __roadmap__/oauth2-support
+```
+
+Then fill in the generated `README.md`, and use `add` to build the directory structure shown below.
+
 ### Directory Tree
 
 ```
@@ -226,6 +242,14 @@ graph TD
 **Complexity**: Multiple nested levels, parallel groups at every depth
 **Use Case**: Major initiatives, multi-phased transformations
 **Parallelism**: Parallel groups at multiple depths
+
+### Bootstrap
+
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh init __roadmap__/cli-ux-normalization
+```
+
+Then fill in the generated `README.md`, and use `add` to build the full nested directory structure shown below.
 
 ### Directory Tree
 
