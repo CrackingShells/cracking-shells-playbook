@@ -1,0 +1,131 @@
+{
+  "skill_name": "hatch-release-writer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write the PR description for my latest contribution. I'm merging LittleCoinCoin/Hatch:dev into CrackingShells/Hatch:dev for v0.8.3-dev.1. Changes: (1) Added Zed editor MCP host support — reads ~/.config/zed/settings.json, supports command/args/env fields, new ZedAdapter class with validate_filtered() pipeline, new ZedHostStrategy. (2) Fixed a bug where `hatch mcp list` showed stale cache data even after the --refresh flag was passed — root cause was the refresh flag not being forwarded to the cache manager, added regression test. (3) Updated the adding-mcp-hosts skill SKILL.md to include Zed as a worked example.",
+      "expected_output": "A well-structured GitHub PR body with [v0.8.3-dev.1] title, a ## Summary bullet list, and detailed ## Features / ## Bug Fixes / ## Developer Experience sections with technical implementation details, following the Type A PR template.",
+      "assertions": [
+        {
+          "name": "title-includes-version",
+          "description": "Title includes the exact version string [v0.8.3-dev.1]",
+          "type": "contains",
+          "value": "v0.8.3-dev.1"
+        },
+        {
+          "name": "has-summary-section",
+          "description": "Body includes a ## Summary section with bullet points",
+          "type": "contains",
+          "value": "## Summary"
+        },
+        {
+          "name": "has-features-section",
+          "description": "Body includes a ## Features section for Zed support",
+          "type": "contains",
+          "value": "## Features"
+        },
+        {
+          "name": "has-bug-fixes-section",
+          "description": "Body includes a ## Bug Fixes section for the cache bug",
+          "type": "contains",
+          "value": "## Bug Fixes"
+        },
+        {
+          "name": "mentions-validate-filtered",
+          "description": "Technical detail about validate_filtered() pipeline is mentioned",
+          "type": "contains",
+          "value": "validate_filtered"
+        },
+        {
+          "name": "mentions-root-cause",
+          "description": "Bug fix section explains the root cause",
+          "type": "contains_any",
+          "value": ["Root cause", "root cause", "**Root"]
+        },
+        {
+          "name": "no-invented-changes",
+          "description": "Does not mention features not in the provided change list (e.g. no OpenCode, no Augment, no Mistral)",
+          "type": "not_contains_any",
+          "value": ["OpenCode", "Augment", "Mistral"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Draft the PR description for merging CrackingShells/Hatch:dev into CrackingShells/Hatch:main for the v0.8.3 stable release. It rolls up two dev PRs: #53 which added Zed editor MCP host support, and #54 which fixed a stale cache bug in `hatch mcp list` and updated the adding-mcp-hosts skill. No breaking changes.",
+      "expected_output": "A Type B (dev→main) PR body with [v0.8.3] in the title, an overview paragraph, feature sections cross-referencing (#53) and (#54), and no Breaking Changes section since there are none.",
+      "assertions": [
+        {
+          "name": "title-includes-version",
+          "description": "Title includes [v0.8.3]",
+          "type": "contains",
+          "value": "v0.8.3"
+        },
+        {
+          "name": "cross-references-pr-53",
+          "description": "References (#53) for the Zed feature",
+          "type": "contains",
+          "value": "#53"
+        },
+        {
+          "name": "cross-references-pr-54",
+          "description": "References (#54) for the bug fix",
+          "type": "contains",
+          "value": "#54"
+        },
+        {
+          "name": "no-breaking-changes-section",
+          "description": "No ## Breaking Changes section since there are none",
+          "type": "not_contains",
+          "value": "## Breaking Changes"
+        },
+        {
+          "name": "has-overview-or-features",
+          "description": "Has an Overview paragraph or Features section",
+          "type": "contains_any",
+          "value": ["## Overview", "## Features", "## Major"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Write the Discord announcement for v0.8.3-dev.1. Two things landed: Zed editor MCP host support (users can now manage Zed's MCP servers with hatch mcp just like any other host), and a fix for the stale cache issue in hatch mcp list when using --refresh. Cheerful tone.",
+      "expected_output": "A Discord dev announcement message (Sub-type D2 style since it's a subsequent dev) using the dark-bg Hatch custom emoji, ## header, ### subsections for each change, friendly closing, no installation command required since it's brief.",
+      "assertions": [
+        {
+          "name": "uses-hatch-custom-emoji",
+          "description": "Uses the correct custom Discord emoji (dark-bg variant for dev releases)",
+          "type": "contains",
+          "value": "<:hatch_icon_dark_bg_transparent:1412018750739451974>"
+        },
+        {
+          "name": "mentions-version",
+          "description": "Mentions v0.8.3-dev.1 or v0.8.3-dev in the header",
+          "type": "contains_any",
+          "value": ["v0.8.3-dev.1", "0.8.3-dev", "v0.8.3"]
+        },
+        {
+          "name": "mentions-zed",
+          "description": "Mentions Zed editor support",
+          "type": "contains",
+          "value": "Zed"
+        },
+        {
+          "name": "mentions-cache-fix",
+          "description": "Mentions the cache or --refresh fix",
+          "type": "contains_any",
+          "value": ["cache", "refresh", "--refresh"]
+        },
+        {
+          "name": "has-friendly-closing",
+          "description": "Has a friendly closing line (hatching emoji or similar)",
+          "type": "contains_any",
+          "value": ["hatching", "Hatchers", "🐣", "hatch", "<:hatchling"]
+        }
+      ],
+      "files": []
+    }
+  ]
+}
