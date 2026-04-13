@@ -9,8 +9,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      SKILL_NAME: committing-changes
     permissions:
       contents: write
       issues: write
