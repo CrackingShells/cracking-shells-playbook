@@ -1,13 +1,35 @@
-name: Release managing-roadmaps
+name: Release skills
 
 on:
   push:
     branches: [main]
-    paths: ["skills/managing-roadmaps/**"]
+    paths: ["skills/**"]
   workflow_dispatch:
 
 jobs:
-  build-rust-binaries:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      managing-roadmaps: ${{ steps.filter.outputs.managing-roadmaps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: last-tag
+        run: |
+          TAG=$(git tag --list 'managing-roadmaps@*' --sort=-version:refname | head -1)
+          echo "tag=${TAG:-$(git rev-list --max-parents=0 HEAD)}" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: ${{ steps.last-tag.outputs.tag }}
+          filters: |
+            managing-roadmaps:
+              - 'skills/managing-roadmaps/**'
+
+  build-managing-roadmaps-binaries:
+    needs: detect
+    if: needs.detect.outputs.managing-roadmaps == 'true'
     strategy:
       matrix:
         include:
@@ -38,7 +60,8 @@ jobs:
           path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
 
   release:
-    needs: build-rust-binaries
+    needs: [detect, build-managing-roadmaps-binaries]
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -49,15 +72,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - if: needs.detect.outputs.managing-roadmaps == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: dirtree-rdm-darwin
           path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
-      - uses: actions/download-artifact@v4
+      - if: needs.detect.outputs.managing-roadmaps == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: dirtree-rdm-linux
           path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
-      - uses: actions/download-artifact@v4
+      - if: needs.detect.outputs.managing-roadmaps == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: dirtree-rdm-windows
           path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
