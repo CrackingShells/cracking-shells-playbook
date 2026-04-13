@@ -453,4 +453,3 @@ fn cmd_ls(dir_path: &Path) -> Result<()> {
     }
     Ok(())
 }
-// test
