@@ -4,17 +4,17 @@ module.exports = {
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     ["@semantic-release/changelog", {
-      changelogFile: "skills/${name}/CHANGELOG.md"
+      changelogFile: "skills/${env.SKILL_NAME}/CHANGELOG.md"
     }],
     ["@semantic-release/exec", {
-      prepareCmd: "uv run tools/package_skill.py skills/${name} dist/"
+      prepareCmd: "uv run tools/package_skill.py skills/${env.SKILL_NAME} dist/"
     }],
     ["@semantic-release/github", {
-      assets: [{ path: "dist/${name}.skill", label: "${name} skill package" }]
+      assets: [{ path: "dist/${env.SKILL_NAME}.skill", label: "${env.SKILL_NAME} skill package" }]
     }],
     ["@semantic-release/git", {
-      assets: ["skills/${name}/package.json", "skills/${name}/CHANGELOG.md"],
-      message: "chore(release): ${name}@${nextRelease.version} [skip ci]"
+      assets: ["skills/${env.SKILL_NAME}/package.json", "skills/${env.SKILL_NAME}/CHANGELOG.md"],
+      message: "chore(release): ${env.SKILL_NAME}@${nextRelease.version} [skip ci]"
     }]
   ]
 }

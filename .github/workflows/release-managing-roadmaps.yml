@@ -40,6 +40,8 @@ jobs:
   release:
     needs: build-rust-binaries
     runs-on: ubuntu-latest
+    env:
+      SKILL_NAME: managing-roadmaps
     permissions:
       contents: write
       issues: write
