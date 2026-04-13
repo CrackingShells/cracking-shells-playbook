@@ -80,7 +80,10 @@ for entry in "${TARGETS[@]}"; do
     cargo build --release --target "$TARGET"
   fi
 
-  cp "target/$TARGET/release/dirtree-rdm" "$BIN_DIR/$OUT_NAME"
+  # Windows produces dirtree-rdm.exe; all other targets produce dirtree-rdm
+  SRC="target/$TARGET/release/dirtree-rdm"
+  [[ "$TARGET" == *windows* ]] && SRC="${SRC}.exe"
+  cp "$SRC" "$BIN_DIR/$OUT_NAME"
   echo "  → $BIN_DIR/$OUT_NAME"
 done
 
