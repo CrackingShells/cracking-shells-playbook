@@ -1,0 +1,70 @@
+name: Release managing-roadmaps
+
+on:
+  push:
+    branches: [main]
+    paths: ["skills/managing-roadmaps/**"]
+
+jobs:
+  build-rust-binaries:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            targets: "aarch64-apple-darwin x86_64-apple-darwin"
+            artifact: dirtree-rdm-darwin
+          - os: ubuntu-latest
+            targets: "x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu"
+            artifact: dirtree-rdm-linux
+          - os: windows-latest
+            targets: "x86_64-pc-windows-msvc"
+            artifact: dirtree-rdm-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cross (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cross
+      - name: Build binaries
+        run: |
+          cd skills/managing-roadmaps/scripts/dirtree-rdm
+          bash build.sh ${{ matrix.targets }}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
+
+  release:
+    needs: build-rust-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: dirtree-rdm-darwin
+          path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
+      - uses: actions/download-artifact@v4
+        with:
+          name: dirtree-rdm-linux
+          path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
+      - uses: actions/download-artifact@v4
+        with:
+          name: dirtree-rdm-windows
+          path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@v5
+      - run: npm ci
+      - run: npx multi-semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
