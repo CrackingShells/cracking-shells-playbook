@@ -1,4 +1,5 @@
 {
+  "name": "cracking-shells-playbook",
   "private": true,
   "workspaces": ["skills/*"],
   "devDependencies": {
