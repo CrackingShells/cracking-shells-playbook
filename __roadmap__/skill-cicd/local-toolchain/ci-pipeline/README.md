@@ -21,9 +21,9 @@ Publish versioned `.skill` artifacts to GitHub Releases automatically on every s
 ## Status
 ```mermaid
 graph TD
-    sr-config[Semantic Release Config]:::planned
-    workflows[Per-Skill GitHub Actions Workflows]:::planned
-    documentation[Documentation]:::planned
+    sr-config[Semantic Release Config]:::done
+    workflows[Per-Skill GitHub Actions Workflows]:::done
+    documentation[Documentation]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -34,9 +34,9 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `sr-config.md` | 📄 Leaf Task | ⬜ Planned |
-| `workflows.md` | 📄 Leaf Task | ⬜ Planned |
-| `documentation/` | 📁 Directory | ⬜ Planned |
+| `sr-config.md` | 📄 Leaf Task | ✅ Done |
+| `workflows.md` | 📄 Leaf Task | ✅ Done |
+| `documentation/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

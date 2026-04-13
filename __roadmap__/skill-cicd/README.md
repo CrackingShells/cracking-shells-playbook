@@ -27,11 +27,11 @@ Fully automate `.skill` packaging, versioning, and GitHub Release publication wi
 ## Status
 ```mermaid
 graph TD
-    vendor-tools[Vendor Package Skill Tools]:::planned
-    dist-cleanup[Remove dist/ from Git Tracking]:::planned
-    skill-manifests[Add Per-Skill package.json Markers]:::planned
-    windows-dispatch[Add Windows PowerShell Dispatch Wrapper]:::planned
-    local-toolchain[Local Toolchain]:::planned
+    vendor-tools[Vendor Package Skill Tools]:::done
+    dist-cleanup[Remove dist/ from Git Tracking]:::done
+    skill-manifests[Add Per-Skill package.json Markers]:::done
+    windows-dispatch[Add Windows PowerShell Dispatch Wrapper]:::done
+    local-toolchain[Local Toolchain]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -42,11 +42,11 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `vendor-tools.md` | 📄 Leaf Task | ⬜ Planned |
-| `dist-cleanup.md` | 📄 Leaf Task | ⬜ Planned |
-| `skill-manifests.md` | 📄 Leaf Task | ⬜ Planned |
-| `windows-dispatch.md` | 📄 Leaf Task | ⬜ Planned |
-| `local-toolchain/` | 📁 Directory | ⬜ Planned |
+| `vendor-tools.md` | 📄 Leaf Task | ✅ Done |
+| `dist-cleanup.md` | 📄 Leaf Task | ✅ Done |
+| `skill-manifests.md` | 📄 Leaf Task | ✅ Done |
+| `windows-dispatch.md` | 📄 Leaf Task | ✅ Done |
+| `local-toolchain/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

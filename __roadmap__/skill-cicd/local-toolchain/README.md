@@ -22,8 +22,8 @@ Wire together the vendored tools and Makefile into a working pre-commit hook tha
 ## Status
 ```mermaid
 graph TD
-    hook-and-makefile[Pre-commit Hook and Makefile]:::planned
-    ci-pipeline[CI Pipeline]:::planned
+    hook-and-makefile[Pre-commit Hook and Makefile]:::done
+    ci-pipeline[CI Pipeline]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -34,8 +34,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `hook-and-makefile.md` | 📄 Leaf Task | ⬜ Planned |
-| `ci-pipeline/` | 📁 Directory | ⬜ Planned |
+| `hook-and-makefile.md` | 📄 Leaf Task | ✅ Done |
+| `ci-pipeline/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
