@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths: ["skills/committing-changes/**"]
+  workflow_dispatch:
 
 jobs:
   release:
