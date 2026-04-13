@@ -1,2 +1,5 @@
 # External repo checkouts
 ro/
+
+# Packaged skill artifacts
+dist/
