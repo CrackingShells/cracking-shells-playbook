@@ -9,11 +9,79 @@ This playbook provides standardized guidelines, workflows, and best practices th
 ## Table of Contents
 
 - [Overview](#overview)
+- [Installation](#installation)
 - [Quick Start for LLM Agents](#quick-start-for-llm-agents)
 - [Instruction Categories](#instruction-categories)
 - [Instruction File Organization](#instruction-file-organization)
 - [How to Use This Playbook](#how-to-use-this-playbook)
 - [Contributing](#contributing)
+
+## Installation
+
+Skills are packaged as `.skill` files — zip archives that Claude Code extracts into its skills directory. Each release publishes one `.skill` file per skill as a GitHub Release asset.
+
+### Option A — Download from GitHub Releases (recommended)
+
+1. Go to the [Releases page](../../releases) and download `<skill-name>.skill` for the skill you want.
+2. Install it into Claude Code:
+
+   **User-level install** (skill available in every project):
+   ```bash
+   mkdir -p ~/.claude/skills
+   unzip <skill-name>.skill -d ~/.claude/skills/
+   ```
+
+   **Project-level install** (skill available only in the current repo):
+   ```bash
+   mkdir -p .claude/skills
+   unzip <skill-name>.skill -d .claude/skills/
+   ```
+
+3. Restart Claude Code (or reload the window) for the new skill to appear.
+
+   > **Claude Desktop**: `.skill` file installation via the Claude Desktop UI is not currently documented for this file format. Use the Claude Code CLI paths above, or check the [Claude Desktop settings](https://claude.ai) for any skill management options available in your version.
+
+### Option B — Clone and build locally
+
+Use this option if you want to modify a skill before installing, or if you need to build from the latest commit rather than a release.
+
+1. Clone the repository and install dev dependencies:
+   ```bash
+   git clone https://github.com/CrackingShells/cracking-shells-playbook.git
+   cd cracking-shells-playbook
+   make dev-setup
+   ```
+
+2. Package the skill you want:
+   ```bash
+   uv run tools/package_skill.py skills/<skill-name> dist/
+   ```
+
+3. Install the output `.skill` file using the same unzip steps from Option A:
+   ```bash
+   unzip dist/<skill-name>.skill -d ~/.claude/skills/
+   ```
+
+### Option C — Build Rust from source (managing-roadmaps only)
+
+The `managing-roadmaps` skill ships a pre-compiled Rust CLI (`dirtree-rdm`). Use this option only if no pre-compiled binary matches your platform (e.g., Linux arm64 without a matching release asset).
+
+1. Install Rust via [rustup](https://rustup.rs) if not already present.
+2. Build the binary for your local platform:
+   ```bash
+   cd skills/managing-roadmaps/scripts/dirtree-rdm
+   bash build.sh local
+   ```
+   This detects your OS and architecture automatically and writes the binary to `bin/`.
+3. Copy the binary to the expected name (e.g., `dirtree-rdm-darwin-arm64`) if the packager does not pick it up automatically.
+4. Return to the repo root and follow Option B to package and install:
+   ```bash
+   cd ../../../..
+   uv run tools/package_skill.py skills/managing-roadmaps dist/
+   unzip dist/managing-roadmaps.skill -d ~/.claude/skills/
+   ```
+
+---
 
 ## Overview
 

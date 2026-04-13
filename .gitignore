@@ -1,2 +1,9 @@
 # External repo checkouts
 ro/
+
+# Packaged skill artifacts
+dist/
+
+# Node.js
+node_modules/
+package-lock.json
