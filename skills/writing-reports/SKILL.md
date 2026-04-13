@@ -54,4 +54,3 @@ Prefer tables, diagrams, and short sections. Avoid enumerating exhaustive permut
 | Capturing knowledge transfer notes | [references/software-knowledge-transfer.md](references/software-knowledge-transfer.md) |
 
 > For complex multi-phase efforts surfaced during analysis, use the `managing-roadmaps` skill to produce a formal roadmap.
-
