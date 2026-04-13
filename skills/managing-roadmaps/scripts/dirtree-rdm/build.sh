@@ -1,19 +1,61 @@
 #!/usr/bin/env bash
-# Cross-compile dirtree-rdm for all supported targets.
+# Cross-compile dirtree-rdm for specified targets (or all targets if none given).
 # Run from the dirtree-rdm/ directory (where Cargo.toml lives).
-# Requires: cargo, cross (cargo install cross) or the target toolchains installed.
+#
+# Usage:
+#   bash build.sh                              # build all targets
+#   bash build.sh local                        # build only the local arch target
+#   bash build.sh <triple> [<triple>...]       # build specific targets
+#
+# Requires: cargo, cross (cargo install cross) for Linux cross-compilation.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
 mkdir -p "$BIN_DIR"
 
-TARGETS=(
+ALL_TARGETS=(
   "aarch64-apple-darwin:dirtree-rdm-darwin-arm64"
   "x86_64-apple-darwin:dirtree-rdm-darwin-x64"
   "x86_64-unknown-linux-gnu:dirtree-rdm-linux-x64"
   "aarch64-unknown-linux-gnu:dirtree-rdm-linux-arm64"
+  "x86_64-pc-windows-msvc:dirtree-rdm-windows-x64.exe"
 )
+
+# Resolve which targets to build
+if [[ $# -eq 0 ]]; then
+  TARGETS=("${ALL_TARGETS[@]}")
+elif [[ "$1" == "local" ]]; then
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+  case "$OS-$ARCH" in
+    Darwin-arm64)   TARGETS=("aarch64-apple-darwin:dirtree-rdm-darwin-arm64") ;;
+    Darwin-x86_64)  TARGETS=("x86_64-apple-darwin:dirtree-rdm-darwin-x64") ;;
+    Linux-x86_64)   TARGETS=("x86_64-unknown-linux-gnu:dirtree-rdm-linux-x64") ;;
+    Linux-aarch64)  TARGETS=("aarch64-unknown-linux-gnu:dirtree-rdm-linux-arm64") ;;
+    *)
+      echo "Unsupported local platform: $OS-$ARCH"
+      exit 1
+      ;;
+  esac
+else
+  # Build only the named triples; look up output names from ALL_TARGETS
+  TARGETS=()
+  for triple in "$@"; do
+    found=0
+    for entry in "${ALL_TARGETS[@]}"; do
+      if [[ "${entry%%:*}" == "$triple" ]]; then
+        TARGETS+=("$entry")
+        found=1
+        break
+      fi
+    done
+    if [[ $found -eq 0 ]]; then
+      echo "Unknown target triple: $triple"
+      exit 1
+    fi
+  done
+fi
 
 for entry in "${TARGETS[@]}"; do
   TARGET="${entry%%:*}"
@@ -43,5 +85,5 @@ for entry in "${TARGETS[@]}"; do
 done
 
 echo ""
-echo "All binaries written to $BIN_DIR/"
+echo "All done. Binaries in $BIN_DIR/"
 ls -lh "$BIN_DIR/"
