@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+
+# Warn if Rust source changed but don't recompile (too slow for a hook)
+if git diff --cached --name-only | grep -q '^skills/managing-roadmaps/scripts/dirtree-rdm/.*\.\(rs\|toml\)$'; then
+  echo "[hook] Rust source changed — run 'make build-rust-local' to rebuild the local binary before testing."
+fi
+
+# Repackage any skill with staged changes
+changed=$(git diff --cached --name-only | grep '^skills/' | cut -d/ -f2 | sort -u)
+
+for skill in $changed; do
+  if [ -d "skills/$skill" ]; then
+    uv run tools/package_skill.py "skills/$skill" dist/
+    echo "[hook] Built dist/$skill.skill"
+  fi
+done
