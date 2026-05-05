@@ -1,3 +1,10 @@
+# writing-reports [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.0.0...writing-reports@1.1.0) (2026-05-05)
+
+
+### Features
+
+* **writing-reports:** extend skill with four domain-agnostic report types ([3d9375c](https://github.com/CrackingShells/cracking-shells-playbook/commit/3d9375cd23b2916047a7925691ec147702cbfba3))
+
 # writing-reports 1.0.0 (2026-04-13)
 
 
