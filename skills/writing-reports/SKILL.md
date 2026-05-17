@@ -51,12 +51,23 @@ Prefer tables, diagrams, and short sections. Avoid enumerating exhaustive permut
 | Field | Format | Meaning |
 |:---|:---|:---|
 | `<topic>` | `snake_case` | Descriptive folder name for a work session |
-| `<round>` | `00`, `01`, `02` … | Increments per user prompt or work session |
+| `<round>` | `00`, `01`, `02` … | Two-digit counter, one per **batch** of report generation. All reports written in the same batch share the same value. The next batch uses `max(existing prefixes) + 1`; an empty topic starts at `00`. Do not increment per report. |
 | `<name>` | `snake_case` | Describes the report |
 | `<version>` | `v0`, `v1`, `v2` … | Increments per iteration of the same report |
 
-**Example**: `__reports__/auth_refactor/01-test_definition_v0.md`
+**Example**:
+
+```
+__reports__/<topic>/
+  00-architecture_v0.md       ┐
+  00-test_definition_v0.md    ├─ batch 0: three reports written together
+  00-open_question_v0.md      ┘
+  01-findings_v0.md              batch 1: one report
+  02-test_definition_v1.md       batch 2: revision of the v0 from batch 0
+```
+
+- **Revisions**: a report updated in a later batch is written as a new file at that batch's `<round>` with `<version>` bumped (e.g. `00-foo_v0.md` stays; revision is `02-foo_v1.md`). Never overwrite or rename the original.
 
 **Auto-create**: auto-create `__reports__/<topic>/` if it does not exist.
 
-**README convention**: each `__reports__/<topic>/` should include a `README.md` listing documents in chronological order, marking the latest versions, and providing a short status section.
+**README convention**: each `__reports__/<topic>/` should include a `README.md` listing documents grouped by `<round>` in chronological order, marking the latest versions, and providing a short status section.
