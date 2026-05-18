@@ -1,28 +1,95 @@
-/// Structural validator for README.md and leaf task .md files.
-///
-/// The grammar in grammar/readme.bnf and grammar/leaf.bnf is the canonical spec.
-/// This module implements a section-order parser that enforces every production
-/// in those grammars, reporting violations with file path + line number +
-/// expected production name.
+//! Structural validator for README.md and leaf task .md files.
+//!
+//! The grammar in grammar/readme.bnf and grammar/leaf.bnf is the canonical spec.
+//! This module implements a section-order parser that enforces every rule
+//! in those grammars and reports violations as a four-slot diagnostic
+//! (site description, optional `hint:`, `expected form:`, `rule:` pointer)
+//! via the `Rule` enum.
+
+use crate::render::{self, ColorStream};
+use crate::rule::Rule;
 use anyhow::{bail, Result};
 use regex::Regex;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct Violation {
+    /// 1-indexed line number, or 0 for file-level (header-region) issues.
     pub line: usize,
-    pub production: &'static str,
+    pub rule: Rule,
+    /// Short context tag (e.g. "Step 2", "got: \"## Steps\""). May be empty;
+    /// adds *context* about which file location triggered the rule, not why
+    /// the input didn't match.
     pub message: String,
+    /// Validator-asserted cause narrowing. Populated only by sites whose own
+    /// logic has narrowed beyond "regex didn't match" — currently just the
+    /// malformed-Consistency-Checks interception. Every other construction
+    /// site explicitly sets `None`. Discipline enforced by reading every
+    /// `Violation { ... }` literal, not at runtime.
+    pub hint: Option<&'static str>,
 }
 
 impl std::fmt::Display for Violation {
+    /// Plain-text rendering (no ANSI escapes), suitable for piped output and
+    /// `format!("{v}")` test assertions. TTY-aware coloring goes through
+    /// `format_violation` instead.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "line {}: [{}] {}",
-            self.line, self.production, self.message
-        )
+        write!(f, "{}", format_violation(self, false))
     }
+}
+
+/// Render a violation with ANSI semantic slots when `on` is true, plain
+/// otherwise. Single source of truth for the four-slot layout; the
+/// `Display` impl delegates here with `on=false`.
+///
+/// Slot mapping (when colored):
+///   - `<prefix>:` (e.g. `line 14:`, `header:`) → `render::error`
+///   - `hint:` / `expected form:` / `rule:` labels → `render::label`
+///   - rule name inside `<...>` → `render::rule_name`
+///   - the grammar-CLI command annotation → `render::dim`
+pub fn format_violation(v: &Violation, on: bool) -> String {
+    let diag = v.rule.diagnostic();
+    let prefix_raw = if v.line == 0 {
+        "header:".to_string()
+    } else {
+        format!("line {}:", v.line)
+    };
+    let prefix = render::error(&prefix_raw, on);
+    let rule_name = render::rule_name(&format!("<{}>", v.rule.name()), on);
+    let cli_hint = render::dim(
+        &format!(
+            "(run `dirtree-rdm grammar --rule {}` for grammar excerpt)",
+            v.rule.name()
+        ),
+        on,
+    );
+
+    let mut out = String::new();
+    // Header line: "<prefix> <message>". The space after the colon is always
+    // present (it's the body separator); the message itself may be empty.
+    out.push_str(&prefix);
+    out.push(' ');
+    out.push_str(&v.message);
+    out.push('\n');
+    if let Some(h) = v.hint {
+        out.push_str("         ");
+        out.push_str(&render::label("hint:", on));
+        out.push(' ');
+        out.push_str(h);
+        out.push('\n');
+    }
+    out.push_str("         ");
+    out.push_str(&render::label("expected form:", on));
+    out.push(' ');
+    out.push_str(&render::code(diag.expected_form, on));
+    out.push('\n');
+    out.push_str("         ");
+    out.push_str(&render::label("rule:", on));
+    out.push(' ');
+    out.push_str(&rule_name);
+    out.push_str("  ");
+    out.push_str(&cli_hint);
+    out
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -42,24 +109,23 @@ fn expect_heading(
     lines: &[&str],
     pos: &mut usize,
     pattern: &Regex,
-    production: &'static str,
+    rule: Rule,
 ) -> std::result::Result<(), Violation> {
     skip_blank(lines, pos);
     if *pos >= lines.len() {
         return Err(Violation {
             line: *pos + 1,
-            production,
-            message: format!("expected heading matching <{production}>, got EOF"),
+            rule,
+            message: "got EOF".to_string(),
+            hint: None,
         });
     }
     if !pattern.is_match(lines[*pos]) {
         return Err(Violation {
             line: *pos + 1,
-            production,
-            message: format!(
-                "expected heading matching <{production}>, got: {:?}",
-                lines[*pos]
-            ),
+            rule,
+            message: format!("got: {:?}", lines[*pos]),
+            hint: None,
         });
     }
     *pos += 1;
@@ -70,7 +136,7 @@ fn expect_one_or_more(
     lines: &[&str],
     pos: &mut usize,
     pattern: &Regex,
-    production: &'static str,
+    rule: Rule,
 ) -> std::result::Result<(), Violation> {
     skip_blank(lines, pos);
     let start = *pos;
@@ -85,8 +151,9 @@ fn expect_one_or_more(
         };
         return Err(Violation {
             line: *pos + 1,
-            production,
-            message: format!("expected one or more <{production}>, got: {got}"),
+            rule,
+            message: format!("got: {got}"),
+            hint: None,
         });
     }
     Ok(())
@@ -98,21 +165,22 @@ fn expect_table_section(
     pos: &mut usize,
     section_heading: &str,
     col_pattern: &Regex,
-    production: &'static str,
+    header_rule: Rule,
 ) -> std::result::Result<(), Violation> {
     // 1. section heading
     let h2_re = Regex::new(&format!("^{}$", regex::escape(section_heading))).unwrap();
-    expect_heading(lines, pos, &h2_re, production)?;
+    expect_heading(lines, pos, &h2_re, header_rule)?;
     // 2. pipe header row
     skip_blank(lines, pos);
     if *pos >= lines.len() || !col_pattern.is_match(lines[*pos]) {
         return Err(Violation {
             line: *pos + 1,
-            production,
+            rule: header_rule,
             message: format!(
-                "expected table column header row, got: {:?}",
+                "got: {:?}",
                 lines.get(*pos).unwrap_or(&"EOF")
             ),
+            hint: None,
         });
     }
     *pos += 1;
@@ -121,11 +189,12 @@ fn expect_table_section(
     if *pos >= lines.len() || !sep.is_match(lines[*pos]) {
         return Err(Violation {
             line: *pos + 1,
-            production: "table-separator",
+            rule: Rule::TableSeparator,
             message: format!(
-                "expected table separator row after column header, got: {:?}",
+                "got: {:?}",
                 lines.get(*pos).unwrap_or(&"EOF")
             ),
+            hint: None,
         });
     }
     *pos += 1;
@@ -162,7 +231,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^# .+"),
-        "h1-title"
+        Rule::H1Title
     ));
 
     // ## Context
@@ -170,13 +239,13 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^## Context$"),
-        "h2-context"
+        Rule::H2Context
     ));
     check!(expect_one_or_more(
         &lines,
         &mut pos,
         &re(r"^.+"),
-        "context-body"
+        Rule::ContextBody
     ));
 
     // ## Reference Documents (optional — skip if next heading differs)
@@ -190,7 +259,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
                 &lines,
                 &mut pos,
                 &ref_item,
-                "reference-item"
+                Rule::ReferenceItem
             ));
         } else {
             pos = saved;
@@ -202,14 +271,15 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^## Goal$"),
-        "h2-goal"
+        Rule::H2Goal
     ));
     skip_blank(&lines, &mut pos);
     if pos >= lines.len() || lines[pos].trim().is_empty() {
         violations.push(Violation {
             line: pos + 1,
-            production: "goal-body",
-            message: "expected one-line goal body".to_string(),
+            rule: Rule::GoalBody,
+            message: String::new(),
+            hint: None,
         });
     } else {
         pos += 1;
@@ -220,13 +290,13 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^## Pre-conditions$"),
-        "h2-preconditions"
+        Rule::H2Preconditions
     ));
     check!(expect_one_or_more(
         &lines,
         &mut pos,
         &re(r"^\- \[[ x]\] .+"),
-        "checkbox-item"
+        Rule::CheckboxItem
     ));
 
     // ## Success Gates
@@ -234,13 +304,13 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^## Success Gates$"),
-        "h2-success-gates"
+        Rule::H2SuccessGates
     ));
     check!(expect_one_or_more(
         &lines,
         &mut pos,
         &re(r"^\- [✅⬜] .+"),
-        "gate-item"
+        Rule::GateItem
     ));
 
     // ## Gotchas (optional)
@@ -253,7 +323,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
                 &lines,
                 &mut pos,
                 &re(r"^.+"),
-                "gotchas-body"
+                Rule::GotchasBody
             ));
         } else {
             pos = saved;
@@ -265,7 +335,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^## Status$"),
-        "h2-status"
+        Rule::H2Status
     ));
     check!(validate_mermaid_block(&lines, &mut pos));
 
@@ -275,7 +345,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &mut pos,
         "## Nodes",
         &re(r"^\| Node\s*\| Type\s*\| Status\s*\|$"),
-        "table-header-nodes"
+        Rule::TableHeaderNodes
     ));
     // Leaf rows end in .md; directory rows end in /  (enforced by BNF).
     let nodes_leaf_row = re(r"^\| `[a-z][a-z0-9_-]*\.md` \| 📄 Leaf Task \| (✅ Done|🔄 In Progress|⬜ Planned|🔵 Amendment|🚫 Blocked) \|$");
@@ -291,7 +361,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &mut pos,
         "## Amendment Log",
         &re(r"^\| ID\s*\| Date\s*\| Source\s*\| Nodes Added\s*\| Rationale\s*\|$"),
-        "table-header-amendment"
+        Rule::TableHeaderAmendment
     ));
     let amend_row = re(r"^\| A\d+ \| \d{4}-\d{2}-\d{2} \| .+ \| .+ \| .+ \|$");
     while pos < lines.len() && amend_row.is_match(lines[pos]) {
@@ -304,7 +374,7 @@ pub fn validate_readme_str(content: &str) -> Result<Vec<Violation>> {
         &mut pos,
         "## Progress",
         &re(r"^\| Node\s*\| Branch\s*\| Commits\s*\| Notes\s*\|$"),
-        "table-header-progress"
+        Rule::TableHeaderProgress
     ));
     let prog_row = re(r"^\| `[a-z][a-z0-9_./-]*` \| (task/[a-z0-9_-]+|--?-?) \| (\d+|--?-?) \| .* \|$");
     while pos < lines.len() && prog_row.is_match(lines[pos]) {
@@ -322,11 +392,12 @@ fn validate_mermaid_block(
     if *pos >= lines.len() || lines[*pos] != "```mermaid" {
         return Err(Violation {
             line: *pos + 1,
-            production: "mermaid-block",
+            rule: Rule::MermaidBlock,
             message: format!(
-                "expected ```mermaid fence, got: {:?}",
+                "got: {:?}",
                 lines.get(*pos).unwrap_or(&"EOF")
             ),
+            hint: None,
         });
     }
     *pos += 1;
@@ -335,11 +406,12 @@ fn validate_mermaid_block(
     if *pos >= lines.len() || lines[*pos] != "graph TD" {
         return Err(Violation {
             line: *pos + 1,
-            production: "mermaid-graph-decl",
+            rule: Rule::MermaidGraphDecl,
             message: format!(
-                "expected 'graph TD', got: {:?}",
+                "got: {:?}",
                 lines.get(*pos).unwrap_or(&"EOF")
             ),
+            hint: None,
         });
     }
     *pos += 1;
@@ -353,44 +425,44 @@ fn validate_mermaid_block(
         if edge.is_match(lines[*pos]) {
             return Err(Violation {
                 line: *pos + 1,
-                production: "mermaid-node-decl",
+                rule: Rule::MermaidNodeDecl,
                 message: format!(
-                    "sibling edges (-->) are forbidden; ordering comes from tree depth, not edges. Line: {:?}",
+                    "sibling edges (-->) are forbidden; got: {:?}",
                     lines[*pos]
                 ),
+                hint: None,
             });
         }
         if !node_decl.is_match(lines[*pos]) && !lines[*pos].trim().is_empty() {
             return Err(Violation {
                 line: *pos + 1,
-                production: "mermaid-node-decl",
-                message: format!(
-                    "invalid node declaration (expected `    id[Title]:::status`): {:?}",
-                    lines[*pos]
-                ),
+                rule: Rule::MermaidNodeDecl,
+                message: format!("got: {:?}", lines[*pos]),
+                hint: None,
             });
         }
         *pos += 1;
     }
 
     // 5 required classDef lines (order enforced)
-    let classdefs = [
-        ("classDef done", "mermaid-classdef-done", r"^    classDef done +fill:#166534,color:#bbf7d0$"),
-        ("classDef inprogress", "mermaid-classdef-inprogress", r"^    classDef inprogress +fill:#854d0e,color:#fef08a$"),
-        ("classDef planned", "mermaid-classdef-planned", r"^    classDef planned +fill:#374151,color:#e5e7eb$"),
-        ("classDef amendment", "mermaid-classdef-amendment", r"^    classDef amendment +fill:#1e3a5f,color:#bfdbfe$"),
-        ("classDef blocked", "mermaid-classdef-blocked", r"^    classDef blocked +fill:#7f1d1d,color:#fecaca$"),
+    let classdefs: [(Rule, &str); 5] = [
+        (Rule::MermaidClassdefDone, r"^    classDef done +fill:#166534,color:#bbf7d0$"),
+        (Rule::MermaidClassdefInprogress, r"^    classDef inprogress +fill:#854d0e,color:#fef08a$"),
+        (Rule::MermaidClassdefPlanned, r"^    classDef planned +fill:#374151,color:#e5e7eb$"),
+        (Rule::MermaidClassdefAmendment, r"^    classDef amendment +fill:#1e3a5f,color:#bfdbfe$"),
+        (Rule::MermaidClassdefBlocked, r"^    classDef blocked +fill:#7f1d1d,color:#fecaca$"),
     ];
-    for (name, production, pat) in classdefs {
+    for (rule, pat) in classdefs {
         let r = re(pat);
         if *pos >= lines.len() || !r.is_match(lines[*pos]) {
             return Err(Violation {
                 line: *pos + 1,
-                production,
+                rule,
                 message: format!(
-                    "expected `{name}` classDef line, got: {:?}",
+                    "got: {:?}",
                     lines.get(*pos).unwrap_or(&"EOF")
                 ),
+                hint: None,
             });
         }
         *pos += 1;
@@ -400,11 +472,12 @@ fn validate_mermaid_block(
     if *pos >= lines.len() || lines[*pos] != "```" {
         return Err(Violation {
             line: *pos + 1,
-            production: "mermaid-block",
+            rule: Rule::MermaidBlock,
             message: format!(
                 "expected closing ``` fence, got: {:?}",
                 lines.get(*pos).unwrap_or(&"EOF")
             ),
+            hint: None,
         });
     }
     *pos += 1;
@@ -440,7 +513,7 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
         &lines,
         &mut pos,
         &re(r"^# .+"),
-        "h1-title"
+        Rule::H1Title
     ));
 
     // Task header fields (order-insensitive, all 4 required)
@@ -488,21 +561,25 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
     }
 
     if !has_goal {
-        violations.push(Violation { line: 0, production: "field-goal", message: "missing **Goal**: field in task header".to_string() });
+        violations.push(Violation { line: 0, rule: Rule::FieldGoal, message: String::new(), hint: None });
     }
     if !has_precond {
-        violations.push(Violation { line: 0, production: "field-preconditions", message: "missing **Pre-conditions**: field in task header".to_string() });
+        violations.push(Violation { line: 0, rule: Rule::FieldPreconditions, message: String::new(), hint: None });
     }
     if !has_gates {
-        violations.push(Violation { line: 0, production: "field-success-gates", message: "missing **Success Gates**: field in task header".to_string() });
+        violations.push(Violation { line: 0, rule: Rule::FieldSuccessGates, message: String::new(), hint: None });
     }
     if !has_refs {
-        violations.push(Violation { line: 0, production: "field-references", message: "missing **References**: field in task header".to_string() });
+        violations.push(Violation { line: 0, rule: Rule::FieldReferences, message: String::new(), hint: None });
     }
 
     // Steps: 1-5, sequential numbering
     let commit_re = re(r"^\*\*Commit\*\*: `(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\([a-z][a-z0-9_-]*\): .+`$");
     let consistency_re = re(r"^\*\*Consistency Checks\*\*: .+\(expected: (PASS|FAIL)\)$");
+    // Loose match that catches lines starting with the field but malformed
+    // (most commonly: trailing content after `PASS)`/`FAIL)`, or wrong outcome word).
+    // Used to distinguish "malformed line present" from "field entirely absent".
+    let consistency_loose = re(r"^\*\*Consistency Checks\*\*:");
     let step_goal = re(r"^\*\*Goal\*\*: .+");
     let impl_logic = re(r"^\*\*Implementation Logic\*\*:");
     let deliverables = re(r"^\*\*Deliverables\*\*: .+");
@@ -526,10 +603,14 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
         if step_num != expected_step {
             violations.push(Violation {
                 line: pos + 1,
-                production: "step-heading",
+                rule: Rule::StepHeading,
                 message: format!("expected Step {expected_step}, got Step {step_num}"),
+                hint: None,
             });
         }
+        // Line of this step's heading — used as the anchor for any
+        // missing-field violations within the step.
+        let step_heading_line = pos + 1;
         pos += 1;
         expected_step += 1;
         step_count += 1;
@@ -540,6 +621,10 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
         let mut s_deliv = false;
         let mut s_consist = false;
         let mut s_commit = false;
+        // Track if we saw a malformed **Consistency Checks**: line — emit
+        // the more-specific rule violation in that case and treat the field
+        // as "present but malformed" rather than "missing entirely".
+        let mut consist_malformed = false;
 
         while pos < lines.len() && !step_heading.is_match(lines[pos]) {
             if lines[pos].trim().is_empty() { pos += 1; continue; }
@@ -553,34 +638,90 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
             }
             else if deliverables.is_match(lines[pos]) { s_deliv = true; pos += 1; }
             else if consistency_re.is_match(lines[pos]) { s_consist = true; pos += 1; }
+            else if consistency_loose.is_match(lines[pos]) {
+                // Line starts with `**Consistency Checks**:` but full regex
+                // doesn't match. The validator's own logic has narrowed the
+                // cause from "regex mismatch" to "trailing content after
+                // PASS)/FAIL)" — this is one of the (few) sites where a
+                // site-specific hint is justified.
+                violations.push(Violation {
+                    line: pos + 1,
+                    rule: Rule::StepFieldConsistency,
+                    message: format!("Step {step_count}, got: {:?}", lines[pos]),
+                    hint: Some("trailing content after `PASS)`/`FAIL)` is not permitted"),
+                });
+                s_consist = true;
+                consist_malformed = true;
+                pos += 1;
+            }
             else if commit_re.is_match(lines[pos]) { s_commit = true; pos += 1; }
             else { pos += 1; }
         }
 
         let sn = step_count;
-        if !s_goal    { violations.push(Violation { line: pos+1, production: "step-field-goal",        message: format!("Step {sn} missing **Goal**") }); }
-        if !s_impl    { violations.push(Violation { line: pos+1, production: "step-field-impl-logic",  message: format!("Step {sn} missing **Implementation Logic**") }); }
-        if !s_deliv   { violations.push(Violation { line: pos+1, production: "step-field-deliverables",message: format!("Step {sn} missing **Deliverables**") }); }
-        if !s_consist { violations.push(Violation { line: pos+1, production: "step-field-consistency", message: format!("Step {sn} missing **Consistency Checks**") }); }
-        if !s_commit  { violations.push(Violation { line: pos+1, production: "step-field-commit",      message: format!("Step {sn} missing **Commit**") }); }
+        // Use the step's heading line for missing-field violations rather
+        // than `pos` (which now points past the step) — that line is the
+        // anchor a reader can find in the file.
+        if !s_goal    { violations.push(Violation { line: step_heading_line, rule: Rule::StepFieldGoal,         message: format!("Step {sn}"), hint: None }); }
+        if !s_impl    { violations.push(Violation { line: step_heading_line, rule: Rule::StepFieldImplLogic,    message: format!("Step {sn}"), hint: None }); }
+        if !s_deliv   { violations.push(Violation { line: step_heading_line, rule: Rule::StepFieldDeliverables, message: format!("Step {sn}"), hint: None }); }
+        if !s_consist { violations.push(Violation { line: step_heading_line, rule: Rule::StepFieldConsistency,  message: format!("Step {sn}"), hint: None }); }
+        if !s_commit  { violations.push(Violation { line: step_heading_line, rule: Rule::StepFieldCommit,       message: format!("Step {sn}"), hint: None }); }
+        let _ = consist_malformed;
     }
 
     if step_count == 0 {
         violations.push(Violation {
             line: pos + 1,
-            production: "step",
+            rule: Rule::Step,
             message: "leaf task has no steps (minimum 1 required)".to_string(),
+            hint: None,
         });
     }
     if step_count > 5 {
         violations.push(Violation {
             line: pos + 1,
-            production: "step",
+            rule: Rule::Step,
             message: format!("leaf task has {step_count} steps (maximum 5 allowed)"),
+            hint: None,
         });
     }
 
     Ok(violations)
+}
+
+// ── public entry points ────────────────────────────────────────────────────
+
+/// Validate a file, auto-detecting type by name.
+pub fn validate_file(path: &Path) -> Result<Vec<Violation>> {
+    match path.file_name().and_then(|n| n.to_str()) {
+        Some("README.md") => validate_readme(path),
+        Some(name) if name.ends_with(".md") => validate_leaf(path),
+        _ => bail!("unsupported file type: {}", path.display()),
+    }
+}
+
+/// Validate and print results; return true if clean.
+///
+/// Each violation may render across multiple lines (three-layer diagnostic);
+/// every line is indented with two spaces so the output remains visually
+/// grouped under the per-file `FAIL` header.
+pub fn validate_and_report(path: &Path) -> Result<bool> {
+    let violations = validate_file(path)?;
+    if violations.is_empty() {
+        println!("OK  {}", path.display());
+        Ok(true)
+    } else {
+        // One color decision per file; reuse for every violation.
+        let on = render::should_color(ColorStream::Stderr);
+        eprintln!("{}  {}", render::error("FAIL", on), path.display());
+        for v in &violations {
+            for line in format_violation(v, on).lines() {
+                eprintln!("  {line}");
+            }
+        }
+        Ok(false)
+    }
 }
 
 // ── tests ──────────────────────────────────────────────────────────────────
@@ -670,30 +811,184 @@ mod tests {
             "multiple em-dash reference items should be valid; got: {violations:?}"
         );
     }
-}
 
-// ── public entry points ────────────────────────────────────────────────────
+    // ── Originating failure: trailing content after PASS)/FAIL) ───────────
 
-/// Validate a file, auto-detecting type by name.
-pub fn validate_file(path: &Path) -> Result<Vec<Violation>> {
-    match path.file_name().and_then(|n| n.to_str()) {
-        Some("README.md") => validate_readme(path),
-        Some(name) if name.ends_with(".md") => validate_leaf(path),
-        _ => bail!("unsupported file type: {}", path.display()),
+    #[test]
+    fn test_consistency_check_trailing_comment_is_flagged() {
+        let leaf = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: pytest (expected: FAIL) because not implemented yet
+**Commit**: `feat(core): add stub`
+";
+        let violations = validate_leaf_str(leaf).unwrap();
+        // Must produce a step-field-consistency violation with the malformed
+        // line context.
+        let trailing = violations
+            .iter()
+            .find(|v| v.rule == Rule::StepFieldConsistency && !v.message.is_empty())
+            .expect("expected a step-field-consistency violation for trailing content");
+        let rendered = format!("{trailing}");
+        assert!(
+            rendered.contains("expected form: **Consistency Checks**"),
+            "rendered violation must include the expected-form line; got:\n{rendered}"
+        );
+        // Trailing-content phrasing now travels on a dedicated `hint:` line,
+        // not folded into the header.
+        assert!(
+            rendered.contains("hint: trailing content after `PASS)`/`FAIL)`"),
+            "rendered violation must surface the trailing-content phrasing on a `hint:` line; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("dirtree-rdm grammar --rule step-field-consistency"),
+            "rendered violation must include the grammar CLI pointer; got:\n{rendered}"
+        );
+        // The decommissioned `what's wrong:` slot must NOT appear anywhere.
+        assert!(
+            !rendered.contains("what's wrong"),
+            "rendered violation must no longer carry a `what's wrong` line; got:\n{rendered}"
+        );
     }
-}
 
-/// Validate and print results; return true if clean.
-pub fn validate_and_report(path: &Path) -> Result<bool> {
-    let violations = validate_file(path)?;
-    if violations.is_empty() {
-        println!("OK  {}", path.display());
-        Ok(true)
-    } else {
-        eprintln!("FAIL  {}", path.display());
-        for v in &violations {
-            eprintln!("  {v}");
+    #[test]
+    fn test_consistency_check_well_formed_pass() {
+        let leaf = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+**Commit**: `feat(core): add stub`
+";
+        let violations = validate_leaf_str(leaf).unwrap();
+        assert!(
+            !violations.iter().any(|v| v.rule == Rule::StepFieldConsistency),
+            "well-formed consistency line should not produce a violation; got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_hint_only_set_by_consistency_interception() {
+        // The malformed-Consistency-Checks branch is the ONE site permitted
+        // to set `hint`. Every other violation must leave it `None`. This
+        // test pins both halves: a malformed consistency line produces a
+        // violation with `hint = Some(_)`, while every other violation in
+        // the same fixture (and a separate generic-mismatch fixture) leaves
+        // it `None`.
+
+        // Fixture A: trailing content on Consistency Checks triggers the
+        // interception path; every other rule passes; hint must be Some.
+        let leaf_trailing = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: pytest (expected: FAIL) because not implemented yet
+**Commit**: `feat(core): add stub`
+";
+        let vs = validate_leaf_str(leaf_trailing).unwrap();
+        let intercept = vs
+            .iter()
+            .find(|v| v.rule == Rule::StepFieldConsistency)
+            .expect("expected an interception violation");
+        assert!(
+            intercept.hint.is_some(),
+            "interception path must set hint; got hint=None"
+        );
+        assert!(
+            intercept.hint.unwrap().contains("trailing content after `PASS)`/`FAIL)`"),
+            "interception hint must name the trailing-content phrasing; got: {:?}",
+            intercept.hint
+        );
+
+        // Fixture B: missing-fields leaf produces several generic-mismatch
+        // violations; none of them may carry a hint.
+        let leaf_missing = "\
+# Test Leaf
+
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+";
+        let vs = validate_leaf_str(leaf_missing).unwrap();
+        assert!(
+            !vs.is_empty(),
+            "expected violations for missing-goal+no-steps fixture"
+        );
+        for v in &vs {
+            assert!(
+                v.hint.is_none(),
+                "generic-mismatch violation must not carry a hint; got rule={:?} hint={:?}",
+                v.rule,
+                v.hint
+            );
         }
-        Ok(false)
+    }
+
+    #[test]
+    fn test_header_violation_renders_as_header_prefix() {
+        // Missing Goal field at file level — uses line 0 sentinel.
+        let leaf = "\
+# Test Leaf
+
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+**Commit**: `feat(core): add stub`
+";
+        let violations = validate_leaf_str(leaf).unwrap();
+        let missing_goal = violations
+            .iter()
+            .find(|v| v.rule == Rule::FieldGoal)
+            .expect("expected a field-goal violation");
+        let rendered = format!("{missing_goal}");
+        assert!(
+            rendered.starts_with("header:"),
+            "file-level violation must render with `header:` prefix, not `line 0:`; got:\n{rendered}"
+        );
     }
 }
