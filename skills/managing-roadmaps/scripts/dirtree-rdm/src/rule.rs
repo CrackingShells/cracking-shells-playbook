@@ -1,13 +1,13 @@
-/// BNF rule identity + diagnostic data + grammar excerpt on a single enum.
-///
-/// One variant per BNF rule that the validator can emit as a violation.
-/// All three methods (`name`, `diagnostic`, `grammar_excerpt`) use exhaustive
-/// `match`, so adding a variant forces wiring every method — drift between rule
-/// identity and its diagnostic is a compile error, not a runtime bug.
-///
-/// The CLI subcommand `dirtree-rdm grammar` and the validator both consult this
-/// enum, so they cannot disagree about which rules exist or what their
-/// grammar/diagnostic say.
+//! BNF rule identity + diagnostic data + grammar excerpt on a single enum.
+//!
+//! One variant per BNF rule that the validator can emit as a violation.
+//! All three methods (`name`, `diagnostic`, `grammar_excerpt`) use exhaustive
+//! `match`, so adding a variant forces wiring every method — drift between rule
+//! identity and its diagnostic is a compile error, not a runtime bug.
+//!
+//! The CLI subcommand `dirtree-rdm grammar` and the validator both consult this
+//! enum, so they cannot disagree about which rules exist or what their
+//! grammar/diagnostic say.
 
 /// Concrete diagnostic data attached to a `Rule`.
 ///

@@ -649,6 +649,38 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
     Ok(violations)
 }
 
+// ── public entry points ────────────────────────────────────────────────────
+
+/// Validate a file, auto-detecting type by name.
+pub fn validate_file(path: &Path) -> Result<Vec<Violation>> {
+    match path.file_name().and_then(|n| n.to_str()) {
+        Some("README.md") => validate_readme(path),
+        Some(name) if name.ends_with(".md") => validate_leaf(path),
+        _ => bail!("unsupported file type: {}", path.display()),
+    }
+}
+
+/// Validate and print results; return true if clean.
+///
+/// Each violation may render across multiple lines (three-layer diagnostic);
+/// every line is indented with two spaces so the output remains visually
+/// grouped under the per-file `FAIL` header.
+pub fn validate_and_report(path: &Path) -> Result<bool> {
+    let violations = validate_file(path)?;
+    if violations.is_empty() {
+        println!("OK  {}", path.display());
+        Ok(true)
+    } else {
+        eprintln!("FAIL  {}", path.display());
+        for v in &violations {
+            for line in format!("{v}").lines() {
+                eprintln!("  {line}");
+            }
+        }
+        Ok(false)
+    }
+}
+
 // ── tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -908,37 +940,5 @@ add code
             rendered.starts_with("header:"),
             "file-level violation must render with `header:` prefix, not `line 0:`; got:\n{rendered}"
         );
-    }
-}
-
-// ── public entry points ────────────────────────────────────────────────────
-
-/// Validate a file, auto-detecting type by name.
-pub fn validate_file(path: &Path) -> Result<Vec<Violation>> {
-    match path.file_name().and_then(|n| n.to_str()) {
-        Some("README.md") => validate_readme(path),
-        Some(name) if name.ends_with(".md") => validate_leaf(path),
-        _ => bail!("unsupported file type: {}", path.display()),
-    }
-}
-
-/// Validate and print results; return true if clean.
-///
-/// Each violation may render across multiple lines (three-layer diagnostic);
-/// every line is indented with two spaces so the output remains visually
-/// grouped under the per-file `FAIL` header.
-pub fn validate_and_report(path: &Path) -> Result<bool> {
-    let violations = validate_file(path)?;
-    if violations.is_empty() {
-        println!("OK  {}", path.display());
-        Ok(true)
-    } else {
-        eprintln!("FAIL  {}", path.display());
-        for v in &violations {
-            for line in format!("{v}").lines() {
-                eprintln!("  {line}");
-            }
-        }
-        Ok(false)
     }
 }

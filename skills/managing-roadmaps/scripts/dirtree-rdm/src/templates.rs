@@ -1,4 +1,4 @@
-/// Scaffold templates for new README.md and leaf task .md files.
+//! Scaffold templates for new README.md and leaf task .md files.
 
 pub fn readme_template(title: &str) -> String {
     format!(

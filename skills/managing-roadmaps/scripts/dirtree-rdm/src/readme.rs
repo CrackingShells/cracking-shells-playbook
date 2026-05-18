@@ -320,6 +320,52 @@ fn report_violations_or_ok(path: &Path, violations: Vec<Violation>) -> Result<()
     }
 }
 
+// ── path utilities ─────────────────────────────────────────────────────────
+
+/// Given a node path, return (parent_dir, readme_path, node_id, fs_name, is_dir).
+pub fn parse_node_path(node_path: &Path) -> Result<(PathBuf, PathBuf, String, String, bool)> {
+    let is_dir = node_path.is_dir()
+        || node_path
+            .to_str()
+            .map(|s| s.ends_with('/'))
+            .unwrap_or(false);
+    let node_path = if is_dir {
+        // strip trailing slash for basename extraction
+        PathBuf::from(
+            node_path
+                .to_str()
+                .unwrap_or("")
+                .trim_end_matches('/'),
+        )
+    } else {
+        node_path.to_path_buf()
+    };
+
+    let parent = node_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("node path has no parent: {}", node_path.display()))?
+        .to_path_buf();
+    let readme = parent.join("README.md");
+
+    let basename = node_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("cannot determine basename of {}", node_path.display()))?;
+
+    let (node_id, fs_name) = if is_dir {
+        (basename.to_string(), basename.to_string())
+    } else {
+        let stem = node_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("cannot determine stem of {}", node_path.display()))?;
+        (stem.to_string(), basename.to_string())
+    };
+
+    validate_node_name(&node_id)?;
+    Ok((parent, readme, node_id, fs_name, is_dir))
+}
+
 // ── tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -432,50 +478,4 @@ mod tests {
             "Nodes table row should be updated; got:\n{written}"
         );
     }
-}
-
-// ── path utilities ─────────────────────────────────────────────────────────
-
-/// Given a node path, return (parent_dir, readme_path, node_id, fs_name, is_dir).
-pub fn parse_node_path(node_path: &Path) -> Result<(PathBuf, PathBuf, String, String, bool)> {
-    let is_dir = node_path.is_dir()
-        || node_path
-            .to_str()
-            .map(|s| s.ends_with('/'))
-            .unwrap_or(false);
-    let node_path = if is_dir {
-        // strip trailing slash for basename extraction
-        PathBuf::from(
-            node_path
-                .to_str()
-                .unwrap_or("")
-                .trim_end_matches('/'),
-        )
-    } else {
-        node_path.to_path_buf()
-    };
-
-    let parent = node_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("node path has no parent: {}", node_path.display()))?
-        .to_path_buf();
-    let readme = parent.join("README.md");
-
-    let basename = node_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| anyhow::anyhow!("cannot determine basename of {}", node_path.display()))?;
-
-    let (node_id, fs_name) = if is_dir {
-        (basename.to_string(), basename.to_string())
-    } else {
-        let stem = node_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow::anyhow!("cannot determine stem of {}", node_path.display()))?;
-        (stem.to_string(), basename.to_string())
-    };
-
-    validate_node_name(&node_id)?;
-    Ok((parent, readme, node_id, fs_name, is_dir))
 }
