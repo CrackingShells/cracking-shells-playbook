@@ -501,8 +501,6 @@ fn cmd_grammar_rule(name: &str) -> Result<()> {
             println!();
             println!("{}", r.grammar_excerpt());
             println!();
-            println!("# diagnostic");
-            println!("# what's wrong: {}", diag.what_phrasing);
             println!("# expected form: {}", diag.expected_form);
             Ok(())
         }
@@ -565,7 +563,6 @@ fn print_rule_summary(r: Rule) {
     let diag = r.diagnostic();
     println!("# rule: <{}>", r.name());
     println!("{}", r.grammar_excerpt());
-    println!("# what's wrong: {}", diag.what_phrasing);
     println!("# expected form: {}", diag.expected_form);
     println!();
 }

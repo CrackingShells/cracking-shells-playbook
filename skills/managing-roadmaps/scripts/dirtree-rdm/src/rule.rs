@@ -11,12 +11,12 @@
 
 /// Concrete diagnostic data attached to a `Rule`.
 ///
-/// `what_phrasing` is the user-vocabulary description of the violation, used
-/// when the per-site message is empty or insufficient. `expected_form` is a
-/// one-line positive example the receiver can imitate.
+/// `expected_form` is a one-line positive example the receiver can imitate.
+/// The validator only ever knows what the rule *requires*, not why a given
+/// input failed to match it; cause-narrowing belongs on `Violation.hint`,
+/// which only sites with site-specific evidence may populate.
 #[derive(Debug, Clone, Copy)]
 pub struct Diagnostic {
-    pub what_phrasing: &'static str,
     pub expected_form: &'static str,
 }
 
@@ -201,148 +201,113 @@ impl Rule {
         }
     }
 
-    /// User-vocabulary diagnostic + positive example for the three-layer
-    /// error output. Exhaustive — every variant must have a diagnostic.
+    /// Positive example for the rule, used in the violation render's
+    /// `expected form:` slot. Exhaustive — every variant must have one.
     pub fn diagnostic(&self) -> Diagnostic {
         match self {
             Rule::H1Title => Diagnostic {
-                what_phrasing: "first line must be an H1 heading",
                 expected_form: "# <Title>",
             },
             Rule::H2Context => Diagnostic {
-                what_phrasing: "section heading missing or out of order; expected `## Context`",
                 expected_form: "## Context",
             },
             Rule::H2Goal => Diagnostic {
-                what_phrasing: "section heading missing or out of order; expected `## Goal`",
                 expected_form: "## Goal",
             },
             Rule::H2Preconditions => Diagnostic {
-                what_phrasing: "section heading missing or out of order; expected `## Pre-conditions`",
                 expected_form: "## Pre-conditions",
             },
             Rule::H2SuccessGates => Diagnostic {
-                what_phrasing: "section heading missing or out of order; expected `## Success Gates`",
                 expected_form: "## Success Gates",
             },
             Rule::H2Status => Diagnostic {
-                what_phrasing: "section heading missing or out of order; expected `## Status`",
                 expected_form: "## Status",
             },
             Rule::ContextBody => Diagnostic {
-                what_phrasing: "Context section body is empty; at least one non-blank line is required",
                 expected_form: "<one or more non-blank lines under `## Context`>",
             },
             Rule::GoalBody => Diagnostic {
-                what_phrasing: "Goal section body must be a single non-blank line",
                 expected_form: "<single-line goal statement>",
             },
             Rule::ReferenceItem => Diagnostic {
-                what_phrasing: "reference item must use em dash (—, U+2014), a markdown link, and an `R\\d{2}` ID prefix",
                 expected_form: "- [R01 <Name>](<path>) — <one-line summary>",
             },
             Rule::GotchasBody => Diagnostic {
-                what_phrasing: "Gotchas section body is empty; at least one non-blank line is required",
                 expected_form: "<one or more non-blank lines under `## Gotchas`>",
             },
             Rule::MermaidBlock => Diagnostic {
-                what_phrasing: "Status section must contain exactly one fenced mermaid block bracketed by ```mermaid and ```",
                 expected_form: "```mermaid / graph TD / <node-decls> / classDef done … / … / ```",
             },
             Rule::MermaidGraphDecl => Diagnostic {
-                what_phrasing: "first line of the mermaid block must be `graph TD`",
                 expected_form: "graph TD",
             },
             Rule::MermaidNodeDecl => Diagnostic {
-                what_phrasing: "node declaration malformed; needs 4-space indent + `id[Title]:::status` (no `-->` edges between siblings)",
                 expected_form: "    n1[<Title>]:::planned   (status ∈ done|inprogress|planned|amendment|blocked)",
             },
             Rule::MermaidClassdefDone => Diagnostic {
-                what_phrasing: "`classDef done` line missing or hex colors don't match spec",
                 expected_form: "    classDef done       fill:#166534,color:#bbf7d0",
             },
             Rule::MermaidClassdefInprogress => Diagnostic {
-                what_phrasing: "`classDef inprogress` line missing or hex colors don't match spec",
                 expected_form: "    classDef inprogress fill:#854d0e,color:#fef08a",
             },
             Rule::MermaidClassdefPlanned => Diagnostic {
-                what_phrasing: "`classDef planned` line missing or hex colors don't match spec",
                 expected_form: "    classDef planned    fill:#374151,color:#e5e7eb",
             },
             Rule::MermaidClassdefAmendment => Diagnostic {
-                what_phrasing: "`classDef amendment` line missing or hex colors don't match spec",
                 expected_form: "    classDef amendment  fill:#1e3a5f,color:#bfdbfe",
             },
             Rule::MermaidClassdefBlocked => Diagnostic {
-                what_phrasing: "`classDef blocked` line missing or hex colors don't match spec",
                 expected_form: "    classDef blocked    fill:#7f1d1d,color:#fecaca",
             },
             Rule::TableHeaderNodes => Diagnostic {
-                what_phrasing: "Nodes table header malformed; needs three columns: Node, Type, Status",
                 expected_form: "| Node | Type | Status |",
             },
             Rule::TableHeaderAmendment => Diagnostic {
-                what_phrasing: "Amendment Log table header malformed; needs five columns: ID, Date, Source, Nodes Added, Rationale",
                 expected_form: "| ID | Date | Source | Nodes Added | Rationale |",
             },
             Rule::TableHeaderProgress => Diagnostic {
-                what_phrasing: "Progress table header malformed; needs four columns: Node, Branch, Commits, Notes",
                 expected_form: "| Node | Branch | Commits | Notes |",
             },
             Rule::TableSeparator => Diagnostic {
-                what_phrasing: "table separator row malformed; must contain only `-`, `|`, and optional `:` for alignment",
                 expected_form: "|:-----|:-----|:-------|",
             },
             Rule::CheckboxItem => Diagnostic {
-                what_phrasing: "precondition item must be a markdown checkbox; use `[ ]` for not-yet-satisfied and `[x]` once met",
                 expected_form: "- [ ] <precondition>   (initial; use `- [x] <precondition>` once satisfied)",
             },
             Rule::GateItem => Diagnostic {
-                what_phrasing: "success-gate item must start with ⬜ (gate not yet passed) or ✅ (gate passed)",
                 expected_form: "- ⬜ <gate description>   (initial; use `- ✅ <gate description>` once passed)",
             },
             Rule::FieldGoal => Diagnostic {
-                what_phrasing: "leaf-task header missing `**Goal**:` field",
                 expected_form: "**Goal**: <one-line statement of what this leaf accomplishes>",
             },
             Rule::FieldPreconditions => Diagnostic {
-                what_phrasing: "leaf-task header missing `**Pre-conditions**:` followed by checkbox items",
                 expected_form: "**Pre-conditions**: / - [ ] <precondition>   (use `- [x]` once satisfied)",
             },
             Rule::FieldSuccessGates => Diagnostic {
-                what_phrasing: "leaf-task header missing `**Success Gates**:` followed by gate items",
                 expected_form: "**Success Gates**: / - ⬜ <gate>   (use `- ✅` once passed)",
             },
             Rule::FieldReferences => Diagnostic {
-                what_phrasing: "leaf-task header missing `**References**:` field",
                 expected_form: "**References**: R01, R02",
             },
             Rule::StepHeading => Diagnostic {
-                what_phrasing: "step heading malformed or out of order; steps must be sequentially numbered 1..5",
                 expected_form: "## Step <N>: <step title>",
             },
             Rule::StepFieldGoal => Diagnostic {
-                what_phrasing: "step missing `**Goal**:` field",
                 expected_form: "**Goal**: <what this step achieves>",
             },
             Rule::StepFieldImplLogic => Diagnostic {
-                what_phrasing: "step missing `**Implementation Logic**:` block; header line followed by one or more non-blank lines",
                 expected_form: "**Implementation Logic**: / <one or more lines describing the core change>",
             },
             Rule::StepFieldDeliverables => Diagnostic {
-                what_phrasing: "step missing `**Deliverables**:` field",
                 expected_form: "**Deliverables**: <files/symbols this step produces>",
             },
             Rule::StepFieldConsistency => Diagnostic {
-                what_phrasing: "the `**Consistency Checks**:` line is missing or malformed — most commonly trailing content after `PASS)`/`FAIL)`. The expected outcome is a binary assertion; its rationale belongs in the step's role within the TDD sequence (paired with `**Implementation Logic**`), not in a trailing comment on this line.",
                 expected_form: "**Consistency Checks**: <command> (expected: PASS|FAIL)",
             },
             Rule::StepFieldCommit => Diagnostic {
-                what_phrasing: "step missing `**Commit**:` field, or the commit line is not Conventional-Commits-compliant with a scope",
                 expected_form: "**Commit**: `<type>(<scope>): <summary>`   (type ∈ feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)",
             },
             Rule::Step => Diagnostic {
-                what_phrasing: "leaf-task step count out of range; must contain between 1 and 5 steps numbered sequentially from 1",
                 expected_form: "(constraint: 1 ≤ step count ≤ 5; numbering starts at 1)",
             },
         }
@@ -520,7 +485,6 @@ mod tests {
         // accidentally wiring an empty string.
         for &rule in Rule::ALL {
             let d = rule.diagnostic();
-            assert!(!d.what_phrasing.is_empty(), "empty what_phrasing for {}", rule.name());
             assert!(!d.expected_form.is_empty(), "empty expected_form for {}", rule.name());
             assert!(!rule.grammar_excerpt().is_empty(), "empty grammar_excerpt for {}", rule.name());
         }

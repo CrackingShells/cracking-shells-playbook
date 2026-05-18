@@ -44,10 +44,8 @@ fn grammar_rule_known_name_prints_excerpt_and_diagnostic() {
     assert!(stdout.contains("<step-field-consistency> ::="), "missing BNF excerpt in:\n{stdout}");
     assert!(stdout.contains("source: leaf.bnf"), "missing source annotation in:\n{stdout}");
     assert!(stdout.contains("expected form:"), "missing expected-form line in:\n{stdout}");
-    assert!(
-        stdout.contains("trailing content after `PASS)`/`FAIL)`"),
-        "step-field-consistency diagnostic must surface the trailing-content phrasing; got:\n{stdout}"
-    );
+    // Trailing-content phrasing is a *validator-time* hint, not a property
+    // of the rule itself; the grammar inspector must not surface it.
 }
 
 #[test]
