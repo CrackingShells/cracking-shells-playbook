@@ -1,5 +1,6 @@
 mod grammar;
 mod readme;
+mod render;
 mod rule;
 mod templates;
 mod validate;
