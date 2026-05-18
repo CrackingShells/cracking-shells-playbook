@@ -1,3 +1,10 @@
+## writing-reports [1.1.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.0...writing-reports@1.1.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* **writing-reports:** make <round> a per-batch counter, not per-report ([32ba8b7](https://github.com/CrackingShells/cracking-shells-playbook/commit/32ba8b7d4c3342b24acd9052895d26b40323b617))
+
 # writing-reports [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.0.0...writing-reports@1.1.0) (2026-05-05)
 
 
