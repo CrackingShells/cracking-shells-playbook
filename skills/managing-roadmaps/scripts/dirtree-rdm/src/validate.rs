@@ -803,13 +803,20 @@ add code
             rendered.contains("expected form: **Consistency Checks**"),
             "rendered violation must include the expected-form line; got:\n{rendered}"
         );
+        // Trailing-content phrasing now travels on a dedicated `hint:` line,
+        // not folded into the header.
         assert!(
-            rendered.contains("trailing content after `PASS)`/`FAIL)`"),
-            "rendered violation must mention trailing-content phrasing; got:\n{rendered}"
+            rendered.contains("hint: trailing content after `PASS)`/`FAIL)`"),
+            "rendered violation must surface the trailing-content phrasing on a `hint:` line; got:\n{rendered}"
         );
         assert!(
             rendered.contains("dirtree-rdm grammar --rule step-field-consistency"),
             "rendered violation must include the grammar CLI pointer; got:\n{rendered}"
+        );
+        // The decommissioned `what's wrong:` slot must NOT appear anywhere.
+        assert!(
+            !rendered.contains("what's wrong"),
+            "rendered violation must no longer carry a `what's wrong` line; got:\n{rendered}"
         );
     }
 

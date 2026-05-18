@@ -38,14 +38,23 @@ fn grammar_list_groups_rules_by_source() {
 }
 
 #[test]
-fn grammar_rule_known_name_prints_excerpt_and_diagnostic() {
+fn grammar_rule_known_name_prints_excerpt_and_expected_form() {
     let (stdout, _stderr, code) = run(&["grammar", "--rule", "step-field-consistency"]);
     assert_eq!(code, 0, "known --rule should exit 0; stdout was:\n{stdout}");
     assert!(stdout.contains("<step-field-consistency> ::="), "missing BNF excerpt in:\n{stdout}");
     assert!(stdout.contains("source: leaf.bnf"), "missing source annotation in:\n{stdout}");
     assert!(stdout.contains("expected form:"), "missing expected-form line in:\n{stdout}");
-    // Trailing-content phrasing is a *validator-time* hint, not a property
-    // of the rule itself; the grammar inspector must not surface it.
+    // The decommissioned `# diagnostic` / `# what's wrong:` block must not
+    // reappear; the grammar inspector now carries only the BNF excerpt and
+    // the positive `expected form:` example.
+    assert!(
+        !stdout.contains("# diagnostic"),
+        "grammar inspector must not emit a `# diagnostic` section; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("what's wrong"),
+        "grammar inspector must not emit a `what's wrong` line; got:\n{stdout}"
+    );
 }
 
 #[test]

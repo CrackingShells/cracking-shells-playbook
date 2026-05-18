@@ -1,7 +1,7 @@
 //! Integration tests exercising representative validator failure modes
 //! end-to-end through the CLI. Each fixture is invalid in exactly one way,
-//! letting us assert on the rule-specific three-layer diagnostic shape
-//! (what's wrong / expected form / rule pointer).
+//! letting us assert on the rule-specific violation shape
+//! (site-description line, optional hint, expected form, rule pointer).
 //!
 //! Per-rule coverage of *every* BNF rule is enforced at compile time by the
 //! exhaustive `match` in `Rule::diagnostic`/`grammar_excerpt`, and at unit-test
@@ -51,14 +51,21 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 
-/// Common assertions: every violation in `output` must include all three
-/// layers — site description line, `expected form:`, and `rule:` pointer.
-fn assert_three_layer_shape(output: &str) {
+/// Common assertions: every violation in `output` must include the
+/// site-description line, the positive `expected form:` example, and the
+/// `rule:` pointer. The `hint:` line is optional — only the
+/// malformed-Consistency-Checks interception sets one.
+fn assert_violation_shape(output: &str) {
     assert!(output.contains("FAIL"), "expected FAIL header in:\n{output}");
     assert!(output.contains("expected form:"), "missing expected-form line in:\n{output}");
     assert!(
         output.contains("dirtree-rdm grammar --rule"),
         "missing CLI rule pointer in:\n{output}"
+    );
+    // The decommissioned `what's wrong:` slot must not reappear.
+    assert!(
+        !output.contains("what's wrong"),
+        "rendered output must no longer carry a `what's wrong` line; got:\n{output}"
     );
 }
 
@@ -86,10 +93,12 @@ add code
 ";
     let (output, code) = validate(leaf, "trailing.md");
     assert_ne!(code, 0, "should exit non-zero");
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
+    // The trailing-content phrasing now travels on a dedicated `hint:` line
+    // (the only validator path permitted to set one).
     assert!(
-        output.contains("trailing content after `PASS)`/`FAIL)`"),
-        "diagnostic must name the trailing-content failure mode; got:\n{output}"
+        output.contains("hint: trailing content after `PASS)`/`FAIL)`"),
+        "diagnostic must surface trailing-content phrasing on a `hint:` line; got:\n{output}"
     );
     assert!(
         output.contains("dirtree-rdm grammar --rule step-field-consistency"),
@@ -120,7 +129,7 @@ add code
 ";
     let (output, code) = validate(leaf, "missing-goal.md");
     assert_ne!(code, 0);
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
     assert!(
         output.contains("header: "),
         "file-level violation must use `header:` prefix; got:\n{output}"
@@ -181,7 +190,7 @@ graph TD
 ";
     let (output, code) = validate(readme, "README.md");
     assert_ne!(code, 0);
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
     assert!(
         output.contains("reference-item"),
         "violation must reference the reference-item rule; got:\n{output}"
@@ -232,7 +241,7 @@ graph TD
 ";
     let (output, code) = validate(readme, "README.md");
     assert_ne!(code, 0);
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
     assert!(
         output.contains("mermaid-classdef-done"),
         "violation must reference mermaid-classdef-done; got:\n{output}"
@@ -263,7 +272,7 @@ add code
 ";
     let (output, code) = validate(leaf, "out-of-order.md");
     assert_ne!(code, 0);
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
     assert!(
         output.contains("step-heading"),
         "violation must reference step-heading rule; got:\n{output}"
@@ -290,7 +299,7 @@ fn validator_flags_zero_steps() {
 ";
     let (output, code) = validate(leaf, "no-steps.md");
     assert_ne!(code, 0);
-    assert_three_layer_shape(&output);
+    assert_violation_shape(&output);
     assert!(
         output.contains("<step>"),
         "violation must reference the step rule; got:\n{output}"
