@@ -20,23 +20,39 @@ fn bin() -> &'static str {
 
 /// Run `dirtree-rdm validate <tempfile>` with the given content and return
 /// the (combined) output plus exit code. `name` controls the filename so
-/// README.md vs leaf-task code paths can both be exercised.
+/// README.md vs leaf-task code paths can both be exercised. The default
+/// run forces `NO_COLOR=1` so existing assertions stay ANSI-free.
 fn validate(content: &str, name: &str) -> (String, i32) {
+    validate_with_env(content, name, &[("NO_COLOR", "1")], &["CLICOLOR_FORCE"])
+}
+
+fn validate_with_env(
+    content: &str,
+    name: &str,
+    set: &[(&str, &str)],
+    unset: &[&str],
+) -> (String, i32) {
     let dir = tempdir();
     let path = dir.join(name);
     {
         let mut f = std::fs::File::create(&path).expect("create fixture");
         f.write_all(content.as_bytes()).expect("write fixture");
     }
-    let out = Command::new(bin())
-        .arg("validate")
-        .arg(&path)
-        .output()
-        .expect("spawn dirtree-rdm validate");
+    let mut cmd = Command::new(bin());
+    cmd.arg("validate").arg(&path);
+    for key in unset {
+        cmd.env_remove(key);
+    }
+    for (k, v) in set {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().expect("spawn dirtree-rdm validate");
     let mut combined = String::from_utf8_lossy(&out.stdout).into_owned();
     combined.push_str(&String::from_utf8_lossy(&out.stderr));
     (combined, out.status.code().unwrap_or(-1))
 }
+
+const ESC: &str = "\x1b[";
 
 fn tempdir() -> std::path::PathBuf {
     // Use a per-test subdirectory under the OS temp dir. Cleanup is best-effort
@@ -335,4 +351,59 @@ add code
     let (output, code) = validate(leaf, "good.md");
     assert_eq!(code, 0, "well-formed leaf must validate clean; got:\n{output}");
     assert!(output.starts_with("OK"), "expected OK header; got:\n{output}");
+}
+
+// ── 8. TTY-aware color rendering on the validator path ────────────────────
+
+const TRAILING_LEAF: &str = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: pytest (expected: FAIL) because not implemented yet
+**Commit**: `feat(core): add stub`
+";
+
+#[test]
+fn validator_emits_no_escapes_when_piped() {
+    // `validate()` already forces NO_COLOR=1 — confirm zero ANSI escapes
+    // reach the agent on the validator failure path.
+    let (output, code) = validate(TRAILING_LEAF, "trailing.md");
+    assert_ne!(code, 0);
+    assert!(
+        !output.contains(ESC),
+        "piped validator output must not contain ANSI escapes; got:\n{output}"
+    );
+}
+
+#[test]
+fn validator_emits_escapes_under_force_color() {
+    // CLICOLOR_FORCE=1 must produce at least one escape in the validator's
+    // stderr output (the FAIL header, the rule pointer, etc. are wrapped).
+    let (output, code) = validate_with_env(
+        TRAILING_LEAF,
+        "trailing.md",
+        &[("CLICOLOR_FORCE", "1"), ("TERM", "xterm-256color")],
+        &["NO_COLOR"],
+    );
+    assert_ne!(code, 0);
+    assert!(
+        output.contains(ESC),
+        "forced-color validator output must contain ANSI escapes; got:\n{output}"
+    );
+    // Hint phrasing must still be present (escapes wrap, they don't replace).
+    assert!(
+        output.contains("trailing content after `PASS)`/`FAIL)`"),
+        "forced-color output must still surface the trailing-content hint; got:\n{output}"
+    );
 }

@@ -12,9 +12,13 @@ fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_dirtree-rdm")
 }
 
+/// Run the binary with `NO_COLOR=1` in the env — emulates piped/non-TTY
+/// agent-facing output regardless of the harness's actual stdout TTY-ness.
 fn run(args: &[&str]) -> (String, String, i32) {
     let out = Command::new(bin())
         .args(args)
+        .env_remove("CLICOLOR_FORCE")
+        .env("NO_COLOR", "1")
         .output()
         .expect("failed to spawn dirtree-rdm");
     (
@@ -23,6 +27,25 @@ fn run(args: &[&str]) -> (String, String, i32) {
         out.status.code().unwrap_or(-1),
     )
 }
+
+/// Run the binary with `CLICOLOR_FORCE=1` — emulates an interactive TTY
+/// for tests that need to assert on ANSI escape presence.
+fn run_force_color(args: &[&str]) -> (String, String, i32) {
+    let out = Command::new(bin())
+        .args(args)
+        .env_remove("NO_COLOR")
+        .env("CLICOLOR_FORCE", "1")
+        .env("TERM", "xterm-256color")
+        .output()
+        .expect("failed to spawn dirtree-rdm");
+    (
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+        out.status.code().unwrap_or(-1),
+    )
+}
+
+const ESC: &str = "\x1b[";
 
 #[test]
 fn grammar_list_groups_rules_by_source() {
@@ -185,5 +208,99 @@ fn list_count_matches_rule_all_size() {
     assert!(
         rule_lines >= 30,
         "expected at least 30 rule entries in --list output, got {rule_lines}; output:\n{stdout}"
+    );
+}
+
+// ── TTY-aware color rendering ─────────────────────────────────────────────
+
+#[test]
+fn grammar_output_emits_no_escapes_when_piped() {
+    // NO_COLOR is on by default in run(); every grammar mode must produce
+    // ANSI-free output so agents can parse it.
+    for args in [
+        &["grammar", "--list"][..],
+        &["grammar", "--rule", "step-field-consistency"][..],
+        &["grammar", "--search", "consistency"][..],
+    ] {
+        let (stdout, _stderr, code) = run(args);
+        assert_eq!(code, 0, "args {args:?} should exit 0");
+        assert!(
+            !stdout.contains(ESC),
+            "piped output for {args:?} must not contain ANSI escapes; got:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn grammar_output_emits_escapes_under_force_color() {
+    // With CLICOLOR_FORCE=1, every grammar mode must emit at least one
+    // ANSI escape — the precedence rule forces color on even without a TTY.
+    for args in [
+        &["grammar", "--list"][..],
+        &["grammar", "--rule", "step-field-consistency"][..],
+        &["grammar", "--search", "consistency"][..],
+    ] {
+        let (stdout, _stderr, code) = run_force_color(args);
+        assert_eq!(code, 0, "args {args:?} should exit 0");
+        assert!(
+            stdout.contains(ESC),
+            "forced-color output for {args:?} must contain ANSI escapes; got:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn grammar_search_compact_layout_under_force_color() {
+    // `^step-` matches many rules. Under forced color, output should switch
+    // to the compact one-liner-per-rule layout: no `# rule:` heading line,
+    // each rule occupies a single output line.
+    let (stdout, _stderr, code) = run_force_color(&["grammar", "--search", "^step-", "-e"]);
+    assert_eq!(code, 0, "regex search should exit 0; got:\n{stdout}");
+    // Compact layout strips the "# rule:" / "# expected form:" comment
+    // headings entirely.
+    assert!(
+        !stdout.contains("# rule:"),
+        "compact layout must not emit `# rule:` headings; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("# expected form:"),
+        "compact layout must not emit `# expected form:` headings; got:\n{stdout}"
+    );
+    // Every step-* rule occupies exactly one non-blank line.
+    let step_lines: usize = stdout
+        .lines()
+        .filter(|l| l.contains("step-"))
+        .count();
+    assert!(
+        step_lines >= 6,
+        "expected one line per step-* rule (at least 6); got {step_lines} in:\n{stdout}"
+    );
+}
+
+#[test]
+fn grammar_search_single_match_keeps_full_card_under_force_color() {
+    // A single match keeps the full-card layout even with color on, so the
+    // user gets the BNF excerpt without an extra `--rule` round-trip.
+    let (stdout, _stderr, code) = run_force_color(&["grammar", "--search", "step-field-consistency"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("# rule:"),
+        "single-match search must keep the full card; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("# expected form:"),
+        "single-match search must include the expected-form line; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn grammar_search_piped_multi_match_keeps_full_card() {
+    // Piped output (NO_COLOR=1) always uses the full card layout regardless
+    // of match count — preserves agent-parsable structure.
+    let (stdout, _stderr, code) = run(&["grammar", "--search", "^step-", "-e"]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("# rule:"),
+        "piped multi-match search must keep the full card; got:\n{stdout}"
     );
 }

@@ -9,6 +9,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
+use crate::render::ColorStream;
 use crate::rule::{GrammarSource, Rule};
 
 // ── CLI surface ────────────────────────────────────────────────────────────
@@ -468,6 +469,7 @@ fn cmd_grammar(
 }
 
 fn cmd_grammar_list() -> Result<()> {
+    let on = render::should_color(ColorStream::Stdout);
     let mut readme_rules: Vec<&'static str> = Vec::new();
     let mut leaf_rules: Vec<&'static str> = Vec::new();
     let mut shared_rules: Vec<&'static str> = Vec::new();
@@ -478,31 +480,41 @@ fn cmd_grammar_list() -> Result<()> {
             GrammarSource::Shared => shared_rules.push(r.name()),
         }
     }
-    println!("# Shared (both grammars)");
-    for n in &shared_rules { println!("{n}"); }
+    println!("{}", render::dim("# Shared (both grammars)", on));
+    for n in &shared_rules { println!("{}", render::rule_name(n, on)); }
     println!();
-    println!("# readme.bnf");
-    for n in &readme_rules { println!("{n}"); }
+    println!("{}", render::dim("# readme.bnf", on));
+    for n in &readme_rules { println!("{}", render::rule_name(n, on)); }
     println!();
-    println!("# leaf.bnf");
-    for n in &leaf_rules { println!("{n}"); }
+    println!("{}", render::dim("# leaf.bnf", on));
+    for n in &leaf_rules { println!("{}", render::rule_name(n, on)); }
     Ok(())
 }
 
 fn cmd_grammar_rule(name: &str) -> Result<()> {
     match Rule::from_name(name) {
         Some(r) => {
+            let on = render::should_color(ColorStream::Stdout);
             let diag = r.diagnostic();
-            println!("# rule: <{}>", r.name());
-            println!("# source: {}", match r.source() {
+            let source = match r.source() {
                 GrammarSource::Readme => "readme.bnf",
                 GrammarSource::Leaf => "leaf.bnf",
                 GrammarSource::Shared => "shared (readme.bnf + leaf.bnf)",
-            });
+            };
+            println!(
+                "{} {}",
+                render::dim("# rule:", on),
+                render::rule_name(&format!("<{}>", r.name()), on),
+            );
+            println!("{} {}", render::dim("# source:", on), source);
             println!();
-            println!("{}", r.grammar_excerpt());
+            println!("{}", render::code(r.grammar_excerpt(), on));
             println!();
-            println!("# expected form: {}", diag.expected_form);
+            println!(
+                "{} {}",
+                render::label("# expected form:", on),
+                render::code(diag.expected_form, on),
+            );
             Ok(())
         }
         None => bail!(
@@ -512,6 +524,8 @@ fn cmd_grammar_rule(name: &str) -> Result<()> {
 }
 
 fn cmd_grammar_search(pattern: &str, use_regex: bool, limit: usize) -> Result<()> {
+    let on = render::should_color(ColorStream::Stdout);
+
     // Primary pass.
     let direct: Vec<Rule> = if use_regex {
         let re = regex::RegexBuilder::new(pattern)
@@ -532,8 +546,18 @@ fn cmd_grammar_search(pattern: &str, use_regex: bool, limit: usize) -> Result<()
     };
 
     if !direct.is_empty() {
-        for r in direct {
-            print_rule_summary(r);
+        // Compact one-liner per match only when color is on AND there's more
+        // than one match — the single-match case keeps the full card so the
+        // user has the BNF excerpt right there. Piped/non-color output
+        // always uses the full card to preserve agent-parsable structure.
+        if on && direct.len() > 1 {
+            for r in direct {
+                print_rule_compact(r, on);
+            }
+        } else {
+            for r in direct {
+                print_rule_summary(r, on);
+            }
         }
         return Ok(());
     }
@@ -547,8 +571,8 @@ fn cmd_grammar_search(pattern: &str, use_regex: bool, limit: usize) -> Result<()
             println!("no exact match for {pattern:?}; closest matches by term overlap:");
             println!();
             for (r, score) in scored {
-                println!("# match score: {score}");
-                print_rule_summary(r);
+                println!("{} {score}", render::dim("# match score:", on));
+                print_rule_summary(r, on);
             }
             return Ok(());
         }
@@ -560,12 +584,32 @@ fn cmd_grammar_search(pattern: &str, use_regex: bool, limit: usize) -> Result<()
     );
 }
 
-fn print_rule_summary(r: Rule) {
+/// Full card rendering: rule heading + BNF excerpt + expected form.
+fn print_rule_summary(r: Rule, on: bool) {
     let diag = r.diagnostic();
-    println!("# rule: <{}>", r.name());
-    println!("{}", r.grammar_excerpt());
-    println!("# expected form: {}", diag.expected_form);
+    println!(
+        "{} {}",
+        render::dim("# rule:", on),
+        render::rule_name(&format!("<{}>", r.name()), on),
+    );
+    println!("{}", render::code(r.grammar_excerpt(), on));
+    println!(
+        "{} {}",
+        render::label("# expected form:", on),
+        render::code(diag.expected_form, on),
+    );
     println!();
+}
+
+/// Compact rendering: single line per rule (name + expected form).
+/// Used only when color is on and the result set has more than one match.
+fn print_rule_compact(r: Rule, on: bool) {
+    let diag = r.diagnostic();
+    println!(
+        "{}  {}",
+        render::rule_name(&format!("<{}>", r.name()), on),
+        render::code(diag.expected_form, on),
+    );
 }
 
 // ── ls ─────────────────────────────────────────────────────────────────────

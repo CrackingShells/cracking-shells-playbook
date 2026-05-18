@@ -1,9 +1,12 @@
-/// Structural validator for README.md and leaf task .md files.
-///
-/// The grammar in grammar/readme.bnf and grammar/leaf.bnf is the canonical spec.
-/// This module implements a section-order parser that enforces every rule
-/// in those grammars and reports violations as three-layer diagnostics
-/// (what's wrong / expected form / rule pointer) via the `Rule` enum.
+//! Structural validator for README.md and leaf task .md files.
+//!
+//! The grammar in grammar/readme.bnf and grammar/leaf.bnf is the canonical spec.
+//! This module implements a section-order parser that enforces every rule
+//! in those grammars and reports violations as a four-slot diagnostic
+//! (site description, optional `hint:`, `expected form:`, `rule:` pointer)
+//! via the `Rule` enum.
+
+use crate::render::{self, ColorStream};
 use crate::rule::Rule;
 use anyhow::{bail, Result};
 use regex::Regex;
@@ -27,28 +30,66 @@ pub struct Violation {
 }
 
 impl std::fmt::Display for Violation {
+    /// Plain-text rendering (no ANSI escapes), suitable for piped output and
+    /// `format!("{v}")` test assertions. TTY-aware coloring goes through
+    /// `format_violation` instead.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let diag = self.rule.diagnostic();
-        let prefix = if self.line == 0 {
-            "header".to_string()
-        } else {
-            format!("line {}", self.line)
-        };
-        // Header line: "<prefix>: <message>" — the colon is always present
-        // (it's the prefix/body separator); the message may be empty when no
-        // site-specific context is available.
-        writeln!(f, "{prefix}: {}", self.message)?;
-        // Optional hint line.
-        if let Some(h) = self.hint {
-            writeln!(f, "         hint: {h}")?;
-        }
-        writeln!(f, "         expected form: {}", diag.expected_form)?;
-        write!(
-            f,
-            "         rule: <{name}>  (run `dirtree-rdm grammar --rule {name}` for grammar excerpt)",
-            name = self.rule.name(),
-        )
+        write!(f, "{}", format_violation(self, false))
     }
+}
+
+/// Render a violation with ANSI semantic slots when `on` is true, plain
+/// otherwise. Single source of truth for the four-slot layout; the
+/// `Display` impl delegates here with `on=false`.
+///
+/// Slot mapping (when colored):
+///   - `<prefix>:` (e.g. `line 14:`, `header:`) → `render::error`
+///   - `hint:` / `expected form:` / `rule:` labels → `render::label`
+///   - rule name inside `<...>` → `render::rule_name`
+///   - the grammar-CLI command annotation → `render::dim`
+pub fn format_violation(v: &Violation, on: bool) -> String {
+    let diag = v.rule.diagnostic();
+    let prefix_raw = if v.line == 0 {
+        "header:".to_string()
+    } else {
+        format!("line {}:", v.line)
+    };
+    let prefix = render::error(&prefix_raw, on);
+    let rule_name = render::rule_name(&format!("<{}>", v.rule.name()), on);
+    let cli_hint = render::dim(
+        &format!(
+            "(run `dirtree-rdm grammar --rule {}` for grammar excerpt)",
+            v.rule.name()
+        ),
+        on,
+    );
+
+    let mut out = String::new();
+    // Header line: "<prefix> <message>". The space after the colon is always
+    // present (it's the body separator); the message itself may be empty.
+    out.push_str(&prefix);
+    out.push(' ');
+    out.push_str(&v.message);
+    out.push('\n');
+    if let Some(h) = v.hint {
+        out.push_str("         ");
+        out.push_str(&render::label("hint:", on));
+        out.push(' ');
+        out.push_str(h);
+        out.push('\n');
+    }
+    out.push_str("         ");
+    out.push_str(&render::label("expected form:", on));
+    out.push(' ');
+    out.push_str(&render::code(diag.expected_form, on));
+    out.push('\n');
+    out.push_str("         ");
+    out.push_str(&render::label("rule:", on));
+    out.push(' ');
+    out.push_str(&rule_name);
+    out.push_str("  ");
+    out.push_str(&cli_hint);
+    out
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -671,9 +712,11 @@ pub fn validate_and_report(path: &Path) -> Result<bool> {
         println!("OK  {}", path.display());
         Ok(true)
     } else {
-        eprintln!("FAIL  {}", path.display());
+        // One color decision per file; reuse for every violation.
+        let on = render::should_color(ColorStream::Stderr);
+        eprintln!("{}  {}", render::error("FAIL", on), path.display());
         for v in &violations {
-            for line in format!("{v}").lines() {
+            for line in format_violation(v, on).lines() {
                 eprintln!("  {line}");
             }
         }
