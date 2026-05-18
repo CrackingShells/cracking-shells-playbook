@@ -1,11 +1,14 @@
 mod grammar;
 mod readme;
+mod rule;
 mod templates;
 mod validate;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
+
+use crate::rule::{GrammarSource, Rule};
 
 // ── CLI surface ────────────────────────────────────────────────────────────
 
@@ -79,11 +82,37 @@ enum Command {
         #[arg(default_value = ".")]
         dir_path: PathBuf,
     },
-    /// (Read-only) Print the BNF grammar for readme or leaf documents
+    /// (Read-only) Inspect the BNF grammar — list rules, fetch a single rule's
+    /// excerpt, or search rule names+bodies (literal substring by default).
+    ///
+    /// Pass positional `readme` or `leaf` to dump the entire BNF file
+    /// (backward-compat). Otherwise use one of `--list`, `--rule`, or `--search`.
     Grammar {
-        /// Which grammar to print: readme | leaf
-        #[arg(default_value = "readme")]
-        kind: String,
+        /// Backward-compat: which whole grammar to print (`readme` or `leaf`).
+        /// Ignored if any of --list / --rule / --search is supplied.
+        kind: Option<String>,
+
+        /// List every rule, grouped by source grammar file.
+        #[arg(long, conflicts_with_all = ["rule", "search"])]
+        list: bool,
+
+        /// Print the BNF excerpt for a single rule by kebab-case name.
+        #[arg(long, value_name = "RULE_NAME", conflicts_with_all = ["list", "search"])]
+        rule: Option<String>,
+
+        /// Search rule names + bodies. Default mode is case-insensitive
+        /// literal substring; pair with -e/--regex to use a Rust regex.
+        #[arg(long, value_name = "PATTERN", conflicts_with_all = ["list", "rule"])]
+        search: Option<String>,
+
+        /// Interpret --search pattern as a Rust regex instead of literal text.
+        #[arg(short = 'e', long, requires = "search")]
+        regex: bool,
+
+        /// Cap on fallback (token-overlap) match count when --search has no
+        /// literal/regex hits. Has no effect on direct matches.
+        #[arg(long, default_value_t = 5, requires = "search")]
+        limit: usize,
     },
 }
 
@@ -107,7 +136,8 @@ fn run(cli: Cli) -> Result<()> {
         Command::Insert { new_dir_path, wraps, title } => cmd_insert(&new_dir_path, &wraps, &title),
         Command::Validate { path }                 => cmd_validate(&path),
         Command::Ls { dir_path }                   => cmd_ls(&dir_path),
-        Command::Grammar { kind }                  => cmd_grammar(&kind),
+        Command::Grammar { kind, list, rule, search, regex, limit } =>
+            cmd_grammar(kind.as_deref(), list, rule.as_deref(), search.as_deref(), regex, limit),
     }
 }
 
@@ -406,12 +436,138 @@ fn cmd_validate(path: &Path) -> Result<()> {
 
 // ── grammar ────────────────────────────────────────────────────────────────
 
-fn cmd_grammar(kind: &str) -> Result<()> {
-    match kind {
-        "readme" => { print!("{}", grammar::README_BNF); Ok(()) }
-        "leaf"   => { print!("{}", grammar::LEAF_BNF);   Ok(()) }
-        other    => bail!("unknown grammar kind {other:?}; expected: readme | leaf"),
+fn cmd_grammar(
+    kind: Option<&str>,
+    list: bool,
+    rule_name: Option<&str>,
+    search: Option<&str>,
+    use_regex: bool,
+    limit: usize,
+) -> Result<()> {
+    if list {
+        return cmd_grammar_list();
     }
+    if let Some(name) = rule_name {
+        return cmd_grammar_rule(name);
+    }
+    if let Some(pattern) = search {
+        return cmd_grammar_search(pattern, use_regex, limit);
+    }
+    // Fall back to legacy positional dump.
+    match kind {
+        Some("readme") => { print!("{}", grammar::README_BNF); Ok(()) }
+        Some("leaf")   => { print!("{}", grammar::LEAF_BNF);   Ok(()) }
+        Some(other)    => bail!(
+            "unknown grammar kind {other:?}; expected: readme | leaf — or use --list / --rule <name> / --search <pattern>"
+        ),
+        None => bail!(
+            "no grammar mode selected; pass `readme` or `leaf` for the full BNF, or use --list / --rule <name> / --search <pattern>"
+        ),
+    }
+}
+
+fn cmd_grammar_list() -> Result<()> {
+    let mut readme_rules: Vec<&'static str> = Vec::new();
+    let mut leaf_rules: Vec<&'static str> = Vec::new();
+    let mut shared_rules: Vec<&'static str> = Vec::new();
+    for &r in Rule::ALL {
+        match r.source() {
+            GrammarSource::Readme => readme_rules.push(r.name()),
+            GrammarSource::Leaf => leaf_rules.push(r.name()),
+            GrammarSource::Shared => shared_rules.push(r.name()),
+        }
+    }
+    println!("# Shared (both grammars)");
+    for n in &shared_rules { println!("{n}"); }
+    println!();
+    println!("# readme.bnf");
+    for n in &readme_rules { println!("{n}"); }
+    println!();
+    println!("# leaf.bnf");
+    for n in &leaf_rules { println!("{n}"); }
+    Ok(())
+}
+
+fn cmd_grammar_rule(name: &str) -> Result<()> {
+    match Rule::from_name(name) {
+        Some(r) => {
+            let diag = r.diagnostic();
+            println!("# rule: <{}>", r.name());
+            println!("# source: {}", match r.source() {
+                GrammarSource::Readme => "readme.bnf",
+                GrammarSource::Leaf => "leaf.bnf",
+                GrammarSource::Shared => "shared (readme.bnf + leaf.bnf)",
+            });
+            println!();
+            println!("{}", r.grammar_excerpt());
+            println!();
+            println!("# diagnostic");
+            println!("# what's wrong: {}", diag.what_phrasing);
+            println!("# expected form: {}", diag.expected_form);
+            Ok(())
+        }
+        None => bail!(
+            "unknown rule {name:?}; try `dirtree-rdm grammar --list` to see all rule names, or `--search <pattern>` to look up by keyword"
+        ),
+    }
+}
+
+fn cmd_grammar_search(pattern: &str, use_regex: bool, limit: usize) -> Result<()> {
+    // Primary pass.
+    let direct: Vec<Rule> = if use_regex {
+        let re = regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()
+            .with_context(|| format!("invalid regex: {pattern:?}"))?;
+        Rule::ALL
+            .iter()
+            .copied()
+            .filter(|r| rule::rule_matches_regex(*r, &re))
+            .collect()
+    } else {
+        Rule::ALL
+            .iter()
+            .copied()
+            .filter(|r| rule::rule_matches_substring(*r, pattern))
+            .collect()
+    };
+
+    if !direct.is_empty() {
+        for r in direct {
+            print_rule_summary(r);
+        }
+        return Ok(());
+    }
+
+    // Fallback: token-overlap. Skip when user explicitly asked for regex
+    // (they know what they're doing, and a regex with no match means "really
+    // nothing" — fallback would be surprising).
+    if !use_regex {
+        let scored = rule::rules_by_token_overlap(pattern, limit);
+        if !scored.is_empty() {
+            println!("no exact match for {pattern:?}; closest matches by term overlap:");
+            println!();
+            for (r, score) in scored {
+                println!("# match score: {score}");
+                print_rule_summary(r);
+            }
+            return Ok(());
+        }
+    }
+
+    bail!(
+        "no rules match {pattern:?}{}; run `dirtree-rdm grammar --list` to see all rule names",
+        if use_regex { " (regex mode)" } else { "" }
+    );
+}
+
+fn print_rule_summary(r: Rule) {
+    let diag = r.diagnostic();
+    println!("# rule: <{}>", r.name());
+    println!("{}", r.grammar_excerpt());
+    println!("# what's wrong: {}", diag.what_phrasing);
+    println!("# expected form: {}", diag.expected_form);
+    println!();
 }
 
 // ── ls ─────────────────────────────────────────────────────────────────────
