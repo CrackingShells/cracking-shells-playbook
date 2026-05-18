@@ -1,3 +1,12 @@
+# managing-roadmaps [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.0.0...managing-roadmaps@1.1.0) (2026-05-18)
+
+
+### Features
+
+* **dirtree-rdm:** add TTY-aware color rendering module ([26cf2d5](https://github.com/CrackingShells/cracking-shells-playbook/commit/26cf2d51bd911609051145aae7f276ca9ee7f94c))
+* **dirtree-rdm:** make validator errors recoverable in one shot ([fc28ce0](https://github.com/CrackingShells/cracking-shells-playbook/commit/fc28ce0dc88ff507fe8746bf840e5577ae4ee2be))
+* **dirtree-rdm:** render TTY output with ANSI semantic slots and compact search ([d199600](https://github.com/CrackingShells/cracking-shells-playbook/commit/d199600a3552d79af1ad6308d63f24a7a41afdc3))
+
 # managing-roadmaps 1.0.0 (2026-04-13)
 
 
