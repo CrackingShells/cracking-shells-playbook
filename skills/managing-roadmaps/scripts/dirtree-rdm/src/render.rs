@@ -29,25 +29,45 @@ pub enum ColorStream {
 ///   4. `stream.is_terminal()` true → color
 ///   5. otherwise                   → no color
 pub fn should_color(stream: ColorStream) -> bool {
+    let is_terminal = match stream {
+        ColorStream::Stdout => std::io::stdout().is_terminal(),
+        ColorStream::Stderr => std::io::stderr().is_terminal(),
+    };
+    decide_color(
+        std::env::var_os("NO_COLOR").is_some(),
+        std::env::var("CLICOLOR_FORCE").ok().as_deref(),
+        std::env::var("TERM").ok().as_deref(),
+        is_terminal,
+    )
+}
+
+/// Pure precedence decision, separated from environment + TTY probing so it is
+/// testable without mutating process-global env vars (which races under the
+/// default parallel `cargo test` runner). `should_color` resolves the inputs;
+/// the real env/TTY/stream wiring is covered end-to-end by the subprocess
+/// integration tests. Precedence matches the `should_color` doc comment.
+fn decide_color(
+    no_color: bool,
+    clicolor_force: Option<&str>,
+    term: Option<&str>,
+    is_terminal: bool,
+) -> bool {
     // 1. NO_COLOR — any value disables color (https://no-color.org/).
-    if std::env::var_os("NO_COLOR").is_some() {
+    if no_color {
         return false;
     }
     // 2. CLICOLOR_FORCE=1 — force color on even when not a TTY.
-    if std::env::var("CLICOLOR_FORCE").as_deref() == Ok("1") {
+    if clicolor_force == Some("1") {
         return true;
     }
     // 3. TERM unset or dumb — no color.
-    match std::env::var("TERM").as_deref() {
-        Err(_) => return false,
-        Ok("dumb") => return false,
-        Ok(_) => {}
+    match term {
+        None => return false,
+        Some("dumb") => return false,
+        Some(_) => {}
     }
     // 4. TTY check.
-    match stream {
-        ColorStream::Stdout => std::io::stdout().is_terminal(),
-        ColorStream::Stderr => std::io::stderr().is_terminal(),
-    }
+    is_terminal
 }
 
 // ── semantic-slot helpers ──────────────────────────────────────────────────
@@ -89,82 +109,44 @@ pub fn dim(s: &str, on: bool) -> String {
 mod tests {
     use super::*;
 
-    /// Snapshot every env var the precedence rule consults, then restore
-    /// them on drop. `cargo test -- --test-threads=1` is required for the
-    /// `render::` tests so concurrent mutations from sibling tests cannot
-    /// race with the snapshot/restore.
-    struct EnvGuard {
-        no_color: Option<std::ffi::OsString>,
-        clicolor_force: Option<std::ffi::OsString>,
-        term: Option<std::ffi::OsString>,
-    }
-
-    impl EnvGuard {
-        fn capture() -> Self {
-            Self {
-                no_color: std::env::var_os("NO_COLOR"),
-                clicolor_force: std::env::var_os("CLICOLOR_FORCE"),
-                term: std::env::var_os("TERM"),
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            restore("NO_COLOR", self.no_color.as_deref());
-            restore("CLICOLOR_FORCE", self.clicolor_force.as_deref());
-            restore("TERM", self.term.as_deref());
-        }
-    }
-
-    fn restore(key: &str, val: Option<&std::ffi::OsStr>) {
-        match val {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-    }
+    // The env-precedence rule is tested through the pure `decide_color` helper
+    // with explicit inputs — no process-global env mutation, so these run
+    // safely under the default parallel `cargo test`. The real env/TTY/stream
+    // wiring of `should_color` is exercised end-to-end by the subprocess
+    // integration tests (each subprocess owns its own environment).
 
     #[test]
-    fn no_color_env_disables_color() {
-        let _g = EnvGuard::capture();
-        std::env::remove_var("CLICOLOR_FORCE");
-        std::env::set_var("NO_COLOR", "1");
-        std::env::set_var("TERM", "xterm-256color");
-        assert!(!should_color(ColorStream::Stdout));
-        assert!(!should_color(ColorStream::Stderr));
+    fn no_color_disables_color() {
+        // NO_COLOR set → never color, regardless of force/term/TTY.
+        assert!(!decide_color(true, Some("1"), Some("xterm-256color"), true));
     }
 
     #[test]
     fn clicolor_force_enables_color() {
-        let _g = EnvGuard::capture();
-        std::env::remove_var("NO_COLOR");
-        std::env::set_var("CLICOLOR_FORCE", "1");
-        // Even with TERM=dumb (which would otherwise disable), force wins
-        // for non-TTY streams under cargo test.
-        std::env::set_var("TERM", "dumb");
-        assert!(should_color(ColorStream::Stdout));
-        assert!(should_color(ColorStream::Stderr));
+        // CLICOLOR_FORCE=1 forces color even with TERM=dumb and no TTY.
+        assert!(decide_color(false, Some("1"), Some("dumb"), false));
+        // A non-"1" value does not force.
+        assert!(!decide_color(false, Some("0"), Some("dumb"), false));
     }
 
     #[test]
-    fn term_dumb_disables_color() {
-        let _g = EnvGuard::capture();
-        std::env::remove_var("NO_COLOR");
-        std::env::remove_var("CLICOLOR_FORCE");
-        std::env::set_var("TERM", "dumb");
-        assert!(!should_color(ColorStream::Stdout));
-        assert!(!should_color(ColorStream::Stderr));
+    fn term_dumb_or_unset_disables_color() {
+        assert!(!decide_color(false, None, Some("dumb"), true));
+        assert!(!decide_color(false, None, None, true));
     }
 
     #[test]
     fn no_color_beats_clicolor_force() {
         // NO_COLOR sits at the top of the precedence ladder; even with
         // CLICOLOR_FORCE=1 it must win.
-        let _g = EnvGuard::capture();
-        std::env::set_var("NO_COLOR", "1");
-        std::env::set_var("CLICOLOR_FORCE", "1");
-        std::env::set_var("TERM", "xterm-256color");
-        assert!(!should_color(ColorStream::Stdout));
+        assert!(!decide_color(true, Some("1"), Some("xterm-256color"), true));
+    }
+
+    #[test]
+    fn tty_decides_when_no_overrides() {
+        // No NO_COLOR / CLICOLOR_FORCE and a real TERM → fall through to TTY.
+        assert!(decide_color(false, None, Some("xterm-256color"), true));
+        assert!(!decide_color(false, None, Some("xterm-256color"), false));
     }
 
     #[test]
