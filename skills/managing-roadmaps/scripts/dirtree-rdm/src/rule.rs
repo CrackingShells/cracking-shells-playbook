@@ -296,7 +296,7 @@ impl Rule {
                 expected_form: "**Goal**: <what this step achieves>",
             },
             Rule::StepFieldImplLogic => Diagnostic {
-                expected_form: "**Implementation Logic**: / <one or more lines describing the core change>",
+                expected_form: "**Implementation Logic**: (header alone on its line) / <one or more body lines, blank lines allowed>",
             },
             Rule::StepFieldDeliverables => Diagnostic {
                 expected_form: "**Deliverables**: <files/symbols this step produces>",
@@ -379,7 +379,7 @@ impl Rule {
             }
             Rule::StepFieldGoal => "<step-field-goal> ::= /^\\*\\*Goal\\*\\*: .+/ EOL",
             Rule::StepFieldImplLogic => {
-                "<step-field-impl-logic> ::= /^\\*\\*Implementation Logic\\*\\*:$/ EOL\n                             <non-blank-line>+\n<non-blank-line> ::= /^.+/ EOL"
+                "<step-field-impl-logic> ::= /^\\*\\*Implementation Logic\\*\\*:$/ EOL\n                             <impl-body-line>+\n# CONSTRAINT: at least one <impl-body-line> must be non-blank (validator-enforced)\n<impl-body-line> ::= <non-blank-line> | BLANK_LINE\n<non-blank-line> ::= /^.+/ EOL"
             }
             Rule::StepFieldDeliverables => {
                 "<step-field-deliverables> ::= /^\\*\\*Deliverables\\*\\*: .+/ EOL"

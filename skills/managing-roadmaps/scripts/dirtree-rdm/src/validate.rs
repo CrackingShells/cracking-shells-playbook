@@ -581,7 +581,12 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
     // Used to distinguish "malformed line present" from "field entirely absent".
     let consistency_loose = re(r"^\*\*Consistency Checks\*\*:");
     let step_goal = re(r"^\*\*Goal\*\*: .+");
-    let impl_logic = re(r"^\*\*Implementation Logic\*\*:");
+    // Strict header: must stand alone on its line (the `$` anchor). A line that
+    // jams content after the colon fails this and is caught by `impl_logic_loose`.
+    let impl_logic = re(r"^\*\*Implementation Logic\*\*:$");
+    // Loose match — line starts with the field but carries inline content.
+    // Used to narrow "missing field" down to "header is not alone on its line".
+    let impl_logic_loose = re(r"^\*\*Implementation Logic\*\*:");
     let deliverables = re(r"^\*\*Deliverables\*\*: .+");
 
     let mut step_count = 0usize;
@@ -630,11 +635,31 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
             if lines[pos].trim().is_empty() { pos += 1; continue; }
             if step_goal.is_match(lines[pos]) { s_goal = true; pos += 1; }
             else if impl_logic.is_match(lines[pos]) {
-                s_impl = true; pos += 1;
-                // consume body lines
+                pos += 1;
+                // Consume body lines (blank lines permitted anywhere), tracking
+                // whether at least one non-blank body line is present. The field
+                // counts as satisfied only with a non-blank body (the BNF's
+                // `<impl-body-line>+` with the ≥1-non-blank constraint).
+                let mut has_body = false;
                 while pos < lines.len() && !lines[pos].starts_with("**") && !step_heading.is_match(lines[pos]) {
+                    if !lines[pos].trim().is_empty() { has_body = true; }
                     pos += 1;
                 }
+                if has_body { s_impl = true; }
+            }
+            else if impl_logic_loose.is_match(lines[pos]) {
+                // Header starts the line but carries inline content. The strict
+                // matcher above requires it to stand alone — narrow the cause
+                // here and emit a targeted hint rather than a generic
+                // "missing field". Treat as present-but-malformed.
+                violations.push(Violation {
+                    line: pos + 1,
+                    rule: Rule::StepFieldImplLogic,
+                    message: format!("Step {step_count}, got: {:?}", lines[pos]),
+                    hint: Some("the `**Implementation Logic**:` header must stand alone; put the body on the following line(s)"),
+                });
+                s_impl = true;
+                pos += 1;
             }
             else if deliverables.is_match(lines[pos]) { s_deliv = true; pos += 1; }
             else if consistency_re.is_match(lines[pos]) { s_consist = true; pos += 1; }

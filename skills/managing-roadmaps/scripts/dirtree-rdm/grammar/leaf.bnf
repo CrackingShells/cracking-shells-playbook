@@ -63,7 +63,10 @@
 <step-field-goal>        ::= /^\*\*Goal\*\*: .+/ EOL
 
 <step-field-impl-logic>  ::= /^\*\*Implementation Logic\*\*:$/ EOL
-                             <non-blank-line>+
+                             <impl-body-line>+
+# CONSTRAINT: at least one <impl-body-line> must be non-blank
+#             (enforced by validator logic, not expressible in BNF)
+# The header must stand alone on its line (the trailing $) — body starts below.
 
 <step-field-references>  ::= /^\*\*References\*\*: .+/ EOL
 
@@ -86,5 +89,7 @@
 # ---------------------------------------------------------------------------
 
 <h1-title>       ::= /^# .+/ EOL
+
+<impl-body-line> ::= <non-blank-line> | BLANK_LINE
 
 <non-blank-line> ::= /^.+/ EOL

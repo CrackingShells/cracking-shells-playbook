@@ -141,6 +141,8 @@ The Rust validator (`dirtree-rdm`) embeds these files at compile time and valida
 **Commit**: `<type>(<scope>): <description>`
 ```
 
+**Implementation Logic layout:** the `**Implementation Logic**:` header must stand alone on its line (no content after the colon); the body starts on the following line and may contain blank lines to separate paragraphs or lists. At least one non-blank body line is required.
+
 **Required step fields (5):** Goal, Implementation Logic, Deliverables, Consistency Checks, Commit
 
 **Commit type** must be one of: `feat fix test docs chore refactor style perf ci build revert`

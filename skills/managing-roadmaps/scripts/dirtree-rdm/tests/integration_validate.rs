@@ -407,3 +407,100 @@ fn validator_emits_escapes_under_force_color() {
         "forced-color output must still surface the trailing-content hint; got:\n{output}"
     );
 }
+
+// ── 9. Implementation Logic header must stand alone on its line ────────────
+
+#[test]
+fn validator_rejects_inline_content_on_impl_logic_header() {
+    // The header carries body content on the same line (Form B). The strict
+    // `$`-anchored matcher must reject this and surface a targeted hint rather
+    // than a generic missing-field message.
+    let leaf = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**: do the thing inline
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+**Commit**: `feat(core): add stub`
+";
+    let (output, code) = validate(leaf, "impl-inline.md");
+    assert_ne!(code, 0, "inline-content header must fail validation");
+    assert_violation_shape(&output);
+    assert!(
+        output.contains("dirtree-rdm grammar --rule step-field-impl-logic"),
+        "rule pointer must reference step-field-impl-logic; got:\n{output}"
+    );
+    assert!(
+        output.contains("header must stand alone"),
+        "diagnostic must surface the header-alone hint; got:\n{output}"
+    );
+}
+
+#[test]
+fn validator_accepts_impl_logic_body_with_interior_blank_line() {
+    // The canonical shape: header alone on its line, a structured body with an
+    // interior blank line separating a list from a concluding paragraph.
+    let leaf = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+1. First thing
+2. Second thing
+
+A concluding paragraph.
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+**Commit**: `feat(core): add stub`
+";
+    let (output, code) = validate(leaf, "impl-structured.md");
+    assert_eq!(code, 0, "structured body with blank line must validate clean; got:\n{output}");
+    assert!(output.starts_with("OK"), "expected OK header; got:\n{output}");
+}
+
+#[test]
+fn validator_rejects_empty_impl_logic_body() {
+    // Header alone but no body line before the next field — the ≥1-non-blank
+    // body constraint must fail.
+    let leaf = "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+**Commit**: `feat(core): add stub`
+";
+    let (output, code) = validate(leaf, "impl-empty.md");
+    assert_ne!(code, 0, "empty Implementation Logic body must fail validation");
+    assert_violation_shape(&output);
+    assert!(
+        output.contains("dirtree-rdm grammar --rule step-field-impl-logic"),
+        "rule pointer must reference step-field-impl-logic; got:\n{output}"
+    );
+}
