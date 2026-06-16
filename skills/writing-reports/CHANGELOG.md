@@ -1,3 +1,10 @@
+## writing-reports [1.1.2](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.1...writing-reports@1.1.2) (2026-06-16)
+
+
+### Bug Fixes
+
+* **writing-reports:** steer findings charts toward rendered, saved graphics ([8a72579](https://github.com/CrackingShells/cracking-shells-playbook/commit/8a725796ea1851c4417743f071e04fe64ba8e639))
+
 ## writing-reports [1.1.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.0...writing-reports@1.1.1) (2026-05-18)
 
 
