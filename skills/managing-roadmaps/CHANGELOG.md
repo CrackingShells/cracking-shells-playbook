@@ -1,3 +1,10 @@
+## managing-roadmaps [1.1.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.1.0...managing-roadmaps@1.1.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* **dirtree-rdm:** align Implementation Logic checks with canonical BNF ([e29dff6](https://github.com/CrackingShells/cracking-shells-playbook/commit/e29dff6cd00f35be65ed0d41c6d8eeb5105b5a14))
+
 # managing-roadmaps [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.0.0...managing-roadmaps@1.1.0) (2026-05-18)
 
 
