@@ -9,12 +9,15 @@ description: Guides the full git-discipline lifecycle for a project's commit his
 
 **WHY over WHAT.** A commit, a merge, and a worktree teardown are all historical records — each must be justified by the reasoning behind it, not merely by the mechanics of what changed. Every action this skill takes should leave behind a history a future reader can trust and reconstruct intent from.
 
-## Status
-
-This is a scaffold. The navigation table below is a placeholder and is finalized by the `skill_dispatcher` leaf once the reference files exist.
+**The commit vocabulary is derived, never assumed.** No reference in this skill hardcodes a `feat`/`fix`/`docs`/... type set as universal truth. The authorized types, scopes, and version-bump mapping always come from the project itself — its commitlint/semantic-release machinery if it has any, else its own history and `CONTRIBUTING` docs, else a setup interview run to stand one up deliberately. Every reference below shares this precedence; none of them substitutes a convention of its own.
 
 ## Navigation
 
-(placeholder — finalized by the `skill_dispatcher` leaf)
+Read the routed reference before acting — do not proceed from this table alone; the table only tells you where the rule set lives, not what it says.
 
-- `references/` — populated by later leaves in this roadmap
+| Situation | Reference |
+|---|---|
+| Author, stage, or commit a change (code or prose) | [`references/commit-authoring.md`](references/commit-authoring.md) |
+| Project has no commit conventions, changelog, or versioning set up yet | [`references/convention-setup.md`](references/convention-setup.md) |
+| Understand how versions and changelog entries derive from commits | [`references/semver-changelog.md`](references/semver-changelog.md) |
+| Merge, rebase, integrate a branch, or work in parallel/worktrees | [`references/branches.md`](references/branches.md) |
