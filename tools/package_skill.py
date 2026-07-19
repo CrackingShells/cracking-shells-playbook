@@ -9,8 +9,8 @@ Usage:
     python tools/package_skill.py <path/to/skill-folder> [output-directory]
 
 Example:
-    python tools/package_skill.py skills/committing-changes
-    python tools/package_skill.py skills/committing-changes ./dist
+    python tools/package_skill.py skills/writing-history
+    python tools/package_skill.py skills/writing-history ./dist
 """
 
 import fnmatch
@@ -116,8 +116,8 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python tools/package_skill.py <path/to/skill-folder> [output-directory]")
         print("\nExample:")
-        print("  python tools/package_skill.py skills/committing-changes")
-        print("  python tools/package_skill.py skills/committing-changes ./dist")
+        print("  python tools/package_skill.py skills/writing-history")
+        print("  python tools/package_skill.py skills/writing-history ./dist")
         sys.exit(1)
 
     skill_path = sys.argv[1]
