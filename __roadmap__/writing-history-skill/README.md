@@ -33,7 +33,7 @@ Ship `skills/writing-history/` (SKILL.md + four references + release quartet), a
 ## Status
 ```mermaid
 graph TD
-    scaffold_skill_package[Scaffold Skill Package]:::planned
+    scaffold_skill_package[Scaffold Skill Package]:::done
     author[Author Skill Content]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -45,7 +45,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `scaffold_skill_package.md` | 📄 Leaf Task | ⬜ Planned |
+| `scaffold_skill_package.md` | 📄 Leaf Task | ✅ Done |
 | `author/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
