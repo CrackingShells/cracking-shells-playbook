@@ -22,7 +22,7 @@ Finalize `SKILL.md` and archive `committing-changes`, leaving the skill ready fo
 ## Status
 ```mermaid
 graph TD
-    skill_dispatcher[Finalize SKILL.md Dispatcher]:::planned
+    skill_dispatcher[Finalize SKILL.md Dispatcher]:::done
     archive_committing_changes[Archive committing-changes]:::planned
     verify[Verification Gate]:::planned
     classDef done       fill:#166534,color:#bbf7d0
@@ -35,7 +35,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `skill_dispatcher.md` | 📄 Leaf Task | ⬜ Planned |
+| `skill_dispatcher.md` | 📄 Leaf Task | ✅ Done |
 | `archive_committing_changes.md` | 📄 Leaf Task | ⬜ Planned |
 | `verify/` | 📁 Directory | ⬜ Planned |
 
