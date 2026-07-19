@@ -26,10 +26,10 @@ Author the four reference files: `commit-authoring.md`, `convention-setup.md`, `
 ## Status
 ```mermaid
 graph TD
-    commit_authoring[Author commit-authoring Reference]:::planned
-    convention_setup[Author convention-setup Reference]:::planned
-    semver_changelog[Author semver-changelog Reference]:::planned
-    branches[Author branches Reference]:::planned
+    commit_authoring[Author commit-authoring Reference]:::done
+    convention_setup[Author convention-setup Reference]:::done
+    semver_changelog[Author semver-changelog Reference]:::done
+    branches[Author branches Reference]:::done
     assemble[Assemble & Retire]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -41,10 +41,10 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `commit_authoring.md` | 📄 Leaf Task | ⬜ Planned |
-| `convention_setup.md` | 📄 Leaf Task | ⬜ Planned |
-| `semver_changelog.md` | 📄 Leaf Task | ⬜ Planned |
-| `branches.md` | 📄 Leaf Task | ⬜ Planned |
+| `commit_authoring.md` | 📄 Leaf Task | ✅ Done |
+| `convention_setup.md` | 📄 Leaf Task | ✅ Done |
+| `semver_changelog.md` | 📄 Leaf Task | ✅ Done |
+| `branches.md` | 📄 Leaf Task | ✅ Done |
 | `assemble/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
