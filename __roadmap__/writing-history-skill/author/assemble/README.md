@@ -24,7 +24,7 @@ Finalize `SKILL.md` and archive `committing-changes`, leaving the skill ready fo
 graph TD
     skill_dispatcher[Finalize SKILL.md Dispatcher]:::done
     archive_committing_changes[Archive committing-changes]:::done
-    verify[Verification Gate]:::planned
+    verify[Verification Gate]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -37,7 +37,7 @@ graph TD
 |:-----|:-----|:-------|
 | `skill_dispatcher.md` | 📄 Leaf Task | ✅ Done |
 | `archive_committing_changes.md` | 📄 Leaf Task | ✅ Done |
-| `verify/` | 📁 Directory | ⬜ Planned |
+| `verify/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

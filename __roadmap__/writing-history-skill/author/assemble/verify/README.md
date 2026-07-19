@@ -22,7 +22,7 @@ Prove the refactor is release-ready and self-consistent end to end.
 ## Status
 ```mermaid
 graph TD
-    package_and_triggers[Verify Release, Packaging & Triggers]:::planned
+    package_and_triggers[Verify Release, Packaging & Triggers]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -33,7 +33,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `package_and_triggers.md` | 📄 Leaf Task | ⬜ Planned |
+| `package_and_triggers.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

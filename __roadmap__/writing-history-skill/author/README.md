@@ -30,7 +30,7 @@ graph TD
     convention_setup[Author convention-setup Reference]:::done
     semver_changelog[Author semver-changelog Reference]:::done
     branches[Author branches Reference]:::done
-    assemble[Assemble & Retire]:::planned
+    assemble[Assemble & Retire]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -45,7 +45,7 @@ graph TD
 | `convention_setup.md` | 📄 Leaf Task | ✅ Done |
 | `semver_changelog.md` | 📄 Leaf Task | ✅ Done |
 | `branches.md` | 📄 Leaf Task | ✅ Done |
-| `assemble/` | 📁 Directory | ⬜ Planned |
+| `assemble/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
