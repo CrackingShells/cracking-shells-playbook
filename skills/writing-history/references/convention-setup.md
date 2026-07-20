@@ -19,7 +19,7 @@ This flow is explicitly **tool-agnostic**. There is no one-size-fits-all stack: 
 
 Run this setup flow only when **both** of the following hold:
 
-1. **No machinery** — no commitlint config, no semantic-release config (`.releaserc*`, `release.config.*`), no equivalent tool config for the project's ecosystem (e.g. a Python `commitizen`/`bumpver` config, a `.changeset/` directory).
+1. **No machinery** — the project has no commit-linting or release-automation configuration of any kind. See [commit-authoring.md §2](commit-authoring.md#2-deriving-the-vocabulary) for how to recognize machinery when it exists; this flow only runs once that check comes back empty.
 2. **No established pattern to derive from** — `git log` shows no consistent conventional-style history, and there is no `CONTRIBUTING.md` (or equivalent) documenting a commit-message convention.
 
 This is the greenfield branch of the precedence described in [commit-authoring.md](commit-authoring.md): that reference always checks (a) project machinery, then (b) existing history/docs, before falling back to (c) this setup interview. If either (a) or (b) is present, do **not** run this flow — derive the vocabulary instead and skip straight to authoring commits.
