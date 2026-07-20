@@ -41,13 +41,12 @@ Record the answers; they are the justification the agent must cite when it propo
 
 ## Derive vs. Bootstrap
 
-Before bootstrapping anything, exhaust derivation first:
+"When to Run Setup" above is the single gate for this flow; do not re-check it here. This section covers only what to do if one of those two conditions turns out not to hold after all:
 
-1. Check for project machinery (commitlint/semantic-release configs or ecosystem equivalents). If found, that machinery **is** the authorized vocabulary — nothing to bootstrap; route back to [commit-authoring.md](commit-authoring.md).
-2. If no machinery, check `git log` history and any `CONTRIBUTING`/commit-guideline docs for an implicit, already-followed convention. If a consistent pattern exists, formalize it (write it down, optionally add lightweight tooling to enforce it) rather than replacing it with an unrelated stack.
-3. Only when both checks come back empty — truly greenfield — proceed to bootstrap a new convention from scratch using the interview answers above.
+- **Machinery turns up** — that machinery **is** the authorized vocabulary; nothing to bootstrap. Route back to [commit-authoring.md](commit-authoring.md) and derive from it directly.
+- **A derivable history/`CONTRIBUTING` pattern turns up** — formalize it (write it down, optionally add lightweight tooling to enforce it) rather than replacing it with an unrelated stack, then route back to [commit-authoring.md](commit-authoring.md).
 
-Bootstrapping over a derivable convention is a mistake: it discards working, human-legible history in favor of a stack that may not fit how the project already communicates change.
+Bootstrapping over an already-derivable convention is a mistake: it discards working, human-legible history in favor of a stack that may not fit how the project already communicates change.
 
 ## Recommending a Stack
 
