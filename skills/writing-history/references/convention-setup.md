@@ -19,7 +19,7 @@ This flow is explicitly **tool-agnostic**. There is no one-size-fits-all stack: 
 
 Run this setup flow only when **both** of the following hold:
 
-1. **No machinery** — no commitlint config, no semantic-release config (`.releaserc*`, `release.config.*`), no equivalent tool config for the project's ecosystem (e.g. a Python `commitizen`/`bumpver` config, a `.changeset/` directory).
+1. **No machinery** — the project has no commit-linting or release-automation configuration of any kind. See [commit-authoring.md §2](commit-authoring.md#2-deriving-the-vocabulary) for how to recognize machinery when it exists; this flow only runs once that check comes back empty.
 2. **No established pattern to derive from** — `git log` shows no consistent conventional-style history, and there is no `CONTRIBUTING.md` (or equivalent) documenting a commit-message convention.
 
 This is the greenfield branch of the precedence described in [commit-authoring.md](commit-authoring.md): that reference always checks (a) project machinery, then (b) existing history/docs, before falling back to (c) this setup interview. If either (a) or (b) is present, do **not** run this flow — derive the vocabulary instead and skip straight to authoring commits.
@@ -41,13 +41,12 @@ Record the answers; they are the justification the agent must cite when it propo
 
 ## Derive vs. Bootstrap
 
-Before bootstrapping anything, exhaust derivation first:
+"When to Run Setup" above is the single gate for this flow; do not re-check it here. This section covers only what to do if one of those two conditions turns out not to hold after all:
 
-1. Check for project machinery (commitlint/semantic-release configs or ecosystem equivalents). If found, that machinery **is** the authorized vocabulary — nothing to bootstrap; route back to [commit-authoring.md](commit-authoring.md).
-2. If no machinery, check `git log` history and any `CONTRIBUTING`/commit-guideline docs for an implicit, already-followed convention. If a consistent pattern exists, formalize it (write it down, optionally add lightweight tooling to enforce it) rather than replacing it with an unrelated stack.
-3. Only when both checks come back empty — truly greenfield — proceed to bootstrap a new convention from scratch using the interview answers above.
+- **Machinery turns up** — that machinery **is** the authorized vocabulary; nothing to bootstrap. Route back to [commit-authoring.md](commit-authoring.md) and derive from it directly.
+- **A derivable history/`CONTRIBUTING` pattern turns up** — formalize it (write it down, optionally add lightweight tooling to enforce it) rather than replacing it with an unrelated stack, then route back to [commit-authoring.md](commit-authoring.md).
 
-Bootstrapping over a derivable convention is a mistake: it discards working, human-legible history in favor of a stack that may not fit how the project already communicates change.
+Bootstrapping over an already-derivable convention is a mistake: it discards working, human-legible history in favor of a stack that may not fit how the project already communicates change.
 
 ## Recommending a Stack
 
@@ -89,3 +88,5 @@ A recommendation delivered for approval should include:
 - The bootstrap steps that will run once approved, so the user knows what's about to change.
 
 Only after explicit approval does the agent proceed through the Bootstrap Checklist and create configuration.
+
+Once that configuration exists, setup is done and authoring resumes as normal: the next commit is drafted against the newly-established vocabulary in [commit-authoring.md](commit-authoring.md), not held here.

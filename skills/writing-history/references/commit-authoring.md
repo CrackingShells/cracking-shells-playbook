@@ -328,11 +328,7 @@ Where a config defines lint rule *names*, treat those names as specific to that 
 
 ### If No Machinery Exists
 
-Fall back to the pre-write gate command from Section 1: measure and cap subject length yourself, since nothing else will.
-
-```bash
-printf '%s' "<drafted subject line>" | wc -c
-```
+Fall back to the pre-write gate command from [Section 1](#1-primary-directive): measure and cap subject length yourself, since nothing else will. Run that same `printf … | wc -c` command again here rather than inventing a new check.
 
 Compare the result against whatever limit applies — the project's own documented limit (Section 2b) if one exists, or the 72-character fallback (Section 1) if it doesn't. Note the absence of machinery to the user, but proceed with a defensible, derived vocabulary. Do not create a commitlint config or equivalent unless the user requests it — enforcement setup is the concern of [`convention-setup.md`](convention-setup.md), not of authoring an individual commit.
 
