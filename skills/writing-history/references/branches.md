@@ -2,13 +2,13 @@
 
 This document is the prescriptive contract for landing a finished branch (or worktree) onto its parent. It composes with [`commit-authoring.md`](commit-authoring.md)'s commit-authoring discipline: every commit replayed during integration must already satisfy that contract before it is allowed to merge.
 
-## Contents
+## Table of Contents
 
-- [Integration Contract](#integration-contract)
-- [Rationale](#rationale)
-- [Prohibitions](#prohibitions)
-- [Worktrees](#worktrees)
-- [Parallel Sibling Work](#parallel-sibling-work)
+1. [Integration Contract](#integration-contract)
+2. [Rationale](#rationale)
+3. [Prohibitions](#prohibitions)
+4. [Worktrees](#worktrees)
+5. [Parallel Sibling Work](#parallel-sibling-work)
 
 ---
 
