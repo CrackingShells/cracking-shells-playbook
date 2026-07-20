@@ -23,6 +23,8 @@ Landing a child branch onto its parent always follows the same four-step sequenc
    ```
    Replay the child's commits on top of whatever the parent looks like *right now* — not the parent as it was when the child branched off. If the parent has moved, the rebase is what catches the branch up.
 
+   `git fetch origin` only applies when the project has a remote configured. A local-only repository has nothing to fetch — skip that line and rebase directly against the local parent branch.
+
 2. **Resolve any conflicts.**
    Work through conflicts commit-by-commit as the rebase pauses on them. Do not resolve by bulk-diffing the two tips and squashing the result into one blob — each replayed commit should still make sense on its own after resolution.
 
@@ -73,7 +75,7 @@ When worktrees are used for parallel work, the same integration contract above s
 - **Path-scoping.** Each worktree lives at its own filesystem path so that parallel agents or contributors working in different worktrees never collide on working-directory state, even though they share the same underlying repository object store.
 - **Init/cleanup lifecycle.** A worktree is created for the duration of a unit of work (`git worktree add <path> <branch>`) and removed once that branch has been integrated and is no longer needed (`git worktree remove <path>`), analogous to how a branch itself is deleted once merged. Leaving stale worktrees around after integration is the worktree-equivalent of leaving stale merged branches around — harmless but untidy, and worth cleaning up.
 
-**Worktrees are optional, not mandated.** Some methodologies deliberately avoid them. For example, `/umbod`'s asymmetric two-agent flow — where one agent holds long-lived context and a second agent is dispatched for bounded verification work — does not need worktree isolation, because the two agents aren't editing in parallel against the same branch; they take turns. Read this section as "here's how, if you're reaching for worktrees," not "you must reach for worktrees."
+**Worktrees are optional, not mandated.** Some workflows deliberately avoid them — for example, a workflow where agents take turns working against a branch rather than editing it in parallel doesn't need worktree isolation, because there's no simultaneous parallel state to keep from colliding. Read this section as "here's how, if you're reaching for worktrees," not "you must reach for worktrees."
 
 ---
 

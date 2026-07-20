@@ -28,16 +28,30 @@ If setup is triggered mid-project (e.g. a repo has *some* history but no formal 
 
 ## Setup Interview
 
-Ask the user the following questions before recommending anything. Answers determine tooling — file types and materials drive tool choice, not the other way around. Do not skip ahead to a stack recommendation without these answers; a stack picked before understanding the repo is a guess, not a recommendation.
+Arrive as an assistant that has already looked, not a form the user must fill in blind. Investigate the repository first to form informed guesses, then ask the user only about what investigation couldn't settle, and confirm everything else — including the inferences — before recommending anything. Do not skip straight to a stack recommendation without going through both steps; a stack picked before understanding the repo is a guess, not a recommendation.
 
-1. **What does the repo hold?** Code, prose/documentation, data, research artifacts, configuration, or a mix? A pure-code repo, a scientific-writing repo, and a mixed monorepo warrant different vocabularies and different bump semantics (see [semver-changelog.md](semver-changelog.md) for how "minor" vs "patch" differs by material type).
-2. **Which languages and file types are involved?** (e.g. TypeScript/JavaScript, Python, Rust, Markdown/LaTeX, notebooks, YAML/JSON configs). This narrows the realistic tool candidates — a JS ecosystem has different native tooling than a pure-Python or pure-prose repo.
-3. **Is there existing tooling already?** Git hooks, CI workflows, a release process of any kind (even manual), package manifests. Existing tooling is often the path of least resistance to extend rather than replace.
-4. **Who commits?** Humans only, agents only, or both? Agent-authored commits change what's realistic to enforce locally (see the trade-off in "Bootstrap Checklist" below) — a repo committed to mostly by agents may prefer CI-only enforcement over a blocking local hook.
-5. **What release cadence matters, and does a changelog matter to stakeholders?** Continuous releases, periodic tagged releases, or no formal releases at all? Do external consumers (users, collaborators, reviewers) read a changelog, or is version history purely internal bookkeeping?
-6. **Is this repo a monorepo with independently-versioned units, or a single-versioned whole?** This determines whether the orchestrator needs path-scoped, per-unit release logic or a single top-level version.
+### Step 1: Investigate Before Asking
 
-Record the answers; they are the justification the agent must cite when it proposes a stack in the next step.
+Look at the repository directly before asking the user anything:
+
+- **Inspect present file types and languages** — walk the tree (or a representative sample) for source extensions, manifests (a package/project file, a build config), prose/documentation directories, data files, notebooks, and config files. This pre-answers *what the repo holds* and *which languages/file types are involved*.
+- **Inspect existing tooling** — look for git hooks, CI workflow files, any release process artifacts (even a hand-maintained `CHANGELOG.md`), and anything resembling commit-linting or release-automation config. This pre-answers *whether tooling already exists*.
+- **Inspect commit history and layout** — run `git log` for whatever pattern is already there (even an inconsistent one), and check whether the directory layout suggests several independently-releasable units (multiple manifests, a workspaces/packages-style layout) versus one coherent whole. This pre-answers *monorepo vs. single-versioned whole*, and often hints at release cadence (existing tags or release branches).
+
+Treat everything found this way as a working hypothesis, not a settled fact — a manifest can be vestigial, a hook can be disabled, a tag history can be stale. It is still worth bringing to the user as a proposed answer rather than omitting.
+
+### Step 2: Ask the Gaps, Confirm the Rest
+
+Cover all of the following topics — for each, state what investigation inferred (if anything) and ask the user to confirm or correct it; for whatever investigation left genuinely open, ask directly instead of guessing:
+
+1. **What does the repo hold?** Code, prose/documentation, data, research artifacts, configuration, or a mix? A pure-code repo, a scientific-writing repo, and a mixed monorepo warrant different vocabularies and different bump semantics (see [semver-changelog.md](semver-changelog.md) for how "minor" vs "patch" differs by material type). Usually inferable from Step 1 — present it as a proposed answer to confirm.
+2. **Which languages and file types are involved?** (e.g. TypeScript/JavaScript, Python, Rust, Markdown/LaTeX, notebooks, YAML/JSON configs). This narrows the realistic tool candidates. Usually inferable from Step 1 — confirm rather than re-ask from scratch.
+3. **Is there existing tooling already?** Git hooks, CI workflows, a release process of any kind (even manual), package manifests. Existing tooling is often the path of least resistance to extend rather than replace. Usually inferable from Step 1; flag anything ambiguous (a hook file present but seemingly disabled) for the user to clarify.
+4. **Who commits?** Humans only, agents only, or both? This is a preference/organizational fact investigation cannot reliably determine on its own (co-authorship trailers in history are a hint at best) — ask directly. Agent-authored commits change what's realistic to enforce locally (see the trade-off in "Bootstrap Checklist" below) — a repo committed to mostly by agents may prefer CI-only enforcement over a blocking local hook.
+5. **What release cadence matters, and does a changelog matter to stakeholders?** Continuous releases, periodic tagged releases, or no formal releases at all? Do external consumers (users, collaborators, reviewers) read a changelog, or is version history purely internal bookkeeping? This is a stakeholder preference, not something the repo's contents alone can settle — existing tags are a hint, not an answer, so ask directly and use any hint from Step 1 only to sanity-check the response.
+6. **Is this repo a monorepo with independently-versioned units, or a single-versioned whole?** This determines whether the orchestrator needs path-scoped, per-unit release logic or a single top-level version. Often inferable from Step 1's layout check — confirm rather than re-ask from scratch.
+
+Record the confirmed answers; they are the justification the agent must cite when it proposes a stack in the next step.
 
 ## Derive vs. Bootstrap
 
@@ -59,8 +73,6 @@ There is no single correct stack — the right choice is a function of the inter
 | Prose / scientific-writing / documentation repo | A lightweight, project-defined change-class vocabulary (e.g. `add`/`revise`/`fix`/`retract`) + a simple changelog generator, or even a hand-maintained `CHANGELOG.md` with a documented convention | Full semantic-release machinery is often overkill when there's no package to publish; the convention still needs to exist, just not the automation weight |
 | Mixed monorepo (code + docs + data) | Path-scoped, per-unit release orchestration (e.g. `multi-semantic-release`) with a shared commit-type vocabulary that spans material types | Keeps independent units on independent version lifecycles while sharing one vocabulary |
 | No release cadence / internal-only versioning | A documented commit convention alone, with changelog and version bumps deferred until they're actually needed | Avoids standing up machinery nobody consumes |
-
-One concrete, fully worked example of a stack instantiated for a monorepo of independently-versioned units — npm workspaces + Conventional Commits + `multi-semantic-release` + GitHub Actions + a content-type-specific packaging script — is documented in [R03 release pipeline architecture analysis](../../../__reports__/skill_cicd/01-architecture_analysis_v0.md). Treat it as *one* worked option to study and adapt, not as the mandated answer for every repo; its own "Generalization Template" section walks through what changes per content type.
 
 Whatever is proposed, state explicitly which interview answers led to it. "This repo is JS/TS with no existing tooling and wants an automated changelog for external users, so commitlint + semantic-release fits" is a recommendation; "use semantic-release" alone is not.
 
