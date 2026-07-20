@@ -26,7 +26,7 @@ Author the four reference files: `commit-authoring.md`, `convention-setup.md`, `
 ## Status
 ```mermaid
 graph TD
-    commit_authoring[Author commit-authoring Reference]:::done
+    commit_authoring[Author commit-authoring Reference]:::inprogress
     convention_setup[Author convention-setup Reference]:::done
     semver_changelog[Author semver-changelog Reference]:::done
     branches[Author branches Reference]:::done
@@ -41,7 +41,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `commit_authoring.md` | 📄 Leaf Task | ✅ Done |
+| `commit_authoring.md` | 📄 Leaf Task | 🔄 In Progress |
 | `convention_setup.md` | 📄 Leaf Task | ✅ Done |
 | `semver_changelog.md` | 📄 Leaf Task | ✅ Done |
 | `branches.md` | 📄 Leaf Task | ✅ Done |
