@@ -60,8 +60,6 @@ There is no single correct stack — the right choice is a function of the inter
 | Mixed monorepo (code + docs + data) | Path-scoped, per-unit release orchestration (e.g. `multi-semantic-release`) with a shared commit-type vocabulary that spans material types | Keeps independent units on independent version lifecycles while sharing one vocabulary |
 | No release cadence / internal-only versioning | A documented commit convention alone, with changelog and version bumps deferred until they're actually needed | Avoids standing up machinery nobody consumes |
 
-One concrete, fully worked example of a stack instantiated for a monorepo of independently-versioned units — npm workspaces + Conventional Commits + `multi-semantic-release` + GitHub Actions + a content-type-specific packaging script — is documented in [R03 release pipeline architecture analysis](../../../__reports__/skill_cicd/01-architecture_analysis_v0.md). Treat it as *one* worked option to study and adapt, not as the mandated answer for every repo; its own "Generalization Template" section walks through what changes per content type.
-
 Whatever is proposed, state explicitly which interview answers led to it. "This repo is JS/TS with no existing tooling and wants an automated changelog for external users, so commitlint + semantic-release fits" is a recommendation; "use semantic-release" alone is not.
 
 ## Bootstrap Checklist
