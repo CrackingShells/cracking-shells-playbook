@@ -23,6 +23,8 @@ Landing a child branch onto its parent always follows the same four-step sequenc
    ```
    Replay the child's commits on top of whatever the parent looks like *right now* — not the parent as it was when the child branched off. If the parent has moved, the rebase is what catches the branch up.
 
+   `git fetch origin` only applies when the project has a remote configured. A local-only repository has nothing to fetch — skip that line and rebase directly against the local parent branch.
+
 2. **Resolve any conflicts.**
    Work through conflicts commit-by-commit as the rebase pauses on them. Do not resolve by bulk-diffing the two tips and squashing the result into one blob — each replayed commit should still make sense on its own after resolution.
 
