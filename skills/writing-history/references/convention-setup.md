@@ -88,3 +88,5 @@ A recommendation delivered for approval should include:
 - The bootstrap steps that will run once approved, so the user knows what's about to change.
 
 Only after explicit approval does the agent proceed through the Bootstrap Checklist and create configuration.
+
+Once that configuration exists, setup is done and authoring resumes as normal: the next commit is drafted against the newly-established vocabulary in [commit-authoring.md](commit-authoring.md), not held here.
