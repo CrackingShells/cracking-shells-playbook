@@ -36,6 +36,8 @@ Landing a child branch onto its parent always follows the same four-step sequenc
    ```
    Only after re-verification passes. The `--no-ff` flag forces a merge commit even when a fast-forward is possible, so the branch leaves behind one explicit, labeled boundary in history.
 
+   That merge commit is the visible boundary this whole contract exists to leave behind — which means it is itself a historical record, and the skill's Primary Directive (WHY over WHAT, see [commit-authoring.md](commit-authoring.md)) applies to it exactly as it applies to any other commit. Do not accept the auto-generated `Merge branch '<child>' into <parent>` message as-is: name the unit of work being integrated (the feature, fix, or leaf task the branch represents) and, if the project applies its derived commit-message convention to merge commits, write the message in that vocabulary. This is a description of the expectation, not a fixed template — a rigid `type(scope):` shape is not mandated for merge commits, only a message that lets a future reader understand what landed and why, without re-reading every replayed commit.
+
 This sequence — rebase, resolve, re-verify, `--no-ff` merge — is the whole contract. Skipping the re-verify step because "the rebase applied cleanly" is the most common shortcut taken and the most common source of regressions that slip through.
 
 ---
