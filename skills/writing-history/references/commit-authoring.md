@@ -8,11 +8,12 @@ Complete rule set for authoring a single commit message. Read this file before d
 2. [Deriving the Vocabulary](#2-deriving-the-vocabulary)
 3. [Scope Naming: Explicit Topic Identification](#3-scope-naming-explicit-topic-identification)
 4. [Scope Consistency and Development Narrative](#4-scope-consistency-and-development-narrative)
-5. [History-Aware Style Matching](#5-history-aware-style-matching)
-6. [Sensitive-File Advisory](#6-sensitive-file-advisory)
-7. [Dirty-File Separation](#7-dirty-file-separation)
-8. [Validation](#8-validation)
-9. [Examples](#9-examples)
+5. [Body and Footer Guidance](#5-body-and-footer-guidance)
+6. [History-Aware Style Matching](#6-history-aware-style-matching)
+7. [Sensitive-File Advisory](#7-sensitive-file-advisory)
+8. [Dirty-File Separation](#8-dirty-file-separation)
+9. [Validation](#9-validation)
+10. [Examples](#10-examples)
 
 ---
 
@@ -34,15 +35,25 @@ type(scope): description
 
 **Rules:**
 - `scope` is **mandatory** — never omit it
-- `description`: imperative mood, lowercase, ≤72 chars, WHY-focused
 - Blank line between subject and body; blank line between body and footers
 
-### Subject Line Rules
+### Subject Line Rules Are a Fallback, Not a Law
 
+The rules below (length, case, mood) apply **only when the project's own machinery or documentation defines none of its own** (see Section 2). If a commitlint config sets `subject-max-length` to 100, or a `CONTRIBUTING.md` says descriptions may run to a full sentence, that project's rule wins. These fallback rules exist purely so an agent has *something* defensible to apply when nothing project-specific has been found — not because 72 characters or lowercase is universally correct.
+
+Fallback rules, used only absent any project-specific rule:
 - Imperative mood: "add", "fix", "remove" — not "added", "fixes", "removing"
 - Lowercase after the colon
 - No trailing period
 - ≤72 characters total
+
+**Gate command** — before committing, run this against the drafted subject to check it against whichever length limit applies (the project's own documented limit if one exists, 72 as fallback otherwise):
+
+```bash
+printf '%s' "<drafted subject line>" | wc -c
+```
+
+Read the project's own limit first (Section 2); only fall back to 72 characters when nothing else says otherwise. This command is a pre-write gate an agent runs on its own draft — it is not a substitute for running the project's actual linter when one exists (Section 9 covers that).
 
 ---
 
@@ -52,22 +63,19 @@ type(scope): description
 
 ### (a) Project machinery is ground truth
 
-If the repository has commit-linting or release-automation configuration — a commitlint config, a `semantic-release` config, or equivalent — its `type-enum` and `scope-enum` rules **are the authorized vocabulary**. Read the config and obey it exactly; do not substitute a type or scope the config does not list, even if it looks conventional.
+If the repository has commit-linting or release-automation configuration of any kind, its rules **are the authorized vocabulary**. Read the config and obey it exactly; do not substitute a type or scope the config does not list, even if it looks conventional.
 
-Config file locations to check, in order:
+The pattern to apply — not a list to match: look for *any* configuration that governs commit messages, releases, or changelog generation. That configuration is typically either a dedicated dotfile or a section embedded inside a manifest the project already has (a package/project file, a build config). Open whatever you find, and look for the shape common to nearly all such tools: an enumerated list of allowed types (and often scopes), plus a rule mapping each type to a version-bump class. The field names differ per tool; the shape recurs.
 
-1. `commitlintrc.json`
-2. `.commitlintrc.js` / `.commitlintrc.cjs` / `.commitlintrc.yaml` / `.commitlintrc.yml`
-3. `commitlint.config.js`
-4. A `.releaserc*` or `release.config.js` file whose plugin list references `@commitlint/*` or defines commit-analyzer rules
+To make that shape concrete — purely illustrative, and explicitly **non-exhaustive** — this can look like a commitlint-style config with a `type-enum` array, a semantic-release-style config whose analyzer preset defines the mapping, a Python project's `pyproject.toml` table for a commit/versioning tool, a dedicated changelog-generator config, or a Rust project's release-tooling config. Plenty of projects use tooling not resembling any of these, including tools invented in-house or ones neither this reference nor the agent has ever seen. The rule is **discover and read whatever configuration actually exists**, never "check whether it matches a known tool's name." If something config-shaped turns up under an unfamiliar name, read it the same way: extract whatever type/scope rules it defines and treat those as authoritative.
 
-If a `type-enum` rule is present, extract its allowed list and use only those values. If a `scope-enum` rule is present, do the same for scopes.
+If a type-enumeration rule is present (one common name for it is `type-enum`; other tools name the equivalent differently), extract its allowed list and use only those values. Do the same for any scope-enumeration rule.
 
 ### (b) Not-our-project: derive from history and docs
 
 When contributing to a project that is not the agent's or user's own — a third-party repository, an external open-source project, a client's existing codebase — and no machinery is found, **do not invent a vocabulary**. Derive it from what the project already does:
 
-- Run `git log --oneline -30` (or more) and tabulate the `type(scope):` prefixes actually in use. Treat the observed set as authoritative, including any project-specific types (e.g. a documentation project using `revise` or `errata` instead of `fix`).
+- Run `git log --oneline -30` (a wide sample, deliberately larger than the sample used for style-matching in Section 6, because vocabulary breadth requires seeing rarely-used but valid types, not just the most recent handful) and tabulate the `type(scope):` prefixes actually in use. Treat the observed set as authoritative, including any project-specific types (e.g. a documentation project using `revise` or `errata` instead of `fix`).
 - Read any `CONTRIBUTING.md`, `CONTRIBUTING.rst`, `CODE_OF_CONDUCT.md` commit-message section, or repository wiki page that documents commit conventions. These docs take precedence over inferred patterns when they conflict, since they represent the maintainers' explicit intent.
 - If history is sparse or inconsistent, prefer whatever `CONTRIBUTING` says; if both are silent, fall back to the closest observed convention and note the ambiguity to the user rather than silently picking a convention of your own.
 
@@ -93,16 +101,16 @@ This same precedence is the one [`semver-changelog.md`](semver-changelog.md) rel
 
 ### Core Principle
 
-The scope must identify the **topic/subject** of the commit — not the action, not the layer, not the result. It answers: *"What is this commit primarily about?"* This holds for code changes and for document changes alike: a scope names the topic a manuscript section, dataset, or protocol addresses, just as it names a feature or module in code.
+The scope must identify the **topic/subject** of the commit — not the action, not the layer, not the result. It answers: *"What is this commit primarily about?"* This holds for code changes and for every other kind of tracked file: a scope names the topic a manuscript section, dataset, configuration surface, or design asset addresses, just as it names a feature or module in code.
 
 ### Good Scope Patterns
 
-| Pattern | Code examples | Document examples |
-|:--------|:---------------|:-------------------|
-| Feature/topic names | `kiro`, `codex`, `auth`, `dashboard` | `methods`, `results-fig3`, `discussion` |
-| Component/module names | `UserService`, `api-client`, `database` | `protocol`, `dataset-schema`, `appendix-b` |
-| Concepts | `rate-limiting`, `unicode-handling` | `statistics`, `citation-style`, `figure-captions` |
-| Files/modules | `config.yml`, `main.py` | `manuscript.tex`, `README.md` |
+| Pattern | Code examples | Prose/document examples | Other artifact examples |
+|:--------|:---------------|:--------------------------|:---------------------------|
+| Feature/topic names | `auth`, `search-index`, `onboarding` | `methods`, `results-fig3`, `discussion` | `pricing-model` (dataset), `brand-palette` (design asset) |
+| Component/module names | `api-client`, `database`, `worker-pool` | `protocol`, `dataset-schema`, `appendix-b` | `nda-terms` (legal doc), `ci-pipeline` (config) |
+| Concepts | `rate-limiting`, `unicode-handling` | `statistics`, `citation-style`, `figure-captions` | `retention-policy` (data governance), `token-budget` (config) |
+| Files/modules | `config.yml`, `main.py` | `manuscript.tex`, `README.md` | `release.toml`, `grant-budget.xlsx` |
 
 ### Bad Scope Patterns
 
@@ -118,8 +126,8 @@ The scope must identify the **topic/subject** of the commit — not the action, 
 ### Scope Discovery Process
 
 1. Ask: *"What is this commit primarily about?"*
-2. Use names from requirements, docs, existing codebase components, or — for document repos — section/figure/dataset names
-3. Check the derived vocabulary (Section 2) for an allowed-scope list (`scope-enum`) before inventing a new one
+2. Use names from requirements, docs, existing codebase components, or — for non-code repos — section/figure/dataset/asset names
+3. Check the derived vocabulary (Section 2) for an allowed-scope list before inventing a new one
 4. Pick the most specific name available
 
 ---
@@ -133,13 +141,13 @@ Related commits **must share the same scope** to form a coherent development sto
 ### Good Narrative Flow (code)
 
 ```
-feat(kiro): add MCP server discovery
-feat(kiro): implement configuration validation
-fix(kiro): handle connection errors
-docs(kiro): document configuration options
+feat(search-index): add incremental reindexing on file save
+feat(search-index): implement query result ranking
+fix(search-index): handle stale index after bulk delete
+docs(search-index): document reindexing trigger configuration
 ```
 
-Reading left to right, the commit history tells a story: "We built the Kiro MCP integration."
+Reading left to right, the commit history tells a story: "We built the search-index feature."
 
 ### Good Narrative Flow (document/scientific repo)
 
@@ -155,7 +163,7 @@ The story is equally coherent: "We wrote and corrected the Methods section."
 ### Bad Narrative Flow
 
 ```
-feat(kiro): add MCP server discovery
+feat(search-index): add incremental reindexing
 feat(config): update settings format
 fix(connection): handle timeout
 chore: update dependencies
@@ -168,11 +176,59 @@ The story is fragmented — no coherent narrative about what was built.
 - Related commits → same scope
 - Scope changes → intentional shift in focus
 - Inconsistent scopes → broken development story
-- Consistent naming → traceable git blame and changelog, for code and prose alike
+- Consistent naming → traceable git blame and changelog, for code and every other tracked material alike
 
 ---
 
-## 5. History-Aware Style Matching
+## 5. Body and Footer Guidance
+
+### When the Body Is Needed
+
+A subject line is one line — often too short to hold the WHY that Section 1 demands. Per the primary directive, a body is not a rare addition reserved for exceptional cases; **strongly favor writing one**, since the reasoning behind a change routinely doesn't fit in ~72 characters. Treat a subject-only commit as the exception, appropriate only when the change is small and self-evident enough that no further reasoning needs recording.
+
+A body is **mandatory**, not merely encouraged, when:
+
+- The change is breaking — the migration path must be documented
+- The rationale involves trade-offs, alternatives considered, or context a future reader cannot reconstruct from the diff alone
+- The change closes an issue or references an external discussion that needs a durable pointer
+
+### Body Structure
+
+```
+<type>(<scope>): <imperative summary>
+
+<paragraph(s) explaining why this change was necessary — the
+context, constraints, or trade-offs that motivated it>
+
+Key changes:
+- <component/aspect>: <what changed and why>
+- <component/aspect>: <what changed and why>
+```
+
+- Blank line between subject and body
+- Wrap at roughly 72 chars per line, or the project's own documented wrap convention if it has one
+- Use imperative mood consistently with the subject
+
+### Footer Format
+
+```
+Resolves #123
+Fixes #456
+Closes #789
+
+BREAKING CHANGE: <description of what breaks and how to migrate>
+Migration guide: <path or link, if one exists>
+```
+
+- `Resolves`, `Fixes`, `Closes` followed by an issue reference
+- `BREAKING CHANGE:` on its own line, followed by a description
+- One footer key per line
+
+Body and footer discipline applies identically regardless of what kind of file changed — a manuscript revision with a substantive rationale needs a body exactly as much as a breaking API change does; a dataset correction that invalidates a prior export needs a `BREAKING CHANGE:`-equivalent footer just as much as a removed function signature does.
+
+---
+
+## 6. History-Aware Style Matching
 
 ### Principle
 
@@ -184,10 +240,12 @@ Before drafting a commit message, read the existing commit history to observe th
 git log --oneline -10
 ```
 
+A smaller, more recent sample than the one used for vocabulary derivation in Section 2(b) — style matching cares about how the project writes *right now*, not every type it has ever used, so recency matters more than breadth here.
+
 Look for:
 - **Scope names in use** — if the repo uses `auth` not `authentication`, use `auth`; if a document repo uses `methods` not `methodology`, use `methods`
 - **Tense** — does the project use "add X" or "adds X"? Match it
-- **Casing** — are scopes `PascalCase` (e.g., `UserService`) or `kebab-case`?
+- **Casing** — are scopes `kebab-case`, or `PascalCase` matching a class/component name?
 - **Description style** — terse or descriptive?
 
 ### Why It Matters
@@ -196,7 +254,7 @@ Prevents scope name drift. Without this check, an agent might introduce `auth-se
 
 ---
 
-## 6. Sensitive-File Advisory
+## 7. Sensitive-File Advisory
 
 ### Agent Awareness Rule
 
@@ -223,7 +281,7 @@ Enforcement is the **repo owner's responsibility** via pre-commit hooks (e.g., `
 
 ---
 
-## 7. Dirty-File Separation
+## 8. Dirty-File Separation
 
 ### Principle
 
@@ -245,117 +303,75 @@ Mixing pre-existing changes with new work conflates unrelated intentions in a si
 
 ```bash
 # Pre-existing: README.md has minor typo fix
-# New work: feat(auth): add OAuth2 flow
+# New work: feat(search-index): add incremental reindexing
 
 git add README.md
 git commit -m "docs(readme): fix typo in installation section"
 
-git add src/auth/
-git commit -m "feat(auth): add OAuth2 authentication flow"
+git add src/search/
+git commit -m "feat(search-index): add incremental reindexing on file save"
 ```
 
 ---
 
-## 8. Validation
+## 9. Validation
 
-### Mandatory Check When Machinery Exists
+### Validate Against Whatever Machinery Was Discovered
 
-If a commitlint (or equivalent) config exists in the repo — per the Section 2(a) precedence — the commit message **must pass validation** before executing `git commit`.
+Section 2(a) already identified whether the project has commit-linting or release machinery, and — if so — what shape it takes. If it does, validate the drafted message against that same machinery before running `git commit`; don't assume the message is compliant just because it looks conventional.
 
-### Validation Workflow
+The pattern: whatever tool was discovered almost always exposes some way to check a message, or preview a release, without actually committing — either a lint subcommand that accepts a message via stdin or a flag, or a dry-run/preview mode that shows how the next commit would be classified. Find that command in the tool's own help or docs and run it against the draft before committing.
+
+To ground this concretely — again illustrative and **non-exhaustive**, not a checklist to match — this can look like piping a subject into a commitlint-style CLI, running a conventional-commit toolkit's own `check`/`verify` subcommand, or invoking a release tool's `--dry-run` flag to see how it would classify the commit. The exact invocation depends entirely on which tool the project actually uses, including tools neither this reference nor the agent has ever seen — read that tool's own docs for its equivalent rather than assuming one of the examples above applies.
+
+Where a config defines lint rule *names*, treat those names as specific to that tool, not universal — a name like `type-enum` (or `scope-enum`, `subject-case`, `subject-max-length`) is one illustration among many possible vocabularies. A different tool encodes the same ideas under different names, or doesn't lint them at all and relies on a dry-run preview instead.
+
+### If No Machinery Exists
+
+Fall back to the pre-write gate command from Section 1: measure and cap subject length yourself, since nothing else will.
 
 ```bash
-# After drafting message, validate it
-echo "feat(auth): add OAuth2 authentication flow" | npx commitlint
-
-# Or validate the last staged message
-npx commitlint --edit
+printf '%s' "<drafted subject line>" | wc -c
 ```
 
-### Common Rules Enforced
-
-- `type-enum`: only the config's approved types allowed
-- `scope-enum`: scopes must match the project-defined list
-- `subject-case`: typically `lower-case`
-- `subject-max-length`: typically 72 chars
-- `header-max-length`: typically 72 chars
-
-### If Config Is Missing
-
-Fall back to Section 2(b)/2(c): derive from history/`CONTRIBUTING`, or route to `convention-setup.md`. Note the absence of machinery to the user, but proceed with a defensible, derived vocabulary. Do not create a commitlint config unless the user requests it — enforcement setup is the concern of [`convention-setup.md`](convention-setup.md), not of authoring an individual commit.
+Compare the result against whatever limit applies — the project's own documented limit (Section 2b) if one exists, or the 72-character fallback (Section 1) if it doesn't. Note the absence of machinery to the user, but proceed with a defensible, derived vocabulary. Do not create a commitlint config or equivalent unless the user requests it — enforcement setup is the concern of [`convention-setup.md`](convention-setup.md), not of authoring an individual commit.
 
 ---
 
-## 9. Examples
+## 10. Examples
 
-### Example set A — code repository (vocabulary from project machinery)
+Each path below shows the *process* — discover, read, apply — rather than a gallery of types to memorize.
 
-Project has a commitlint config with `type-enum: [feat, fix, docs, refactor, test, chore, ci, perf, style]`.
+### Path (a) — vocabulary from project machinery
 
-```
-feat(kiro): add MCP server discovery protocol
+Discovery: the repo has a release-tooling config at its root whose type-mapping table defines an `ops` type alongside the conventional set. (This is one possible shape a project's machinery can take, chosen here only to make the example concrete — the discovery step is identical no matter which tool the config belongs to.)
 
-Implements automatic discovery of MCP servers via .kiro/mcp.json
-configuration. Enables agents to connect without manual server
-registration for each session.
-```
+Applying the discovered vocabulary directly (no invented types, no guessing):
 
 ```
-fix(codex): prevent duplicate API requests on token refresh
+ops(ci-pipeline): pin runner image to avoid upstream breaking change
 
-Token refresh triggered concurrent requests when multiple calls
-hit a 401 simultaneously. Adds in-flight deduplication to ensure
-only one refresh executes and all waiters receive the same token.
+The floating `latest` tag pulled in a runner update that dropped
+Python 3.8 support mid-build. Pinning to a digest keeps builds
+reproducible until the project's own Python floor moves.
 ```
 
-```
-refactor(UserService): extract validation to enable unit testing
+### Path (b) — vocabulary derived from history + CONTRIBUTING
 
-Validation logic was embedded in the service layer, making it
-impossible to test without a full database connection. Extracted
-to UserValidator for isolated testing.
-```
+Discovery: no machinery config anywhere. `CONTRIBUTING.md` states: "Use `write`, `revise`, `correct`, `cite`, or `format`, scoped to the manuscript section or dataset affected." `git log --oneline -30` (the wide sample from Section 2b, for vocabulary breadth) confirms every recent commit actually follows this pattern.
+
+Applying the derived vocabulary:
 
 ```
-feat(api)!: replace REST endpoints with GraphQL schema
-
-BREAKING CHANGE: All /api/v1/* REST endpoints are removed.
-Clients must migrate to the /graphql endpoint.
-Migration guide: docs/migration/graphql-v2.md
-
-Resolves #234
-```
-
-### Example set B — scientific/document repository (vocabulary derived from history + CONTRIBUTING)
-
-Project has no commitlint config. `CONTRIBUTING.md` states: "Use `write`, `revise`, `correct`, `cite`, or `format` as the commit type, scoped to the manuscript section." `git log --oneline -10` confirms this pattern is actually followed.
-
-```
-write(results): report primary endpoint effect size
-
-Adds the effect-size estimate and 95% CI for the primary endpoint
-now that the blinded analysis is complete.
-```
-
-```
-correct(methods): fix transposed sample-size figures
+correct(cohort-dataset): fix transposed sample-size figures
 
 Sample sizes for the treatment and control arms were swapped in
-the power-analysis paragraph, understating the study's power.
+the exported summary table, understating the study's power. The
+source dataset was correct; only the export step had the bug.
 ```
 
-```
-cite(discussion): add reference to 2025 replication study
+### Path (c) — greenfield
 
-The replication study directly supports the claim in paragraph 3
-and was published after the initial draft was written.
-```
+No worked example is given here: per Section 2(c), a project with neither machinery nor a derivable pattern doesn't get a guessed vocabulary — it gets routed to [`convention-setup.md`](convention-setup.md) to stand one up deliberately, in collaboration with the user. Only once that interview produces a vocabulary does authoring resume here.
 
-```
-revise(abstract): tighten framing per reviewer 2 feedback
-
-Reviewer 2 noted the original framing overstated generalizability;
-narrows the claim to the studied population.
-```
-
-Both example sets use a vocabulary *derived* per Section 2 — the code repo's from its `type-enum` config, the document repo's from its `CONTRIBUTING.md` and observed history — rather than a vocabulary imposed by this reference. When neither source exists, route to [`convention-setup.md`](convention-setup.md) before drafting any message. For how these types map to version bumps once derived, see [`semver-changelog.md`](semver-changelog.md).
+Both worked paths above apply the same process — discover what the project already does (config, or history plus docs), read the vocabulary it defines, then write the commit against that vocabulary — rather than reteaching a canonical type list. For how these types map to version bumps once derived, see [`semver-changelog.md`](semver-changelog.md).
