@@ -40,6 +40,8 @@ Landing a child branch onto its parent always follows the same four-step sequenc
 
 This sequence — rebase, resolve, re-verify, `--no-ff` merge — is the whole contract. Skipping the re-verify step because "the rebase applied cleanly" is the most common shortcut taken and the most common source of regressions that slip through.
 
+If the project maintains its version number and changelog by hand rather than through release automation, landing a merge is often the moment that update falls due — see [semver-changelog.md](semver-changelog.md) for how commits map to version bumps and changelog entries.
+
 ---
 
 ## Rationale
