@@ -1,6 +1,6 @@
 # Semver & Changelog Reference
 
-Tool-agnostic principles tying structured commit messages to automated semantic-version bumps and changelog generation. Read this after `commit-authoring.md` — that file tells you *how* to write a commit against a derived vocabulary; this file explains *why* that vocabulary matters beyond the commit itself, and how it flows downstream into a version number and a changelog entry.
+Tool-agnostic principles tying structured commit messages to automated semantic-version bumps and changelog generation. Read this after [commit-authoring.md](commit-authoring.md) — that file tells you *how* to write a commit against a derived vocabulary; this file explains *why* that vocabulary matters beyond the commit itself, and how it flows downstream into a version number and a changelog entry.
 
 ## Table of Contents
 
@@ -14,11 +14,11 @@ Tool-agnostic principles tying structured commit messages to automated semantic-
 
 ## Ground Truth: The Vocabulary Is Derived
 
-The same ground-truth rule `commit-authoring.md` applies to writing a commit message applies here to reading one back out: **the authorized commit vocabulary, and the version-bump semantics attached to it, are never a hardcoded universal table.** They come from the project itself, in this order of precedence:
+The same ground-truth rule [commit-authoring.md](commit-authoring.md) applies to writing a commit message applies here to reading one back out: **the authorized commit vocabulary, and the version-bump semantics attached to it, are never a hardcoded universal table.** They come from the project itself, in this order of precedence:
 
 1. **The project's machinery** — a commitlint config (`type-enum`/`scope-enum`), a semantic-release config's commit-analyzer preset or rules, or an equivalent automation file. If it exists, it *is* the authorized vocabulary and its bump mapping — read it and obey it, don't infer.
 2. **Absent machinery, the project's history + docs** — `git log` conventions actually in use, plus any `CONTRIBUTING`/versioning guidelines. If a project has been tagging `feat:` as minor and `fix:` as patch for 200 commits without a config file to say so, that convention is still the ground truth; it's just implicit rather than codified.
-3. **Neither exists** — this is a greenfield project. There is no vocabulary to derive yet; route to `convention-setup.md` to stand one up rather than guessing.
+3. **Neither exists** — this is a greenfield project. There is no vocabulary to derive yet; route to [convention-setup.md](convention-setup.md) to stand one up rather than guessing.
 
 A skill (or an agent using one) never imposes a `feat/fix/docs/chore/...` table as *the* answer for every project. That table is one popular convention among many — useful only insofar as a given project's own machinery or history actually adopts it.
 
@@ -58,4 +58,4 @@ These mappings are that document repository's own vocabulary, defined the same w
 
 This file explains the *principles* — why the vocabulary is derived, how it maps to bumps, and how that mapping feeds changelog automation. It assumes a vocabulary already exists to derive, whether codified in machinery or implicit in history and docs.
 
-When no machinery exists and no established history/docs pattern can be derived — a truly greenfield project — `convention-setup.md` is where that vocabulary and its bump mapping get stood up in the first place: it runs the setup interview, helps choose tooling appropriate to the project's materials, and bootstraps the config that this file's principles then apply to going forward. Read `convention-setup.md` for the setup flow; read `commit-authoring.md` for how the resulting vocabulary is applied commit-by-commit.
+When no machinery exists and no established history/docs pattern can be derived — a truly greenfield project — [convention-setup.md](convention-setup.md) is where that vocabulary and its bump mapping get stood up in the first place: it runs the setup interview, helps choose tooling appropriate to the project's materials, and bootstraps the config that this file's principles then apply to going forward. Read [convention-setup.md](convention-setup.md) for the setup flow; read [commit-authoring.md](commit-authoring.md) for how the resulting vocabulary is applied commit-by-commit.
