@@ -37,3 +37,16 @@ Command: `uv run tools/package_skill.py skills/writing-history dist/`
 ## Verdict
 
 **PASS — campaign complete.** The `writing-history` skill is a recognized, packageable release unit with a valid dispatcher and four references; `committing-changes` is archived unmodified and fully deregistered; no dangling links or live references remain.
+
+## Post-Verification Remediation (audit-driven rework)
+
+A review pass found that the first cut of `commit-authoring.md` had carried over contamination from the archived predecessor, defeating the derivation-first redesign. A dedicated audit agent confirmed the findings; a remediation was executed on `task/rework-references` and integrated with the same rebase then `merge --no-ff` discipline. Changes:
+
+- **Purged prior-skill contamination** — removed all `kiro`/`codex`/`UserService`-flavored examples; generic placeholders instead.
+- **Vocabulary discovery reframed pattern-first** — Section 2 teaches discovering and reading *whatever* convention/versioning machinery a project uses; specific tools appear only as explicitly non-exhaustive illustration, never a checklist. (Corrected mid-flight from an initial tool-catalogue framing that contradicted the tool-agnostic principle.)
+- **Subject-line rules reframed as a fallback** (not universal law), with a pre-write gate command for projects that define no gate of their own.
+- **Body & footer guidance restored** — it had been wrongly dropped; now framed as the default, mandatory for breaking changes.
+- **Scope guidance widened** to arbitrary file types (dataset, design asset, legal doc, config), not just code and prose.
+- **Resolved the `git log -10` vs `-30` inconsistency**; **added ToCs** to `convention-setup.md`/`semver-changelog.md`; **fixed the dead link** in `branches.md`; **genericized** the SKILL.md machinery mention.
+
+Re-verified after integration: no contamination markers, pattern-first framing intact, ToCs present, links resolve, packaging re-emits `dist/writing-history.skill`. **PASS.**
