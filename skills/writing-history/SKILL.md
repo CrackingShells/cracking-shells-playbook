@@ -7,7 +7,7 @@ description: Guides the full git-discipline lifecycle for a project's commit his
 
 ## Primary Directive
 
-**WHY over WHAT.** A commit, a merge, and a worktree teardown are all historical records — each must be justified by the reasoning behind it, not merely by the mechanics of what changed. Every action this skill takes should leave behind a history a future reader can trust and reconstruct intent from.
+**WHY over WHAT.** A commit and a merge are historical records — each must be justified by the reasoning behind it, not merely by the mechanics of what changed. A worktree teardown leaves no such record; it is housekeeping that keeps parallel work clean once a branch has landed, not a claim on the historical record. Every action this skill takes on that record should leave behind a history a future reader can trust and reconstruct intent from.
 
 **The commit vocabulary is derived, never assumed.** No reference in this skill hardcodes a `feat`/`fix`/`docs`/... type set as universal truth. The authorized types, scopes, and version-bump mapping always come from the project itself — its own convention/versioning machinery (whatever form that takes) if it has any, else its own history and `CONTRIBUTING` docs, else a setup interview run to stand one up deliberately. Every reference below shares this precedence; none of them substitutes a convention of its own.
 
