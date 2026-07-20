@@ -4,6 +4,17 @@ An agent-run setup interview and bootstrap flow for standing up commit-conventio
 
 This flow is explicitly **tool-agnostic**. There is no one-size-fits-all stack: the right commit vocabulary, versioning scheme, and changelog tool depend on what the repository actually contains — its materials, languages, file types, and any tooling already present. The agent's job is to ask, look, and justify a recommendation from that context — never to reach for a default stack out of habit.
 
+## Table of Contents
+
+1. [When to Run Setup](#when-to-run-setup)
+2. [Setup Interview](#setup-interview)
+3. [Derive vs. Bootstrap](#derive-vs-bootstrap)
+4. [Recommending a Stack](#recommending-a-stack)
+5. [Bootstrap Checklist](#bootstrap-checklist)
+6. [Delivering Recommendations](#delivering-recommendations)
+
+---
+
 ## When to Run Setup
 
 Run this setup flow only when **both** of the following hold:

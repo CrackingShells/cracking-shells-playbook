@@ -1,6 +1,6 @@
 # Branch Integration Discipline
 
-This document is the prescriptive contract for landing a finished branch (or worktree) onto its parent. It composes with [`committing-changes`](../../committing-changes/SKILL.md)'s commit-authoring discipline: every commit replayed during integration must already satisfy that contract before it is allowed to merge.
+This document is the prescriptive contract for landing a finished branch (or worktree) onto its parent. It composes with [`commit-authoring.md`](commit-authoring.md)'s commit-authoring discipline: every commit replayed during integration must already satisfy that contract before it is allowed to merge.
 
 ## Contents
 

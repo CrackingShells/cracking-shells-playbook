@@ -2,6 +2,16 @@
 
 Tool-agnostic principles tying structured commit messages to automated semantic-version bumps and changelog generation. Read this after `commit-authoring.md` — that file tells you *how* to write a commit against a derived vocabulary; this file explains *why* that vocabulary matters beyond the commit itself, and how it flows downstream into a version number and a changelog entry.
 
+## Table of Contents
+
+1. [Ground Truth: The Vocabulary Is Derived](#ground-truth-the-vocabulary-is-derived)
+2. [From Commits to Versions](#from-commits-to-versions)
+3. [Changelog Automation](#changelog-automation)
+4. [Documents, Not Just Code](#documents-not-just-code)
+5. [Relationship to Setup](#relationship-to-setup)
+
+---
+
 ## Ground Truth: The Vocabulary Is Derived
 
 The same ground-truth rule `commit-authoring.md` applies to writing a commit message applies here to reading one back out: **the authorized commit vocabulary, and the version-bump semantics attached to it, are never a hardcoded universal table.** They come from the project itself, in this order of precedence:
