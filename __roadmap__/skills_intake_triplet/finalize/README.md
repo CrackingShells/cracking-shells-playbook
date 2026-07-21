@@ -17,7 +17,7 @@ Verify the merged intake set as a whole and land the `.DS_Store` gitignore rule,
 ## Status
 ```mermaid
 graph TD
-    verify_and_housekeep[Verify and Housekeep]:::inprogress
+    verify_and_housekeep[Verify and Housekeep]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -28,7 +28,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `verify_and_housekeep.md` | 📄 Leaf Task | 🔄 In Progress |
+| `verify_and_housekeep.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
