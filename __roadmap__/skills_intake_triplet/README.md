@@ -24,9 +24,9 @@ The three skill dirs are untracked in the primary checkout: implementer worktree
 ## Status
 ```mermaid
 graph TD
-    intake_writing_prose[Intake writing-prose]:::planned
-    intake_writing_design_canons[Intake writing-design-canons]:::planned
-    intake_importing_design_figures[Intake importing-design-figures]:::planned
+    intake_writing_prose[Intake writing-prose]:::inprogress
+    intake_writing_design_canons[Intake writing-design-canons]:::inprogress
+    intake_importing_design_figures[Intake importing-design-figures]:::inprogress
     finalize[Finalize Intake]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -38,9 +38,9 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `intake_writing_prose.md` | 📄 Leaf Task | ⬜ Planned |
-| `intake_writing_design_canons.md` | 📄 Leaf Task | ⬜ Planned |
-| `intake_importing_design_figures.md` | 📄 Leaf Task | ⬜ Planned |
+| `intake_writing_prose.md` | 📄 Leaf Task | 🔄 In Progress |
+| `intake_writing_design_canons.md` | 📄 Leaf Task | 🔄 In Progress |
+| `intake_importing_design_figures.md` | 📄 Leaf Task | 🔄 In Progress |
 | `finalize/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
