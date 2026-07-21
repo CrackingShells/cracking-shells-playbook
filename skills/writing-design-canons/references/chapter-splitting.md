@@ -7,7 +7,7 @@
 - §B.3 — Anti-tests (when *not* to merge)
 - §B.4 — Structural-progression tier table
 - §B.5 — Diagnostic use of the tier table
-- §B.6 — Worked example: riken nine-file split
+- §B.6 — Worked example: Isogrid nine-file split
 
 ## Purpose
 
@@ -37,7 +37,7 @@ Even if two concerns appear thematically similar, split them into separate chapt
 
 - The concerns use **different visual channels** (e.g., hue vs dash-pattern; size vs position).
 - The concerns operate at **different levels of organisation** in the §B.4 tier table (atoms vs elements vs relations vs compositions).
-- The concerns have their **own register split** (e.g., engineering vs message-passing in the riken canon — same concept, but each register produces a different chapter shape).
+- The concerns have their **own register split** (e.g., circuit vs message registers in the Isogrid canon — same concept, but each register produces a different chapter shape).
 - One concern's prohibitions would **dilute the focus** of the sibling — if merging forces you to write "this rule applies to X but not Y", split.
 
 ## §B.4 — Structural-progression tier table
@@ -64,24 +64,24 @@ A balanced canon has at least one chapter per tier it needs, and no tier has mor
 
 > **Not every canon needs all six tiers.** A simple icon system may need only Atoms + Element-level + Compositional. A complex diagrammatic system may need all six. The rule is *use the tier table to test the plan*, not to force it.
 
-## §B.6 — Worked example: riken nine-file split
+## §B.6 — Worked example: Isogrid nine-file split
 
-The riken figure-styling canon is held up as the worked example. Its nine files map onto the tier table as follows:
+**Isogrid** is an invented figure-styling canon for systems-architecture and dataflow diagrams — the kind of complex diagrammatic system that needs rules at every tier. It is held up as the worked example. Its nine files map onto the tier table as follows:
 
-| Riken file | Tier |
+| Isogrid file | Tier |
 |:---|:---|
-| `01-color-palette.jsx` | Atoms |
-| `07-dashed-vocabulary.jsx` | Atoms |
+| `01-hue-palette.jsx` | Atoms |
+| `07-stroke-vocabulary.jsx` | Atoms |
 | `02-registers.jsx` | System-level invariants |
 | `03-containers.jsx` | Element-level rules |
-| `04-node-stem-pill.jsx` | Element-level rules |
-| `05-keystone.jsx` | Element-level rules |
-| `06-edges.jsx` | Relation-level rules |
-| `08-perceptual-modulation.jsx` | Cross-cutting modulation |
-| `09-tables.jsx` | Compositional rules |
+| `04-node-anchor-badge.jsx` | Element-level rules |
+| `05-terminus.jsx` | Element-level rules |
+| `06-connectors.jsx` | Relation-level rules |
+| `08-density-modulation.jsx` | Cross-cutting modulation |
+| `09-layout-grids.jsx` | Compositional rules |
 
 Notice three things:
 
-1. **Every tier is present.** Riken's assets need rules at every level.
-2. **The element tier has three chapters** — at the top of the comfortable range — because containers, nodes, and keystones each have distinct closed sets and prohibitions (passes §B.2 condition 1).
-3. **Atoms have two chapters** — colour and dash-pattern — because they use different visual channels (passes §B.3's first anti-test).
+1. **Every tier is present.** Isogrid's assets need rules at every level.
+2. **The element tier has three chapters** — at the top of the comfortable range — because containers, node/anchor/badge marks, and terminus markers each have distinct closed sets and prohibitions (passes §B.2 condition 1).
+3. **Atoms have two chapters** — hue and stroke-pattern — because they use different visual channels (passes §B.3's first anti-test).
