@@ -6,7 +6,7 @@
 - [ ] Worktree on branch `task/intake-importing-design-figures` branched from `main`
 - [ ] `node` available in the worktree (syntax checks on `.mjs`)
 **Success Gates**:
-- ⬜ `grep -rniE 'ECL|VN1|sift|glean|riken' skills/importing-design-figures/` returns nothing `[run]`
+- ⬜ `grep -rniE '\b(ECL|VN1|sift|glean|riken)\b' skills/importing-design-figures/` returns nothing — coordinator adjudication: word-boundary form, since the bare pattern substring-matches ordinary English ("declining", "declaring") and can never pass on normal prose `[run]`
 - ⬜ `shoot.mjs` computes true-mm height from a `--target-width-mm` parameter — no literal `168` remains in its computation, and no hardcoded `Palatino`/`Helvetica Neue`/`rgb(252, 251, 247)`/`rgb(232, 228, 218)` literals remain `[static]`
 - ⬜ `node --check skills/importing-design-figures/scripts/shoot.mjs && node --check skills/importing-design-figures/scripts/decode-dc.mjs && bash -n skills/importing-design-figures/scripts/render.sh` exit 0 `[run]`
 - ⬜ `references/config-and-harvest.md` names a concrete author root (`~/.config/importing-design-figures/`); SKILL.md or SETUP.md documents the `DesignSync` prerequisite and a fallback when it is absent `[static]`
