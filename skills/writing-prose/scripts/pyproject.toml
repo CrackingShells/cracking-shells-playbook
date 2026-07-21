@@ -1,0 +1,21 @@
+# setuptools rather than a newer backend: it is the one build backend
+# already present in conda, mamba, and venv environments, so the
+# fallback install paths in INSTALL.md work without network access.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "writing-prose"
+version = "0.1.0"
+description = "CLI support for the writing-prose skill: scoped rule lookup and causal-locality edge arithmetic"
+requires-python = ">=3.9"
+# stdlib only, deliberately: the CLI must also run uninstalled via
+# `python scripts/writing_prose/cli.py`.
+dependencies = []
+
+[project.scripts]
+writing-prose = "writing_prose.cli:main"
+
+[tool.setuptools]
+packages = ["writing_prose"]
