@@ -71,10 +71,12 @@ waits for the plate subtree to go stable, waits `document.fonts.ready`, settles,
 plate's `getBoundingClientRect()`, and calls `Page.captureScreenshot` with `clip:{…, scale}`
 and `captureBeyondViewport`.
 
-`scale` is the device pixel ratio. ECL plates are authored at **1429 px = 168 mm** (design
-scale ≈ 8.504 px/mm); `scale: 3` yields ~430 DPI at that width, `scale: 2` (~290 DPI) is
-plenty for line art. Output is a raster PNG. The ports are fixed, so **renders are serial** —
-one figure at a time.
+`scale` is the device pixel ratio, applied against the plate's rendered CSS pixel width. As a
+worked illustration of the arithmetic (not a default — every project's authored width
+differs): a plate rendered at 1429 px for a 168 mm target width implies a design scale of
+≈ 8.504 px/mm, so `scale: 3` yields ~430 DPI at that width and `scale: 2` (~290 DPI) is plenty
+for line art. Output is a raster PNG. The ports are fixed, so **renders are serial** — one
+figure at a time.
 
 ## 5. Aspect and height reconciliation — the squish trap
 
@@ -89,8 +91,9 @@ true height on page  = target_width_mm × h / w
 height attribute NN% = round( (target_width_mm × h / w) / textpage_mm × 100 )
 ```
 
-`shoot.mjs` prints the aspect and the true-mm height (at 168 mm) to save the arithmetic. Set
-the placement height to `NN%` so width and height agree and nothing squishes. **Never** shrink
+`shoot.mjs` prints the aspect and, when `--target-width-mm` is supplied (from the project's
+`config.md`), the true-mm height at that width, to save the arithmetic. Set the placement
+height to `NN%` so width and height agree and nothing squishes. **Never** shrink
 height below the true value to save space — that is what squishes; trim prose or caption
 instead. A one-time hardening in the consumer (add `keepaspectratio`, or specify width only)
 makes any residual mismatch letterbox instead of stretch; record whether the project did this

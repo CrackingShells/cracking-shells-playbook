@@ -49,8 +49,9 @@ Everything this skill works with is either universal or scoped by where it lives
 4. **Verify the crop visually.** Open the PNG with the Read tool. A glance catches a stray
    `{{…}}` template flash, baked-in chrome/caption, or a wrong-region clip that numbers
    miss. Re-run with an explicit `--selector` if wrong.
-5. **Set the height from the measured true aspect** (anti-squish): `render.sh` prints
-   `true height at 168 mm`; the placement height percent is `round(true_mm / textpage_mm × 100)`.
+5. **Set the height from the measured true aspect** (anti-squish): pass the project's target
+   artboard width via `--target-width-mm` (from `config.md`) and `render.sh` prints the true
+   height at that width; the placement height percent is `round(true_mm / textpage_mm × 100)`.
    Never shrink height below this to win page space — that squishes. Trim prose or caption
    instead (a prose skill's fit workflow owns that).
 6. **Place and build.** Copy the PNG to the document's figures path (keep the existing

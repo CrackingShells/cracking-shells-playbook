@@ -33,8 +33,9 @@ Not needed to produce the PNG. If your project builds with xelatex and it is not
 ## Smoke test
 
 ```sh
-bash render.sh <workdir> "<Component>.dc.html" /tmp/plate.png 3 '<css-selector>'
-# prints:  PLATE {...}  and  WROTE /tmp/plate.png <WxH> | aspect A:1 | true height at 168mm = N mm
+bash render.sh <workdir> "<Component>.dc.html" /tmp/plate.png 3 '<css-selector>' '' <target-width-mm>
+# prints:  PLATE {...}  and  WROTE /tmp/plate.png <WxH> | aspect A:1 | true height at <target-width-mm>mm = N mm
+# (omit <target-width-mm> and only the relative aspect is printed)
 ```
 Then open `/tmp/plate.png` to confirm the crop. A `plate not found` error means auto-detect
 missed the box: pass an explicit `--selector` (5th arg).

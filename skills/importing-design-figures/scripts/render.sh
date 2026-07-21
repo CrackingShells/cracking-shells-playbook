@@ -47,7 +47,7 @@ disown $CHROME_PID $HTTP_PID 2>/dev/null || true   # keep job control quiet on c
 cleanup(){ kill $CHROME_PID $HTTP_PID 2>/dev/null || true; rm -rf "$UDD" 2>/dev/null || true; }
 trap cleanup EXIT
 
-# URL-encode spaces (component files are named e.g. "VN1 Vision Figure.dc.html")
+# URL-encode spaces (component files are named e.g. "Figure 1 Overview.dc.html")
 ENC="${DCFILE// /%20}"
 # wait for readiness without a foreground `sleep` (blocked in this harness)
 curl -s --retry 40 --retry-delay 1 --retry-all-errors "http://127.0.0.1:$DBG/json" >/dev/null
