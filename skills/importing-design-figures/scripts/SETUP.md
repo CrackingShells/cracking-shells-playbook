@@ -12,6 +12,7 @@ there is nothing to `npm install` or `pip install` and no browser to download.
 | **Node ≥ 20** | `shoot.mjs` uses the built-in `fetch` + `WebSocket` (no deps) | `node --version` | Install via nvm (`nvm install 20`) or Homebrew (`brew install node`). |
 | **python3** | serves the working dir so Chrome can load the `.dc.html` over `http://` (the Browser MCP cannot open `file://`) | `python3 --version` | Ships with macOS; else `brew install python`. |
 | **Network to `unpkg.com`** | runtime-generated plates load React/Babel at render time | first render succeeds | On an offline box, use the static-extract fallback (see `references/pipeline.md`). |
+| **`DesignSync` MCP tool, connected** | fetches the target component's `.dc.html` and `support.js` out of the Claude Design project (see `SKILL.md` workflow step 2) | it is a **deferred** tool — load it with `ToolSearch` query `select:DesignSync` in the host session before the first call | Not connected in this session/host? Export the design source manually instead: save the component's `.dc.html` (and `support.js`, for runtime-generated plates) from the Claude Design UI, or hand-paste a `get_file`-shaped JSON, into the workdir `render.sh` expects. |
 
 ## What is deliberately NOT used
 

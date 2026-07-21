@@ -48,8 +48,8 @@ each re-making costs a round.
 2. Classify its scope (next section).
 3. Backport it to that scope's home: a universal insight (a new format fact, a selector
    pattern that holds for any project, a harness fix) is a proposal against this skill's
-   references or scripts; cross-project render preferences go to the author root; project
-   facts to the config files here.
+   references or scripts; cross-project render preferences go to the author root
+   (`~/.config/importing-design-figures/`); project facts to the config files here.
 4. If the correction supersedes something recorded elsewhere (a stale ledger height after a
    reshape, a superseded component version, a note in a report), update or mark the stale
    record where it stands. Stale records get mined as truth by later sessions.
@@ -63,7 +63,8 @@ Ask for the widest scope under which the fact holds, and default wide when unsur
   skill, the rarest and most valuable find (e.g. "auto-detect should read `--field` from
   `:root`").
 - **Cross-project (author) render prefs** — a standing preference the author carries across
-  projects (default scale, the zero-dep Chrome choice). Lives in the author root, rare.
+  projects (default scale, the zero-dep Chrome choice). Lives in the author root
+  (`~/.config/importing-design-figures/`), rare.
 - **Project** (`__canons__/design_figures/`) — this project's ids, tokens, selectors,
   measured heights, placement model. The default home for most facts.
 - **Narrower** — a rule binding one document family within the project; record it here with
