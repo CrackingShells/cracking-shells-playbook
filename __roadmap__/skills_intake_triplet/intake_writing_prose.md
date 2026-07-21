@@ -5,7 +5,7 @@
 - [ ] Pristine source present at `/Users/hacker/Documents/src/CrackingShells/cracking-shells-playbook/skills/writing-prose/` (primary checkout, untracked)
 - [ ] Worktree on branch `task/intake-writing-prose` branched from `main`
 **Success Gates**:
-- ⬜ `skills/writing-prose/` tracked on the branch, byte-identical to the pristine source minus `.DS_Store` (`diff -r` excluding `.DS_Store`) `[run]`
+- ⬜ `skills/writing-prose/` tracked on the branch, byte-identical to the pristine source minus `.DS_Store` and the Step-2 release quartet (`diff -r --exclude=.DS_Store --exclude=package.json --exclude=.releaserc.js --exclude=CHANGELOG.md`) — coordinator adjudication: the original exact-diff gate structurally conflicted with Step 2's deliverables landing in the same directory; import fidelity is additionally pinned by Step 1's pre-quartet consistency check `[run]`
 - ⬜ `node -e "require('./skills/writing-prose/.releaserc.js')"` exits 0 and config names `writing-prose` `[run]`
 - ⬜ `uv run tools/package_skill.py skills/writing-prose dist/` exits 0 `[run]`
 - ⬜ `python3 -c "import json;d=json.load(open('skills/writing-prose/package.json'));assert d['name']=='writing-prose' and d['version']=='1.0.0'"` passes `[run]`
