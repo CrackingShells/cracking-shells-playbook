@@ -44,7 +44,7 @@ The produced `identity.md` is organised into four pillars. Group related decisio
 
 ### Pillar B — Sensory anchor (the *what it feels like*)
 
-- **B1. Material / sensory grounding** — the tangible metaphor the system anchors in. Examples from prior canons: "wet, dry, and a band of water"; "parchment, water, and a single gleam". Required because it is the most-skipped section in weak canons and the most reliable section for downstream coherence. **Authors who skip this produce canons whose downstream rules feel arbitrary.**
+- **B1. Material / sensory grounding** — the tangible metaphor the system anchors in. Invented examples: "warm cedar, chalk dust, and a struck match"; "frost on glass and the hum of a tuning fork". Required because it is the most-skipped section in weak canons and the most reliable section for downstream coherence. **Authors who skip this produce canons whose downstream rules feel arbitrary.**
 - **B2. Tone & atmosphere statement** — one paragraph. The vibe the visual system must transmit. Not a list of adjectives; a single coherent sentence or two.
 
 ### Pillar C — Visual invariants that carry voice (the *what it looks like at the highest level*)

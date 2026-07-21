@@ -48,8 +48,8 @@ The reference offers illustrative examples on a spectrum. **These are not an exh
 
 | Spirit | Example tokens | Best when … |
 |:---|:---|:---|
-| Poetic / metaphor-anchored | `--wet`, `--gleam`, `--dry-grain` | The project is itself poetic, narrative-driven, or where identity is anchored in tangible metaphor (sift/glean style). |
-| Engineering / systematic | `--blue-600`, `--stroke-1.25`, `--space-8` | The project is scientific, technical, or where consumers expect deterministic, predictable naming (riken style). |
+| Poetic / metaphor-anchored | `--wet`, `--gleam`, `--dry-grain` | The project is itself poetic, narrative-driven, or where identity is anchored in tangible metaphor (narrative/poetic brand-identity projects). |
+| Engineering / systematic | `--blue-600`, `--stroke-1.25`, `--space-8` | The project is scientific, technical, or where consumers expect deterministic, predictable naming (scientific/technical figure-styling projects). |
 | Purpose / state-anchored | `--severity-critical`, `--draft-state`, `--call-to-action` | The project is domain-driven (medical, financial, regulatory) where token meaning maps directly to functional state. |
 | In-between hybrid | `--ink`, `--paper`, `--accent-warm` | The project sits between spirits — use a coherent in-between vocabulary rather than mixing two styles. |
 
