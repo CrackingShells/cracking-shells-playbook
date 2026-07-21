@@ -4,15 +4,22 @@
 # manage the browser or a server by hand.
 #
 # Usage:
-#   bash render.sh <workdir> <dcfile> <out.png> [scale] [css-selector] [field-color]
-#     workdir   dir containing the .dc.html AND its support.js (for runtime assets)
-#     dcfile    filename of the .dc.html inside workdir (spaces are fine)
-#     out.png   output path for the rendered plate
-#     scale     device pixel ratio; 3 => ~430 DPI at 168 mm (default 3)
-#     selector  optional CSS selector for the plate (default: auto-detect). Passing an
-#               explicit selector is the reliable path; see references/pipeline.md.
-#     field     optional CSS colour of the plate background. Omit and shoot.mjs reads
-#               the --field token from :root automatically.
+#   bash render.sh <workdir> <dcfile> <out.png> [scale] [css-selector] [field-color] \
+#     [target-width-mm] [fonts]
+#     workdir          dir containing the .dc.html AND its support.js (for runtime assets)
+#     dcfile           filename of the .dc.html inside workdir (spaces are fine)
+#     out.png          output path for the rendered plate
+#     scale            device pixel ratio; 3 => ~430 DPI at the project's target width
+#                       (default 3)
+#     selector         optional CSS selector for the plate (default: auto-detect). Passing
+#                       an explicit selector is the reliable path; see references/pipeline.md.
+#     field            optional CSS colour of the plate background. Omit and shoot.mjs reads
+#                       the --field token from :root automatically.
+#     target-width-mm  optional artboard width in mm (from the project's config.md); used
+#                       only to print the true placement height. Omit to print relative
+#                       aspect only.
+#     fonts            optional comma-separated font families to probe for substitution
+#                       (from the project's design tokens). Omit to skip the probe.
 #
 # Requirements (see scripts/SETUP.md): only Google Chrome.app + Node >= 20. No
 # Playwright/Puppeteer/npm/pip — the harness drives Chrome directly over CDP.
@@ -24,6 +31,7 @@ set -euo pipefail
 
 WORKDIR="${1:?workdir}"; DCFILE="${2:?dcfile}"; OUT="${3:?out.png}"
 SCALE="${4:-3}"; SELECTOR="${5:-}"; FIELD="${6:-}"
+TARGET_WIDTH_MM="${7:-}"; FONTS="${8:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT=8123; DBG=9222
@@ -48,4 +56,6 @@ curl -s --retry 40 --retry-delay 1 --retry-connrefused "http://127.0.0.1:$PORT/$
 ARGS=(--url "http://127.0.0.1:$PORT/$ENC" --out "$OUT" --scale "$SCALE")
 [ -n "$SELECTOR" ] && ARGS+=(--selector "$SELECTOR")
 [ -n "$FIELD" ] && ARGS+=(--field "$FIELD")
+[ -n "$TARGET_WIDTH_MM" ] && ARGS+=(--target-width-mm "$TARGET_WIDTH_MM")
+[ -n "$FONTS" ] && ARGS+=(--fonts "$FONTS")
 node "$HERE/shoot.mjs" "${ARGS[@]}"

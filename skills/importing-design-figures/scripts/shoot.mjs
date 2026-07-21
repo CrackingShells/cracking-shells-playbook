@@ -13,15 +13,24 @@
 //
 // Usage:
 //   node shoot.mjs --url <http url> --out <png> [--scale 3] [--selector <css>] [--field <css-color>]
+//     [--target-width-mm <n>] [--fonts "<Family>[,<Family>...]"]
 //
 // Plate detection, in priority order:
 //   1. --selector <css>   : use exactly this element (most reliable; see references/pipeline.md).
 //   2. --field <css-color>: match the largest bordered block painted this colour.
-//   3. auto: read the design system's --field token from :root and match the largest
-//      bordered block painted that colour, with two known ECL-era colours as fallback.
+//   3. auto: read the project's --field token from :root and match the largest bordered
+//      block painted that colour. There is no hardcoded fallback colour — if the plate
+//      carries no --field token, pass --field explicitly.
 // The plate is deliberately the figure box only, which EXCLUDES the component's own
 // <h2>, editor chrome, and duplicate caption (they live outside that box), so the
 // consuming document's own caption stays authoritative.
+//
+// --target-width-mm <n>: the artboard width the plate is printed at, in mm (from the
+//   project's config.md). Used only to print the true placement height alongside the
+//   pixel aspect; with no project default built in, omit it and only the relative
+//   aspect is printed.
+// --fonts "<Family>[,...]": comma-separated font families to probe for substitution
+//   (from the project's design tokens). Omit to skip the probe entirely.
 
 const args = Object.fromEntries(
   process.argv.slice(2).join(' ').split('--').filter(Boolean)
@@ -32,6 +41,8 @@ const out = args.out;
 const scale = Number(args.scale || 3);
 const selector = args.selector || null;
 const field = args.field || null;
+const targetWidthMm = args['target-width-mm'] !== undefined ? Number(args['target-width-mm']) : null;
+const fonts = args.fonts ? String(args.fonts).split(',').map(s => s.trim()).filter(Boolean) : [];
 if (!url || !out) { console.error('need --url and --out'); process.exit(2); }
 
 // Detect the plate (or use the given selector) and report its rect + child count.
@@ -41,14 +52,13 @@ if (!url || !out) { console.error('need --url and --out'); process.exit(2); }
 // string getComputedStyle returns, so token-vs-literal comparisons line up. The
 // field colour comes from --field on :root, so this adapts to any project's token
 // instead of hardcoding one design system's value.
-const PROBE = (sel, fieldColor) => `(() => {
+const PROBE = (sel, fieldColor, fontFamilies) => `(() => {
   const norm = (c) => { const d = document.createElement('div'); d.style.color = c; document.body.appendChild(d); const v = getComputedStyle(d).color; d.remove(); return v; };
   let FIELDS = [];
   ${fieldColor
     ? `FIELDS = [norm(${JSON.stringify(fieldColor)})];`
     : `const tok = getComputedStyle(document.documentElement).getPropertyValue('--field').trim();
-       if (tok) { try { FIELDS.push(norm(tok)); } catch (e) {} }
-       FIELDS.push('rgb(252, 251, 247)', 'rgb(232, 228, 218)');`}
+       if (tok) { try { FIELDS.push(norm(tok)); } catch (e) {} }`}
   let el = ${sel ? `document.querySelector(${JSON.stringify(sel)})` : 'null'};
   if (!el) {
     let best = null, bestArea = 0;
@@ -64,10 +74,11 @@ const PROBE = (sel, fieldColor) => `(() => {
   }
   if (!el) return { found: false, fields: FIELDS };
   const r = el.getBoundingClientRect();
+  const fontChecks = {};
+  for (const f of ${JSON.stringify(fontFamilies)}) fontChecks[f] = document.fonts.check('24px "' + f + '"');
   return { found: true, x: r.x, y: r.y, w: r.width, h: r.height,
            kids: el.querySelectorAll('*').length,
-           pal: document.fonts.check('27px Palatino'),
-           hel: document.fonts.check('22px "Helvetica Neue"') };
+           fonts: fontChecks };
 })()`;
 
 const listing = await (await fetch('http://127.0.0.1:9222/json')).json();
@@ -94,7 +105,7 @@ await loaded;
 const deadline = Date.now() + 30000;
 let probe, prevKids = -1, stable = 0;
 while (Date.now() < deadline) {
-  probe = await evalp(PROBE(selector, field));
+  probe = await evalp(PROBE(selector, field, fonts));
   if (probe?.found && probe.w > 0) {
     if (probe.kids === prevKids) { if (++stable >= 2) break; } else stable = 0;
     prevKids = probe.kids;
@@ -103,12 +114,17 @@ while (Date.now() < deadline) {
 }
 await evalp('document.fonts.ready.then(()=>true)');
 await new Promise(r => setTimeout(r, 500));
-probe = await evalp(PROBE(selector, field));
+probe = await evalp(PROBE(selector, field, fonts));
 
 console.log('PLATE', JSON.stringify(probe));
 if (logs.length) console.log('CONSOLE_ERRORS(' + logs.length + '): ' + [...new Set(logs)].slice(0, 6).join(' | '));
 if (!probe?.found || !probe.w) { console.error('plate not found — pass --selector explicitly (see references/pipeline.md)'); ws.close(); process.exit(3); }
-if (!probe.pal || !probe.hel) console.log('WARN: Palatino/Helvetica Neue not both resolved — fonts may be substituted');
+if (!fonts.length) {
+  console.log('NOTE: no --fonts supplied — skipping font-substitution probe');
+} else {
+  const unresolved = Object.entries(probe.fonts || {}).filter(([, ok]) => !ok).map(([f]) => f);
+  if (unresolved.length) console.log('WARN: fonts not resolved: ' + unresolved.join(', ') + ' — may be substituted');
+}
 
 const shot = await send('Page.captureScreenshot', {
   format: 'png',
@@ -117,8 +133,10 @@ const shot = await send('Page.captureScreenshot', {
 });
 const { writeFileSync } = await import('node:fs');
 writeFileSync(out, Buffer.from(shot.data, 'base64'));
-console.log('WROTE', out, Math.round(probe.w * scale) + 'x' + Math.round(probe.h * scale),
-  '| aspect', (probe.w / probe.h).toFixed(3) + ':1',
-  '| true height at 168mm =', (168 * probe.h / probe.w).toFixed(1) + 'mm');
+const dims = ['WROTE', out, Math.round(probe.w * scale) + 'x' + Math.round(probe.h * scale),
+  '| aspect', (probe.w / probe.h).toFixed(3) + ':1'];
+if (targetWidthMm) dims.push('| true height at ' + targetWidthMm + 'mm =', (targetWidthMm * probe.h / probe.w).toFixed(1) + 'mm');
+else dims.push('| true height: pass --target-width-mm to compute (relative aspect only)');
+console.log(...dims);
 ws.close();
 process.exit(0);
