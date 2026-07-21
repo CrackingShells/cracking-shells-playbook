@@ -15,9 +15,9 @@
 ## Step 1: Import pristine skill directory
 **Goal**: Bring the transferred skill content into version control unchanged, so the standalone fixes are reviewable as diffs against the import.
 **Implementation Logic**:
-Copy the pristine directory from the primary checkout into the worktree at `skills/writing-design-canons/`, excluding `.DS_Store` (e.g. `rsync -a --exclude='.DS_Store'`). No content edits in this step; README.md is imported as-is — its removal is Step 2, deliberately visible in history.
-**Deliverables**: `skills/writing-design-canons/SKILL.md` (frontmatter `name: writing-design-canons`); `skills/writing-design-canons/README.md` (temporarily); `skills/writing-design-canons/references/{identity.md,token-vocabulary.md,actionable-guidelines.md,bertin-primer.md,consumption-guide.md,chapter-splitting.md}`
-**Consistency Checks**: `diff -r --exclude=.DS_Store /Users/hacker/Documents/src/CrackingShells/cracking-shells-playbook/skills/writing-design-canons <worktree>/skills/writing-design-canons` (expected: PASS)
+Copy the pristine directory from the primary checkout into the worktree at `skills/writing-design-canons/`, excluding `.DS_Store` (e.g. `rsync -a --exclude='.DS_Store'`). README.md is imported as-is — its removal is Step 2, deliberately visible in history. One authorized edit (coordinator adjudication of implementer flag): the pristine SKILL.md frontmatter `description` is 1148 characters, over the 1024-character maximum enforced by `tools/quick_validate.py` via the pre-commit packaging hook, so a byte-faithful import is uncommittable; compress the `description` field to ≤1024 characters preserving every trigger phrase category and the four doc-type names, touching nothing else in the file.
+**Deliverables**: `skills/writing-design-canons/SKILL.md` (frontmatter `name: writing-design-canons`, `description` ≤1024 chars); `skills/writing-design-canons/README.md` (temporarily); `skills/writing-design-canons/references/{identity.md,token-vocabulary.md,actionable-guidelines.md,bertin-primer.md,consumption-guide.md,chapter-splitting.md}`
+**Consistency Checks**: `diff -r --exclude=.DS_Store --exclude=SKILL.md /Users/hacker/Documents/src/CrackingShells/cracking-shells-playbook/skills/writing-design-canons <worktree>/skills/writing-design-canons && uv run tools/package_skill.py skills/writing-design-canons dist/` (expected: PASS)
 **Commit**: `feat(writing-design-canons): import generalized design-canon skill`
 
 ## Step 2: Purge origin-project references
