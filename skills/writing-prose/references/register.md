@@ -24,7 +24,7 @@ Word filters miss these because they are shapes, not words. Self-check every dra
 | Teaser openers | A short sentence that announces something is coming instead of delivering it; the content arrives one sentence late |
 | Definitional announcements | Declaring that a term has a precise meaning and then giving it, instead of stating the thing directly |
 | Enumerated-failure cadence | Numbering problems rhetorically so the list structure carries drama the content does not |
-| Fragments for punch | Sentence fragments used as emphasis devices |
+| Fragments for punch | Sentence fragments used as emphasis devices. The compound failure is the run: several in sequence, standing in for the subordination that would have carried the argument |
 | Antithesis as ornament | A contrast constructed for rhythm when the contrast is not the content. Contrastive phrasing is correct exactly when the contrast is the point being made |
 | Ascending adjective or noun triples | Three-beat escalations that read as rhetoric unless the three items are independently load-bearing |
 | Defensive framing | Telling readers their own expectations or pre-empting objections on the page. Defenses live in reserve and are used when challenged |
@@ -36,6 +36,8 @@ Every sentence grounds the one that follows. Answers sit directly after their qu
 
 - Judge drafts by edge length, not connectivity: how far each pronoun, definite reference, or presupposition reaches back to its supplier. Adjacent is good; a reach across several sentences is a defect even when the graph technically connects.
 - Downgrade sufficiency claims to the necessity a skeptic would grant ("holds only when" rather than "is guaranteed by").
+
+**Connection is carried by the joint, not by adjacency.** Two statements placed next to each other assert that some relation holds without saying which one, and the reader supplies whichever is cheapest — often the wrong one, sometimes none. Where the relation is causal, concessive, conditional or temporal, the joint has to name it. The diagnostic is a passage of individually true statements that somehow does not argue anything: its subordination has been dissolved, the clauses separated into sentences, and the connectives discarded with them. The repair is not longer sentences but the restored joint, which is frequently shorter than the two sentences it replaces.
 
 Reordering content changes locality. After moving any block (a figure, a section, a quote), recompute what now comes first: first uses of abbreviations, first mentions that later references depend on, and any text like a caption that now reads before its context exists.
 
