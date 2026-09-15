@@ -20,10 +20,10 @@ the colgrep-mcp repository consumes it.
 Publish every CrackingShells plugin from one `cracking-shells` marketplace owned by `CrackingShells/Nest`, with five playbook skills installable in Claude Code and Codex and conformant to Agent Plugins 1.0.
 
 ## Pre-conditions
-- [ ] Implementation plan reviewed and approved (`~/.claude/plans/good-news-overall-it-s-gleaming-wreath.md`)
-- [ ] `CrackingShells/Nest` exists and is cloned at `/Users/hacker/Documents/src/CrackingShells/Nest`
-- [ ] `skills/spawning-agent-plugins/` is committed — a worktree cannot check out untracked files
-- [ ] `uv` resolves on PATH; no mamba environment is required by this campaign
+- [x] Implementation plan reviewed and approved (`~/.claude/plans/good-news-overall-it-s-gleaming-wreath.md`)
+- [x] `CrackingShells/Nest` exists and is cloned at `/Users/hacker/Documents/src/CrackingShells/Nest`
+- [x] `skills/spawning-agent-plugins/` is committed — a worktree cannot check out untracked files
+- [x] `uv` resolves on PATH; no mamba environment is required by this campaign
 
 ## Success Gates
 - ✅ `uv run skills/spawning-agent-plugins/scripts/check_plugin.py` reports no problems for each of the five generated plugin roots [run]
