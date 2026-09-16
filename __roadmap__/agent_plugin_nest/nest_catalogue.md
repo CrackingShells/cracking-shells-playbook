@@ -6,7 +6,7 @@
 - [ ] The five playbook plugin names are fixed: `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins`
 **Success Gates**:
 - ⬜ Both marketplace files parse as JSON and declare `"name": "cracking-shells"` [run]
-- ⬜ The Claude file lists seven plugins; the Codex file lists the six it can express [run]
+- ⬜ Both files list exactly seven plugins [run]
 - ⬜ No plugin entry anywhere carries a `version`, `sha` or `ref` key [run]
 - ⬜ Every playbook entry uses a `git-subdir` source whose `path` is `plugins/<name>` [run]
 - ⬜ Every entry inlines `displayName`, `description` and `category` for Codex's pre-install browse view [run]
@@ -29,7 +29,7 @@ Write `.claude-plugin/marketplace.json` with `name: "cracking-shells"`, an `owne
 **Implementation Logic**:
 Write `.agents/plugins/marketplace.json` with `name: "cracking-shells"`, an `interface.displayName` of `"CrackingShells"`, and the same plugins. Codex has no `github` shorthand: playbook entries use `{"source":"git-subdir","url":"https://github.com/CrackingShells/cracking-shells-playbook.git","path":"plugins/<name>"}` and colgrep-mcp uses `{"source":"url","url":"https://github.com/CrackingShells/colgrep-mcp.git"}`. Every entry needs a `policy` block (`installation: "AVAILABLE"`, `authentication: "NONE"`) and a `category`; Codex's loader defaults `policy` but the reference treats both as expected. Inline the same display metadata — Codex does not clone at listing time, so an entry without it renders blank until install. Remember `category` here permanently overrides the plugin manifest's own, so it must be the value you actually want shown.
 **Deliverables**: `/Users/hacker/Documents/src/CrackingShells/Nest/.agents/plugins/marketplace.json` — keys `name`, `interface.displayName`, `plugins[]` each with `name`, `source`, `policy`, `category`
-**Consistency Checks**: `python3 -c "import json;d=json.load(open('/Users/hacker/Documents/src/CrackingShells/Nest/.agents/plugins/marketplace.json'));assert d['name']=='cracking-shells';assert len(d['plugins'])>=6;assert all('policy' in p and 'category' in p for p in d['plugins'])"` (expected: PASS)
+**Consistency Checks**: `python3 -c "import json;d=json.load(open('/Users/hacker/Documents/src/CrackingShells/Nest/.agents/plugins/marketplace.json'));assert d['name']=='cracking-shells';assert len(d['plugins'])==7;assert all('policy' in p and 'category' in p for p in d['plugins'])"` (expected: PASS)
 **Commit**: `feat(marketplace): add the cracking-shells Codex catalogue`
 
 ## Step 3: Write the Nest README with the migration note
