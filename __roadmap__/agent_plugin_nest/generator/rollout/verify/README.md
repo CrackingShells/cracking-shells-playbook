@@ -20,7 +20,7 @@ Prove a real user can add Nest and install every playbook plugin in both harness
 ## Status
 ```mermaid
 graph TD
-    end_to_end[End To End Install]:::planned
+    end_to_end[End To End Install]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -31,7 +31,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `end_to_end.md` | 📄 Leaf Task | ⬜ Planned |
+| `end_to_end.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

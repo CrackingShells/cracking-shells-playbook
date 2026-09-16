@@ -39,7 +39,7 @@ graph TD
     nest_catalogue[Nest Catalogue]:::done
     regeneration_guard[Regeneration Guard]:::done
     plugin_assembly_tool[Plugin Assembly Tool]:::done
-    generator[Generator Extensions]:::inprogress
+    generator[Generator Extensions]:::done
     hub_mode_reconciliation[Hub Mode Reconciliation]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -54,7 +54,7 @@ graph TD
 | `nest_catalogue.md` | 📄 Leaf Task | ✅ Done |
 | `regeneration_guard.md` | 📄 Leaf Task | ✅ Done |
 | `plugin_assembly_tool.md` | 📄 Leaf Task | ✅ Done |
-| `generator/` | 📁 Directory | 🔄 In Progress |
+| `generator/` | 📁 Directory | ✅ Done |
 | `hub_mode_reconciliation.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log

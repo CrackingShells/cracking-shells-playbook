@@ -24,7 +24,7 @@ Five playbook skills exist as five installable plugins whose versions bump on ev
 graph TD
     playbook_plugins[Playbook Plugins]:::done
     release_wiring[Release Wiring]:::done
-    verify[Verification]:::inprogress
+    verify[Verification]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -37,7 +37,7 @@ graph TD
 |:-----|:-----|:-------|
 | `playbook_plugins.md` | 📄 Leaf Task | ✅ Done |
 | `release_wiring.md` | 📄 Leaf Task | ✅ Done |
-| `verify/` | 📁 Directory | 🔄 In Progress |
+| `verify/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
