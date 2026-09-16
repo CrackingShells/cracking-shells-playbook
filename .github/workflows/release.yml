@@ -59,8 +59,28 @@ jobs:
           name: ${{ matrix.artifact }}
           path: skills/managing-roadmaps/scripts/dirtree-rdm/bin/
 
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Re-assemble every plugin and check for drift
+        run: |
+          if [ -d plugins ]; then
+            for dir in plugins/*/; do
+              skill=$(basename "$dir")
+              uv run tools/assemble_plugin.py "$skill"
+            done
+          fi
+          if [ -n "$(git status --porcelain plugins/)" ]; then
+            echo "::error::Assembled plugin tree is out of sync with skills/ — run 'uv run tools/assemble_plugin.py <name>' and commit the result."
+            git status --porcelain plugins/
+            git diff plugins/
+            exit 1
+          fi
+
   release:
-    needs: [detect, build-managing-roadmaps-binaries]
+    needs: [detect, build-managing-roadmaps-binaries, drift]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
