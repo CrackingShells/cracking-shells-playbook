@@ -60,6 +60,25 @@ SPEC_PATH = SKILL_ROOT / "assets" / "examples" / "colgrep-mcp.spec.json"
 # pre-existing `dev/README.md`, and nothing else — no .codex-plugin/* write or
 # skip appears at all, because the generator no longer references that path.
 #
+# Re-baselined again 2026-09-16, hub_mode_reconciliation leaf's step 1: the
+# example spec now declares hub mode (`"marketplace": {"hub": "..."}`), so
+# `spawn()` never calls `merge_marketplace` and the guard no longer depends on
+# colgrep-mcp keeping the two local marketplace files its own
+# `relinquish_marketplace` leaf is about to delete — verified by simulating
+# that deletion against a scratch copy of the checkout: without hub mode the
+# dry run reports `would write .claude-plugin/marketplace.json` and
+# `would write .agents/plugins/marketplace.json`; with it, neither line
+# appears. That leaf's spec text also instructed dropping the `plugin.json`
+# entry below as "now inert", on the claim that colgrep-mcp's manifest
+# already carries `extensions`. That claim is false at this same commit
+# (ef54b8f): `plugin.json` on disk still has no `extensions` key (see the
+# paragraph above, written for the exact same commit), and dropping the
+# entry was confirmed empirically to turn this guard red with
+# `unexpected divergence from the spec: ['plugin.json  [keys: extensions]']`.
+# The entry stays until `nest_migration/regenerate_manifests` actually lands
+# in colgrep-mcp — dropping it now would be the silent re-baseline this
+# guard exists to prevent, not a cleanup.
+#
 # Key-scoped, not file-scoped: `None` is a whole-file exemption (dev/README.md
 # is hand-maintained prose with no JSON keys to compare); a set restricts the
 # exemption to those top-level keys. A file-scoped allowlist (bare

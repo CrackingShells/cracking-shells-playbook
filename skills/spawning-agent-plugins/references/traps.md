@@ -80,9 +80,12 @@ is not a merge, it is a replacement nobody asked for.
 
 **Do.** One hub repository owns the marketplace name for the organization
 (`CrackingShells/Nest` owns `cracking-shells`); every other repository's
-spec sets the top-level `marketplace` key (any truthy value) so
-`spawn_plugin.py` writes **no** local marketplace file for it at all
-(`manifests.md#codex` describes the suppression). A client that already
+spec sets the top-level `marketplace` key — `{"hub": "<repository URL>"}` —
+so `spawn_plugin.py` writes **no** local marketplace file for it at all
+(`manifests.md#codex` describes the suppression). Record the hub's
+repository in `marketplace.hub`; `load_spec` refuses a spec that sets
+`marketplace` without it, rather than guessing it from `repository` (this
+repo's own, not the hub's). A client that already
 registered the name from the wrong source must
 `claude plugin marketplace remove cracking-shells` (and the Codex
 equivalent) before adding the hub — re-adding under the same name does not
@@ -91,6 +94,36 @@ install, check the registration's `source` field
 (`known_marketplaces.json` for Claude Code), not just which plugins
 `claude plugin list` shows: a truncated-but-present catalogue and a
 wrong-source catalogue look identical from the plugin list alone.
+
+## A generator fix never reaches a repo that already declared hub mode {#hub-mode-no-retro-repair}
+
+**Symptom.** A bug in a marketplace-file builder (`build_claude_marketplace`,
+`build_codex_marketplace`) gets fixed in `spawn_plugin.py`, `spawn` is
+re-run against a repo that already set `marketplace.hub`, and the broken
+value is still live in the hub's own marketplace file — nothing about
+running `spawn` touched it, and nothing warned that it wouldn't. The live
+instance: a Codex marketplace entry hardcoding `"authentication": "NONE"`
+(an invalid enum value, `#codex-auth-enum`) shipped before that bug was
+found; colgrep-mcp's own entry in the hub's marketplace had to be repaired
+by hand, and any other repo generated before the fix carries the same
+latent breakage with no self-healing path.
+
+**Cause.** Hub mode means `spawn()` never calls `merge_marketplace` for
+this repo at all (`spawn_plugin.py:612`) — that is the entire point of the
+mode. A generator fix to marketplace-file *content* only ever reaches a
+marketplace file the generator itself writes or merges. Once a repo
+declares `marketplace.hub`, its plugin entries live in the hub's own
+`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`,
+files this repo's `spawn` invocation never opens, so a fix here is
+invisible to it forever.
+
+**Do.** Treat a marketplace-file builder bug as two fixes, not one, the
+moment any repo is in hub mode: the generator fix, and a hand (or scripted)
+correction of every affected entry already sitting in the hub's
+marketplace files. `spawn --dry-run` against a hub-mode repo cannot surface
+this — it never reads the hub's marketplace at all — so check the hub
+repository directly, entry by entry, rather than trusting a clean dry run
+from the product side.
 
 ## The assembled plugin tree drifts from its source skill {#assembled-tree-drift}
 

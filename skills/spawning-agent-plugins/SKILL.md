@@ -70,7 +70,7 @@ Two more yes/no answers, orthogonal to the four above:
 | Question | When yes | Spec section |
 |:--|:--|:--|
 | Several plugins from one repo? | the repo holds more than one installable unit (e.g. several skills, each its own release line) | top-level `"plugins": [{"name", "dir", "description", ...}]` |
-| Does another repo own the marketplace name? | an organization already has (or is about to have) a hub repository listing every plugin under one name | top-level `"marketplace": "hub"` (any truthy value; suppresses both local marketplace files for every plugin this spec declares) |
+| Does another repo own the marketplace name? | an organization already has (or is about to have) a hub repository listing every plugin under one name | top-level `"marketplace": {"hub": "<repository URL>"}` (suppresses both local marketplace files for every plugin this spec declares; `claude_marketplace.name` and `codex.marketplace_name` stay — they still name the hub's marketplace) |
 
 A spec can set both: several sibling plugins, none of which write a local
 marketplace, because the hub lists all of them
@@ -99,6 +99,25 @@ is a real defect, not an artifact of the reshape.
 `evals/fixtures/two_plugins.spec.json` is the minimal multi-plugin
 counterpart, two siblings with no marketplace-suppressing key.
 
+**Writing a hub-mode spec: ask, don't infer.** Before setting the top-level
+`marketplace` key, ask the human three things — who owns the marketplace,
+what it is called, and which repository hosts it — and record every
+answer: the repository goes in `marketplace.hub`, the name stays in
+`claude_marketplace.name` and `codex.marketplace_name` exactly as it would
+for a repo that owned its own marketplace. This is the general principle
+behind every field in this section, not a special case for hub mode: the
+generator reads recorded answers and never infers human-facing identity
+(a marketplace name, a hub repository, a display name), because the two
+things that consume that identity — `dev_readme()` and `install_snippet()`
+— are documentation, and wrong documentation fails silently in a reader's
+hands. It is also what keeps `spawn` reproducible: an interactively
+supplied answer would make `evals/test_regeneration.py` meaningless, since
+it re-runs `spawn` and diffs the output — a spec that cannot answer this
+question on its own is a question for a human, not a prompt the generator
+should ask at run time. `load_spec` enforces the hub half of this: a
+hub-mode spec recording no `marketplace.hub` is rejected before anything
+is written, naming the exact key to add.
+
 Hook events go in two spec lists. `hooks.portable` takes the events every
 hook-capable harness knows; they land in `hooks/hooks.json`. `hooks.extra`
 takes every other event, one entry each with its own `description`; each
@@ -118,7 +137,10 @@ python3 <skill>/scripts/spawn_plugin.py --root <repo> spawn --spec plugin.spec.j
 
 The generator never overwrites: a file whose JSON content differs from the
 spec is listed as `kept` with the top-level keys that would change, and only
-`--force` rewrites it. Marketplaces are merged, so a repo that already has a
+`--force` rewrites it — except `dev/README.md`, which is seeded once and
+never regenerated, `--force` included, once a maintainer starts editing it
+by hand; a `kept` listing for it is not a signal `--force` will clear.
+Marketplaces are merged, so a repo that already has a
 `.claude-plugin/marketplace.json` (a Rust conventions plugin, a `dist/`
 source) gains the new entries and loses nothing. `.agents/` is touched only
 at `.agents/plugins/marketplace.json`; Codex keeps its skills under
@@ -298,4 +320,4 @@ Plugins 1.0 plugin` is the shape colgrep-mcp used.
 | `references/manifests.md` | filling a spec field you are unsure of; what each manifest may and may not contain; the placeholder rules table; multi-plugin repositories and hub marketplaces; the cross-format equivalence matrix |
 | `references/hooks.md` | designing the hook script: the per-event file rule and what each manifest may name, events, matcher names per harness, I/O contract, context cap, Cursor and Codex limits |
 | `references/versioning.md` | wiring the version bump: commitizen, semantic-release, npm, or none; independent sibling version lines; why tags need no migration |
-| `references/traps.md` | a plugin lists but does not connect, "Duplicate hooks file detected" at install, hooks do not fire, `x@x` install strings, stale uvx cache, Codex hooks, the marketplace-name collision, an assembled plugin tree drifting from its source, a Codex marketplace entry with an invalid auth enum |
+| `references/traps.md` | a plugin lists but does not connect, "Duplicate hooks file detected" at install, hooks do not fire, `x@x` install strings, stale uvx cache, Codex hooks, the marketplace-name collision, an assembled plugin tree drifting from its source, a Codex marketplace entry with an invalid auth enum, a generator fix that never reaches an already hub-mode repo |

@@ -181,15 +181,35 @@ verbatim, which is equivalent when `dir` is `plugins/<name>`. Install:
 Codex keeps repo skills (`.agents/skills/`), so the generator merges into
 this one file and touches nothing else there.
 
-A `marketplace` key at the top of the spec (any truthy value, e.g.
-`"marketplace": "hub"`) suppresses **both** local marketplace files for
-every plugin the spec declares — `spawn()` never calls `merge_marketplace`
-at all when it is set. Use it when another repository (a hub, e.g.
-`CrackingShells/Nest`) owns the marketplace naming these plugins: two
-repositories that each write a marketplace entry under the same
-`name` collide (`traps.md#marketplace-name-collision`), so a spec bound for
-a hub carries no `claude_marketplace` or `codex.marketplace_name` section at
-all and this repo's own manifests are the only files it produces.
+A `marketplace` key at the top of the spec — `{"hub": "<repository URL>"}` —
+suppresses **only** the two local marketplace *files* for every plugin the
+spec declares: `spawn()` never calls `merge_marketplace` at all when it is
+set. Use it when another repository (a hub, e.g. `CrackingShells/Nest`)
+owns the marketplace naming these plugins: two repositories that each
+write a marketplace entry under the same `name` collide
+(`traps.md#marketplace-name-collision`).
+
+**The name fields stay.** `claude_marketplace.name` and
+`codex.marketplace_name` are not marketplace-file content in hub mode —
+they are the recorded answer to "which marketplace lists this plugin",
+still read by `dev_readme()` and `install_snippet()` for their
+`plugin install <name>@<marketplace-name>` lines, which is exactly right:
+the hub's marketplace really is named `cracking-shells`, and that name
+still exists. Dropping these fields (an earlier version of this document
+said to) leaves them defaulting to `f"{spec['name']}-marketplace"` — a
+marketplace that was never created, advertised with no error anywhere.
+
+**The hub itself must be recorded, never inferred.** `marketplace.hub` is
+what `install_snippet()`'s and `dev_readme()`'s `plugin marketplace add`
+lines name instead of `repository` (the product repo, which is exactly the
+wrong repository once another one owns the marketplace). `load_spec`
+refuses a hub-mode spec that records no hub, naming the exact key to add —
+it never falls back to `repository`, and it never prints a hedged "cannot
+determine the hub" line into generated prose. A spec bound for a hub still
+carries no marketplace *files*, and now also carries `marketplace.hub`
+alongside the unchanged `claude_marketplace`/`codex.marketplace_name`
+sections — see `assets/examples/colgrep-mcp.spec.json` for a spec that
+declares all three.
 
 ## Multi-plugin repositories
 
