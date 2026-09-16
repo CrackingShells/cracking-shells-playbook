@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -74,7 +75,19 @@ def _load(root: Path, rel: str) -> dict | None:
         raise ValueError(f"{rel}: invalid JSON ({exc})") from exc
 
 
-_SKIP_DIR_NAMES = {".git", "node_modules", "dist", "__pycache__"}
+_SKIP_DIR_NAMES = {
+    ".git",
+    "node_modules",
+    "dist",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "site-packages",
+    ".tox",
+    ".pytest_cache",
+    ".ruff_cache",
+    "target",
+}
 
 
 def _looks_like_plugin_root(candidate: Path) -> bool:
@@ -86,29 +99,26 @@ def find_plugin_roots(root: Path) -> list[Path]:
     plus every directory anywhere under it with its own manifest (a `plugins[]` sibling,
     an assembled `plugins/<name>/` tree, or a maintainer `dev/` plugin). One entry per
     plugin, so a sibling's identity check never runs against another sibling's.
+
+    `_SKIP_DIR_NAMES` is pruned DURING the walk (`os.walk`'s in-place `dirnames`
+    trick), not filtered out of the result afterward: a vendored tree like
+    `server/.venv` (colgrep-mcp ships one with 3339 files) is never descended into
+    at all, so the exclusion also bounds the walk's cost, not just its correctness
+    — and a stray `plugin.json` dropped by some unrelated package under
+    `site-packages/` can never be mistaken for a plugin root.
     """
     roots: list[Path] = [root] if _looks_like_plugin_root(root) else []
-    for manifest in sorted(root.rglob(".claude-plugin/plugin.json")):
-        candidate = manifest.parent.parent
-        if candidate == root:
-            continue
-        rel_parts = candidate.relative_to(root).parts
-        if any(part in _SKIP_DIR_NAMES for part in rel_parts):
-            continue
-        if candidate not in roots:
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
+        candidate = Path(dirpath)
+        if candidate == root or candidate.name.startswith("."):
+            continue  # repo root already handled above; a dotfile dir (.claude-plugin
+            # itself, .git, ...) is never a plugin root in its own right
+        has_claude_manifest = (candidate / ".claude-plugin" / "plugin.json").exists()
+        has_root_manifest = "plugin.json" in filenames
+        if (has_claude_manifest or has_root_manifest) and candidate not in roots:
             roots.append(candidate)
-    for manifest in sorted(root.rglob("plugin.json")):
-        candidate = manifest.parent
-        if candidate.name.startswith("."):
-            continue  # a `.claude-plugin/plugin.json` or similar, not a root manifest
-        if candidate == root or (candidate / ".claude-plugin" / "plugin.json").exists():
-            continue  # already found via the .claude-plugin/plugin.json pass, or is repo root
-        rel_parts = candidate.relative_to(root).parts
-        if any(part in _SKIP_DIR_NAMES for part in rel_parts):
-            continue
-        if candidate not in roots:
-            roots.append(candidate)
-    return roots
+    return sorted(roots, key=lambda p: p.as_posix())
 
 
 def _resolve_local_source_path(source) -> str | None:
