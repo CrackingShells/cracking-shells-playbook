@@ -172,7 +172,23 @@ def resolve_version(spec: dict, root: Path) -> str:
         return "0.1.0"
     kind, _, rel = source.partition(":")
     path = root / (rel or {"pyproject": "pyproject.toml", "package.json": "package.json", "cargo": "Cargo.toml"}[kind])
-    text = path.read_text()
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        # Loud, not silent: this is the correct fallback for a version source a sibling
+        # leaf hasn't created YET (a plugin whose version_from names a not-yet-built
+        # file resolves to 0.1.0 by design — that is expected, not a defect), but the
+        # identical symptom also covers a typo'd version_from, and a silent 0.1.0 there
+        # would ship a wrong version into a manifest Nest resolves. Warn by name so a
+        # typo is visible, without turning this into a hard failure that would re-block
+        # every entry after a legitimately-not-yet-created one.
+        print(
+            f"warning: version_from {source!r} resolves to {path}, which does not exist; falling back to "
+            "0.1.0. If this plugin's version source should already exist, this is a typo in version_from "
+            "rather than an unfinished sibling leaf — check the path.",
+            file=sys.stderr,
+        )
+        return "0.1.0"
     if kind == "pyproject":
         block = re.search(r"^\[project\]\n(.*?)(?=^\[|\Z)", text, re.S | re.M)
         match = block and re.search(r'^version\s*=\s*"([^"]+)"', block.group(1), re.M)
