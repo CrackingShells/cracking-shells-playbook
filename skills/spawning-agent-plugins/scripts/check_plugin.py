@@ -200,8 +200,17 @@ def collect_problems(root: Path, spec_path: Path | None = None, notes: list[str]
         roots = find_plugin_roots(root)
     except ValueError as exc:
         return [str(exc)]
+
+    if spec_path is not None:
+        # Must run even when `roots` is empty: `find_plugin_roots` only recognises a
+        # directory as a plugin root once it HAS a manifest, so a spec-declared plugin
+        # that was never materialised — the whole tree, in the extreme case — is
+        # otherwise invisible to every check below, and "no problems" would not be
+        # evidence of completeness.
+        problems.extend(_check_declared_plugins_complete(root, spec_path))
+
     if not roots:
-        return [f"no plugin manifest found under {root} (.claude-plugin/plugin.json, plugin.json)"]
+        return problems or [f"no plugin manifest found under {root} (.claude-plugin/plugin.json, plugin.json)"]
 
     if (root / ".mcp.json").exists():
         say("a root .mcp.json exists: Claude Code reads it as project-scope config that never expands ${CLAUDE_PLUGIN_ROOT}")
@@ -249,6 +258,50 @@ def _dev_pairs_from_spec(repo_root: Path, spec_path: Path) -> dict[Path, Path]:
         dev_dir_rel = f"{entry_dir}/{dev_rel}" if entry_dir else dev_rel
         pairs[(repo_root / dev_dir_rel).resolve()] = product_root
     return pairs
+
+
+def _check_declared_plugins_complete(repo_root: Path, spec_path: Path) -> list[str]:
+    """Every plugin `spec_path` declares must have a complete root: its directory must
+    exist, AND it must carry the manifest file(s) its own `ecosystems` imply.
+
+    `find_plugin_roots` only recognises a directory as a plugin root once it HAS a
+    manifest — by design, since tree shape is all it has to go on — so a declared plugin
+    that was never materialised (a directory not yet created, or created but never
+    spawned into) is otherwise invisible to every other check in this file: nothing
+    reads its manifest because nothing treats it as a root, and nothing reports its
+    absence because nothing was looking for it by name. "No problems" from the rest of
+    this checker is then not evidence that the declared tree is complete — this is the
+    one check that is, because it starts from the spec's own list rather than from what
+    happens to already exist on disk.
+    """
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    from spawn_plugin import load_spec, plugin_entries  # noqa: PLC0415  (local: see
+    # _dev_pairs_from_spec's note on the check_plugin<->spawn_plugin import cycle)
+
+    spec = load_spec(spec_path)
+    problems: list[str] = []
+    say = problems.append
+    for entry in plugin_entries(spec):
+        name = entry.get("name", "<unnamed>")
+        entry_dir = (entry.get("dir") or "").strip("/")
+        plugin_dir = (repo_root / entry_dir).resolve() if entry_dir else repo_root.resolve()
+        where = entry_dir or "."
+        if not plugin_dir.is_dir():
+            say(f"spec declares plugin {name!r} at {where!r}, but that directory does not exist")
+            continue
+        eco = set(entry.get("ecosystems", ["claude", "codex", "agent-plugins"]))
+        missing = []
+        if "agent-plugins" in eco or "codex" in eco:
+            if not (plugin_dir / "plugin.json").exists():
+                missing.append(f"{where}/plugin.json" if entry_dir else "plugin.json")
+        if "claude" in eco:
+            if not (plugin_dir / ".claude-plugin" / "plugin.json").exists():
+                missing.append(f"{where}/.claude-plugin/plugin.json" if entry_dir else ".claude-plugin/plugin.json")
+        if missing:
+            say(f"spec declares plugin {name!r} at {where!r}, but it is missing: {', '.join(missing)}")
+    return problems
 
 
 def _collect_plugin_problems(root: Path, repo_root: Path, claude_market: dict | None, codex_market: dict | None) -> list[str]:
