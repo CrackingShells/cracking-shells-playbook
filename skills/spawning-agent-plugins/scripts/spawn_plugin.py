@@ -72,7 +72,59 @@ def load_spec(path: Path) -> dict:
     spec.setdefault("author", {})
     if spec.get("hooks"):
         _check_hooks_spec(spec["hooks"])
+    if spec.get("plugins"):
+        _check_plugins_spec(spec["plugins"])
     return spec
+
+
+def _check_plugins_spec(plugins: list) -> None:
+    """Each entry needs a kebab-case `name` and a `dir`; no two entries may share either."""
+    seen_names: set = set()
+    seen_dirs: set = set()
+    for entry in plugins:
+        name = entry.get("name")
+        if not name or not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+            _die(f"plugins entry needs a kebab-case name, got {name!r}")
+        dir_ = entry.get("dir")
+        if dir_ is None or not isinstance(dir_, str):
+            _die(f"plugins entry {name!r} needs a dir")
+        if not entry.get("description"):
+            _die(f"plugins entry {name!r} needs a non-empty description")
+        if name in seen_names:
+            _die(f"duplicate plugin name in plugins[]: {name!r}")
+        dir_key = dir_.strip("/")
+        if dir_key in seen_dirs:
+            _die(f"duplicate plugin dir in plugins[]: {dir_!r}")
+        seen_names.add(name)
+        seen_dirs.add(dir_key)
+        if entry.get("hooks"):
+            _check_hooks_spec(entry["hooks"])
+
+
+def plugin_entries(spec: dict) -> list[dict]:
+    """Normalised per-plugin dicts: what `spawn()`'s ecosystem branches loop over.
+
+    A single-plugin spec (no top-level `plugins`) yields a one-element list holding
+    the spec itself, `dir` defaulted to `""` (a root plugin) — so single-plugin
+    behaviour is byte-for-byte unchanged. A multi-plugin spec yields one normalised
+    entry per `plugins[]` item, each shaped exactly like a single-plugin spec (so
+    every build_* function needs no change): `author`, `homepage`, `repository`,
+    `license`, `ecosystems` and `keywords` fall back to the top-level spec's value
+    when the entry doesn't set its own.
+    """
+    if not spec.get("plugins"):
+        entry = dict(spec)
+        entry.setdefault("dir", "")
+        entry.pop("plugins", None)
+        return [entry]
+    entries = []
+    for raw in spec["plugins"]:
+        entry = dict(raw)
+        entry["dir"] = (entry.get("dir") or "").strip("/")
+        for key in ("author", "homepage", "repository", "license", "ecosystems", "keywords"):
+            entry.setdefault(key, spec.get(key))
+        entries.append(entry)
+    return entries
 
 
 def _event_name(event) -> str:
