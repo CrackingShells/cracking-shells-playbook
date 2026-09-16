@@ -39,6 +39,8 @@ In `references/traps.md`, add a trap anchored `{#marketplace-name-collision}` af
 
 **Implementation Logic**:
 Update `SKILL.md`'s workflow and its `## References` table for the new spec keys (`plugins[]`, the hub marketplace mode), the two-manifest-set output, and the multi-plugin path. Update the layout diagram at the top, which still shows `.codex-plugin/`. Then sweep all five documents for stale claims and broken anchors: every `{#anchor}` referenced must exist as a heading, and no file may still assert that `.codex-plugin/plugin.json` is generated. Write the sweep as a runnable command, not a reading pass — an anchor check done by eye is the kind that silently rots.
+
+Scope the stale-claim sweep to the documents, not the whole skill directory. A blunt substring match cannot tell an assertion that a path IS generated from one correctly stating it is NOT, and `evals/test_regeneration.py` legitimately names `.codex-plugin/plugin.json` in a comment explaining that nothing writes it any more. The authoritative statement that nothing generates it is that `spawn_plugin.py` contains no such reference, which `generator_reshape` already gates.
 **Deliverables**: `skills/spawning-agent-plugins/SKILL.md` — layout block, workflow steps and References table reconciled
-**Consistency Checks**: `test $(grep -rl "codex-plugin/plugin.json" skills/spawning-agent-plugins/ | wc -l) -eq 0` (expected: PASS)
+**Consistency Checks**: `test $(COLGREP_BYPASS=1 grep -l "codex-plugin/plugin.json" skills/spawning-agent-plugins/SKILL.md skills/spawning-agent-plugins/references/*.md | wc -l) -eq 0` (expected: PASS)
 **Commit**: `docs(spawning-agent-plugins): reconcile SKILL.md with the reshaped generator`
