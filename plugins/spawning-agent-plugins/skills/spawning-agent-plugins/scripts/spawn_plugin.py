@@ -25,7 +25,9 @@ Subcommands:
     init             write an example spec next to the repo, prefilled from git and
                      from whatever version source the tree already has
     spawn            write the manifests from a spec (refuses to overwrite unless
-                     --force; marketplaces are merged, never clobbered)
+                     --force; marketplaces are merged, never clobbered; dev/README.md
+                     is seeded once and never regenerated, --force included, once a
+                     maintainer starts editing it by hand)
     install-snippet  print the README install section for the spec's names
 
 Stdlib only, Python >= 3.9. Run it from anywhere: every path is resolved
@@ -521,6 +523,26 @@ class Writer:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
 
+    def put_protected(self, rel: str, text: str) -> None:
+        """Like `put`, but never overwritten once it exists — not even under `--force`.
+
+        For the one output the generator only *seeds*: a maintainer edits it by hand
+        afterwards (currently just `dev/README.md`). `--force` exists to overwrite generated
+        manifests the spec is the source of truth for; this file stops being one of those the
+        moment it is first written, and regenerating it destroyed real hand-written prose in
+        production (the dev plugin's eval-case location, a skill-creator attribution, CONTRIBUTING
+        framing), caught only on diff review. Reported the same way `put`'s divergences are —
+        `kept`, never silently — so an operator sees why it was left alone.
+        """
+        path = self.root / rel
+        if path.exists():
+            self.skipped.append(rel + _key_diff(path, text))
+            return
+        self.written.append(rel)
+        if not self.dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+
     def merge_marketplace(self, rel: str, fresh: dict) -> None:
         """Add the plugin entries a marketplace lacks; never rewrite the ones it has."""
         path = self.root / rel
@@ -614,7 +636,7 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
             market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
             market_slug = _marketplace_source_slug(spec)
             w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(entry, version)))
-            w.put(f"{ddir}/README.md", dev_readme(entry, ddir, market, market_slug))
+            w.put_protected(f"{ddir}/README.md", dev_readme(entry, ddir, market, market_slug))
             if not dry_run:
                 (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
 
