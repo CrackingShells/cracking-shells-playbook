@@ -170,7 +170,7 @@ def _check_codex_interface(extensions: dict | None, agent: dict | None, version:
     return out
 
 
-def collect_problems(root: Path, spec_path: Path | None = None) -> list[str]:
+def collect_problems(root: Path, spec_path: Path | None = None, notes: list[str] | None = None) -> list[str]:
     """Check every plugin root under `root` independently, plus the shared, repo-level
     marketplace files and any maintainer `dev/` plugins.
 
@@ -178,9 +178,23 @@ def collect_problems(root: Path, spec_path: Path | None = None) -> list[str]:
     identity is read from its `dev` declarations (see `_dev_pairs_from_spec`), never
     inferred from directory nesting — tree shape alone cannot tell a dev plugin nested
     under its product apart from an ordinary sibling PRODUCT plugin nested the same way
-    (e.g. an assembled `plugins/<name>/` tree)."""
+    (e.g. an assembled `plugins/<name>/` tree).
+
+    `notes`, when given, collects advisory lines — currently just "dev-plugin validation
+    was skipped because no --spec was given" — that describe a reduced-coverage check,
+    not a defect in the tree. They are a SEPARATE channel from the returned list: nothing
+    that lands in `notes` is a problem, and a caller that never asks for `notes` (the
+    default) sees them nowhere, including in the return value. This is why: `--spec` is
+    optional, so its absence cannot be a hard failure — a hub-mode repo (no local
+    marketplace to fall back on either) has no other way to skip dev validation than by
+    passing no spec, and the previous shape of this function made that flag omission
+    exit non-zero on every such repo, which is wrong for guidance, not a bug in the repo
+    it was pointed at.
+    """
     problems: list[str] = []
     say = problems.append
+    if notes is None:
+        notes = []
 
     try:
         roots = find_plugin_roots(root)
@@ -205,7 +219,7 @@ def collect_problems(root: Path, spec_path: Path | None = None) -> list[str]:
             say(str(exc))
 
     dev_pairs = _dev_pairs_from_spec(root, spec_path) if spec_path is not None else None
-    problems.extend(_collect_dev_problems(root, roots, claude_market, dev_pairs))
+    problems.extend(_collect_dev_problems(root, roots, claude_market, dev_pairs, notes))
     return problems
 
 
@@ -466,7 +480,11 @@ def _check_declared_dev(dev_dir: Path, product_root: Path, dev_manifest: dict) -
 
 
 def _collect_dev_problems(
-    repo_root: Path, roots: list[Path], claude_market: dict | None, dev_pairs: dict[Path, Path] | None
+    repo_root: Path,
+    roots: list[Path],
+    claude_market: dict | None,
+    dev_pairs: dict[Path, Path] | None,
+    notes: list[str],
 ) -> list[str]:
     """Maintainer `dev/` plugin checks — version lag, "never a server", skills
     disjointness — need to know exactly which directories ARE dev plugins, and tree
@@ -481,10 +499,15 @@ def _collect_dev_problems(
     declarations, never inferred — is the ONLY source of dev-specific checks. Passing
     `None` (no `--spec` given) intentionally runs NONE of those checks; there is no
     tree-shape fallback for them, because any such fallback is exactly the guessing that
-    caused the false positive this replaces. What DOES still run without a spec is the
-    marketplace-entry dangling-reference check below, since it never needs to classify
-    dev vs. product at all — a source `find_plugin_roots` never reached is suspicious
-    regardless of which kind of plugin it would have been.
+    caused the false positive this replaced. That absence is advisory, not a defect in
+    the tree being checked — `--spec` is optional, so omitting it cannot be a hard
+    failure — so it goes to `notes`, never `problems`: a hub-mode repo has no other way
+    to skip dev validation than by omitting `--spec`, and counting that omission as a
+    problem would fail every hub-mode root for want of a flag. What DOES still run
+    without a spec is the marketplace-entry dangling-reference check below, since it
+    never needs to classify dev vs. product at all — a source `find_plugin_roots` never
+    reached is suspicious regardless of which kind of plugin it would have been; that
+    check is a real finding, so it still lands in `problems`.
     """
     problems: list[str] = []
     say = problems.append
@@ -497,14 +520,19 @@ def _collect_dev_problems(
                 say(f"the spec declares a dev plugin at {dev_dir}, but no .claude-plugin/plugin.json is there")
                 continue
             problems.extend(_check_declared_dev(dev_dir, product_root, dev_manifest))
-    elif not claude_market:
-        # No spec AND no local marketplace to fall back on (hub mode): dev-plugin
-        # validation has nothing to run against. Say so — a silent skip here is exactly
-        # how the original defect (no dev validation at all in hub mode) hid.
-        say(
-            "dev-plugin validation skipped: no --spec was given and no local "
-            ".claude-plugin/marketplace.json exists to fall back on (hub mode) — pass "
-            "--spec <spec.json> to validate this repo's declared dev plugins"
+    elif claude_market:
+        notes.append(
+            'dev-plugin validation (version lag, "never a server", skills disjointness) skipped: no --spec '
+            "was given, so dev-plugin identity cannot be read from the spec (tree shape alone cannot tell a "
+            "dev plugin from a nested sibling product). The marketplace-entry dangling-reference check below "
+            "still ran. Pass --spec <spec.json> to validate this repo's declared dev plugins."
+        )
+    else:
+        notes.append(
+            'dev-plugin validation (version lag, "never a server", skills disjointness) skipped: no --spec '
+            "was given, and no local .claude-plugin/marketplace.json exists either (hub mode), so nothing "
+            "else ran to cross-check dev plugins. Pass --spec <spec.json> to validate this repo's declared "
+            "dev plugins."
         )
 
     if claude_market:
@@ -596,14 +624,20 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="the spec.json this tree was spawned from — reads dev-plugin declarations from it rather than "
-        "guessing from directory structure. Without it, dev-plugin checks fall back to the marketplace's own "
-        "entries (never inferred from nesting), and hub mode (no local marketplace) reports that dev-plugin "
-        "validation was skipped rather than silently running none.",
+        "guessing from directory structure. Without it, dev-plugin lag/server/skills checks do not run at "
+        "all (a visible note says so, printed separately from problems and never affecting the exit code); "
+        "the marketplace-entry dangling-reference check still runs regardless.",
     )
     args = parser.parse_args(argv)
-    problems = collect_problems(args.root.resolve(), args.spec)
+    notes: list[str] = []
+    problems = collect_problems(args.root.resolve(), args.spec, notes)
     for p in problems:
         print(f"- {p}")
+    if notes:
+        if problems:
+            print()
+        for n in notes:
+            print(f"note: {n}")
     print("ok: plugin structure is consistent" if not problems else f"{len(problems)} problem(s)")
     return 1 if problems else 0
 
