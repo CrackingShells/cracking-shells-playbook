@@ -1,0 +1,20 @@
+{
+  "name": "managing-roadmaps",
+  "displayName": "Managing Roadmaps",
+  "version": "1.0.0",
+  "description": "Creates, executes, and amends graph-based campaign roadmaps.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "roadmap",
+    "campaign",
+    "planning",
+    "agents"
+  ],
+  "skills": "./skills/"
+}

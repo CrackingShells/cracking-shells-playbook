@@ -1,0 +1,19 @@
+{
+  "name": "writing-reports",
+  "displayName": "Writing Reports",
+  "version": "1.0.0",
+  "description": "Guides production of stakeholder-reviewable reports for coding, research, and writing work.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "reports",
+    "documentation",
+    "agents"
+  ],
+  "skills": "./skills/"
+}
