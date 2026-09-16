@@ -404,51 +404,74 @@ def _collect_plugin_problems(root: Path, repo_root: Path, claude_market: dict | 
 
 
 def _collect_dev_problems(repo_root: Path, roots: list[Path], claude_market: dict | None) -> list[str]:
-    """Maintainer `dev/` plugins: claude-only (no root `plugin.json` of their own) and
+    """Maintainer `dev/` plugins: claude-only (no root `plugin.json` of their own) AND
     nested under another discovered plugin root, whose version they must track.
 
-    Distinguished from an ordinary sibling PRODUCT plugin structurally — a `dev` plugin
-    ships knowledge, never a server or an ecosystem membership of its own — rather than
-    by marketplace `source` shape, since a product sibling's source is no longer always
-    `"./"` (`generator_reshape` step 4 gave subdirectory siblings `git-subdir` sources
-    too, so "any non-root source" can no longer mean "this is the dev plugin").
+    Both halves of that discriminator are load-bearing. Claude-only alone is not enough:
+    a legitimate sibling PRODUCT plugin can be claude-only too (ecosystems restricted to
+    `["claude"]`) and can legitimately carry an MCP server — nesting is what actually
+    distinguishes "this directory belongs to another plugin" from "this is its own
+    top-level plugin", and a top-level claude-only entry is already fully checked in its
+    own right by `_collect_plugin_problems` via its own entry in `roots`.
+
+    Candidates are enumerated from `roots` (the independently discovered plugin
+    directories), NOT from marketplace entries: `roots` exists with or without a local
+    marketplace, so a hub-mode repo (no `.claude-plugin/marketplace.json` at all) still
+    gets its dev plugins validated — a marketplace-driven enumeration would silently
+    validate nothing in the very mode this reshape exists to enable.
+
+    The marketplace, when present, is instead used for a second, narrower pass: a
+    `source` that resolves to a manifest `find_plugin_roots`'s walk never reached (outside
+    `repo_root`, or inside a pruned directory name) is invisible to the roots-based pass
+    above. Rather than silently trusting or silently ignoring it, it is reported as a
+    named ambiguity the checker cannot resolve on its own.
     """
     problems: list[str] = []
     say = problems.append
-    if not claude_market:
-        return problems
+    root_set = set(roots)
 
-    other_roots = set(roots)
-    for entry in claude_market.get("plugins", []):
-        src_path = _resolve_local_source_path(entry.get("source"))
-        if src_path is None:
-            continue
-        candidate = (repo_root / src_path).resolve()
-        if candidate == repo_root.resolve():
-            continue
-        dev_manifest = _load(candidate, ".claude-plugin/plugin.json")
-        if not dev_manifest:
-            say(f"marketplace lists {entry.get('name')} at {entry.get('source')!r} but no plugin.json is there")
-            continue
+    dev_candidates: dict[Path, Path] = {}
+    for candidate in roots:
         if _load(candidate, "plugin.json"):
-            continue  # a sibling PRODUCT plugin (has its own root manifest) — already checked above
-        if dev_manifest.get("name") != entry.get("name"):
-            say(f"{candidate}: manifest name {dev_manifest.get('name')} differs from marketplace entry {entry.get('name')}")
-        ancestors = [r for r in other_roots if r != candidate and r in candidate.parents]
-        product_root = max(ancestors, key=lambda p: len(p.parts), default=None)
-        product_version = _root_version(product_root) if product_root else None
+            continue  # has its own root manifest: a real product, never a dev plugin
+        ancestors = [r for r in root_set if r != candidate and r in candidate.parents]
+        if not ancestors:
+            continue  # claude-only but NOT nested under anything: a legitimate top-level
+            # claude-only PRODUCT (e.g. ecosystems restricted to ["claude"]) — not a dev
+            # plugin, and already fully checked via its own entry in `roots`
+        dev_candidates[candidate] = max(ancestors, key=lambda p: len(p.parts))
+
+    for candidate, product_root in dev_candidates.items():
+        dev_manifest = _load(candidate, ".claude-plugin/plugin.json")
+        product_version = _root_version(product_root)
         if product_version is not None and dev_manifest.get("version") != product_version:
             say(f"{candidate}: version {dev_manifest.get('version')} lags the product version {product_version}")
         if "mcpServers" in dev_manifest:
             say(f"{candidate}: a skills plugin should carry knowledge, never a server")
         dev_skills = (candidate / dev_manifest.get("skills", "./skills/")).resolve()
-        if product_root is not None:
-            product_claude = _load(product_root, ".claude-plugin/plugin.json")
-            if product_claude and product_claude.get("skills"):
-                product_skills = (product_root / product_claude["skills"]).resolve()
-                if product_skills == dev_skills or dev_skills in product_skills.parents or product_skills in dev_skills.parents:
-                    say("the product plugin would ship the dev skills: keep the two skills trees disjoint")
+        product_claude = _load(product_root, ".claude-plugin/plugin.json")
+        if product_claude and product_claude.get("skills"):
+            product_skills = (product_root / product_claude["skills"]).resolve()
+            if product_skills == dev_skills or dev_skills in product_skills.parents or product_skills in dev_skills.parents:
+                say(f"{candidate}: the product plugin would ship the dev skills: keep the two skills trees disjoint")
         problems.extend(_check_skills(dev_skills, f"{candidate}/.claude-plugin/plugin.json"))
+
+    if claude_market:
+        for entry in claude_market.get("plugins", []):
+            src_path = _resolve_local_source_path(entry.get("source"))
+            if src_path is None:
+                continue
+            candidate = (repo_root / src_path).resolve()
+            if candidate == repo_root.resolve() or candidate in root_set:
+                continue  # the repo root, or an already-discovered (and already checked) plugin root
+            if not _load(candidate, ".claude-plugin/plugin.json"):
+                say(f"marketplace lists {entry.get('name')} at {entry.get('source')!r} but no plugin.json is there")
+                continue
+            say(
+                f"marketplace entry {entry.get('name')!r} at {entry.get('source')!r} resolves to {candidate}, "
+                "which the plugin-root scan never reached (outside the repo tree, or inside a directory "
+                "find_plugin_roots skips) — the checker cannot verify this entry; check it by hand"
+            )
     return problems
 
 
