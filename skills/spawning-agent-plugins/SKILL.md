@@ -1,32 +1,41 @@
 ---
 name: spawning-agent-plugins
-description: Turns an existing repository (skills, an MCP server, hooks, or all three) into a plugin that Claude Code, Codex and Agent Plugins 1.0 clients (Cursor, VS Code, Copilot, Kiro) can all install from GitHub, by generating the seven manifests plus the optional hooks and maintainer dev-plugin skeleton from one spec, then checking them for the drifts no loader reports. Use this whenever the task is to package, publish, expose or "make installable" a repo's skills or MCP server for coding agents, to add a `.claude-plugin/`, `.codex-plugin/`, `plugin.json` or marketplace to a repo, to add a second harness to a repo that already has one, to ship hooks with a plugin, or to add a maintainer-only skills plugin next to a product plugin — even when the request never says "plugin" and just says "let agents install this" or "put this on the marketplace". Also load it to audit an existing plugin tree that fails to connect or drifts on a version bump.
+description: Turns an existing repository (skills, an MCP server, hooks, or all three) into one or several plugins that Claude Code, Codex and Agent Plugins 1.0 clients (Cursor, VS Code, Copilot, Kiro) can install from GitHub, generating the manifests plus optional hooks and dev-plugin skeleton from one spec, then checking them for drifts no loader reports. Handles one plugin rooted at the repo, several sibling plugins from a spec's `plugins[]` array, and a hub-owned marketplace that suppresses this repo's own marketplace files. Use this to package, publish or "make installable" a repo's skills or MCP server, to add a `.claude-plugin/`, `plugin.json` or marketplace, to add a second harness to a repo that has one, to ship hooks, to add a maintainer-only skills plugin, or to split a repo into several plugins — even when the request just says "let agents install this". Also load it to audit a plugin tree that fails to connect or drifts on a version bump.
 ---
 
 # spawning-agent-plugins
 
-One repository, three plugin ecosystems, one spec. The layout below is the one
-proven on `CrackingShells/colgrep-mcp`: Claude Code verified end to end
-(remote install from GitHub, server connected, hooks firing); Codex and Agent
-Plugins 1.0 written against their published specs and validated with the
-tooling available, not exercised with a live client. Keep that distinction in
-what you tell the user.
+One repository, three plugin ecosystems, one spec — one plugin by default, or
+several sibling plugins from a `plugins[]` array
+(`references/manifests.md#multi-plugin-repositories`). The layout below is the one proven on
+`CrackingShells/colgrep-mcp`: Claude Code verified end to end (remote install
+from GitHub, server connected, hooks firing); Codex and Agent Plugins 1.0
+written against their published specs and validated with the tooling
+available, not exercised with a live client. Keep that distinction in what
+you tell the user.
 
 ```
-plugin.json                      Agent Plugins 1.0 manifest (whitelisted fields only)
-mcp.json                         Agent Plugins 1.0 MCP manifest             [mcp]
+plugin.json                      Agent Plugins 1.0 manifest, also Codex's (extras
+                                  under extensions["com.openai"]; no separate
+                                  Codex plugin folder is ever written)
+mcp.json                         Agent Plugins 1.0 MCP manifest, also Codex's
+                                  (auto-wired to ./mcp.json by convention)      [mcp]
 .claude-plugin/plugin.json       Claude Code manifest
-.claude-plugin/marketplace.json  Claude Code marketplace (product [+ dev] plugin)
+.claude-plugin/marketplace.json  Claude Code marketplace (product [+ dev] plugin) [not in hub mode]
 .claude-plugin/mcp.json          Claude Code MCP manifest (the only one with placeholders)
-.codex-plugin/plugin.json        Codex manifest (with the `interface` block)
-.codex-plugin/mcp.json           Codex MCP manifest
-.agents/plugins/marketplace.json Codex marketplace
+.agents/plugins/marketplace.json Codex marketplace                             [not in hub mode]
 hooks/hooks.json                 portable hook events; both loaders read it unasked [hooks]
 hooks/<event>.json               one file per event not every harness knows          [hooks]
 hooks/<name>_policy.py           one stdlib, fail-open hook script                  [hooks]
 dev/.claude-plugin/plugin.json   maintainer skills plugin, versioned with the product [dev]
 skills/<skill>/SKILL.md          the product skills, shared by every ecosystem
 ```
+
+A multi-plugin spec repeats every path above once per `plugins[]` entry,
+prefixed by that entry's `dir` (`plugins/<name>/plugin.json`, and so on); a
+spec that sets the top-level `marketplace` key writes neither marketplace
+file at all, because another repository (a hub) owns that name
+(`references/traps.md#marketplace-name-collision`).
 
 Every manifest describes the same plugin: same `name`, same `version`, same
 launch command. Nothing enforces that but `scripts/check_plugin.py`, which is
@@ -56,6 +65,17 @@ Codex hooks are opt-in (`"codex": false`) because Codex's own reference both
 lists the `hooks` field and says its validator rejects it. See
 `references/traps.md`.
 
+Two more yes/no answers, orthogonal to the four above:
+
+| Question | When yes | Spec section |
+|:--|:--|:--|
+| Several plugins from one repo? | the repo holds more than one installable unit (e.g. several skills, each its own release line) | top-level `"plugins": [{"name", "dir", "description", ...}]` |
+| Does another repo own the marketplace name? | an organization already has (or is about to have) a hub repository listing every plugin under one name | top-level `"marketplace": "hub"` (any truthy value; suppresses both local marketplace files for every plugin this spec declares) |
+
+A spec can set both: several sibling plugins, none of which write a local
+marketplace, because the hub lists all of them
+(`references/manifests.md#multi-plugin-repositories`).
+
 ### 2. Write the spec
 
 ```bash
@@ -68,9 +88,16 @@ the root or one level down, `package.json`, `Cargo.toml`). Fill the `TODO`s,
 move the sections you want out of `_optional_sections`, delete the rest.
 `{version}` inside `mcp.args` is replaced by the resolved version, which is
 how the launch pin tracks the release (`references/versioning.md`).
-`assets/examples/colgrep-mcp.spec.json` is a complete spec with every section
-on; it regenerates that repository's manifests and hook files with identical
-JSON content (checked against `main` after its PR #14, 2026-09-15).
+`assets/examples/colgrep-mcp.spec.json` is a complete, single-plugin spec
+with every section on; `evals/test_regeneration.py` drives it against a real
+colgrep-mcp checkout in `--dry-run` and asserts nothing would be written or
+merged. As of the `extensions["com.openai"]` reshape (2026-09-16) that guard
+allows exactly one deliberate divergence — `plugin.json`'s `extensions`
+key — because colgrep-mcp's own manifest on disk still predates this shape;
+a later leaf regenerates it for real. Any other divergence the guard reports
+is a real defect, not an artifact of the reshape.
+`evals/fixtures/two_plugins.spec.json` is the minimal multi-plugin
+counterpart, two siblings with no marketplace-suppressing key.
 
 Hook events go in two spec lists. `hooks.portable` takes the events every
 hook-capable harness knows; they land in `hooks/hooks.json`. `hooks.extra`
@@ -97,6 +124,16 @@ source) gains the new entries and loses nothing. `.agents/` is touched only
 at `.agents/plugins/marketplace.json`; Codex keeps its skills under
 `.agents/skills/` and some repos hold agent definitions there.
 
+With `plugins[]` set, `spawn` loops the whole procedure once per entry,
+prefixing every path by that entry's `dir` and resolving each entry's
+version independently — but merges marketplace entries once per ecosystem
+after the loop, not once per plugin, so a rerun after adding a fourth
+sibling adds exactly that sibling's entry and touches nothing else
+(`references/manifests.md#multi-plugin-repositories`). With the spec's
+top-level `marketplace` key set, neither marketplace file is written at
+all; a plugin only gets listed once whoever owns the hub adds it there by
+hand.
+
 With `hooks` on, a missing script is seeded from
 `assets/hooks/policy_template.py`: a dispatcher on `hook_event_name` that
 injects `POLICY` at session and subagent start, has a `PreToolUse` stub, and
@@ -106,16 +143,36 @@ a cycle to get right (`references/hooks.md`).
 ### 4. Verify
 
 ```bash
-python3 <skill>/scripts/check_plugin.py --root <repo>     # drift guards; exit 1 lists each problem
+python3 <skill>/scripts/check_plugin.py --root <repo> --spec plugin.spec.json  # drift guards; exit 1 lists each problem
 claude plugin validate <repo>                              # the marketplace, when one exists
 claude plugin validate <repo>/.claude-plugin/plugin.json   # the Claude manifest
 claude plugin validate <repo>/dev                          # the dev plugin, if any
 ```
 
-Do not point `claude plugin validate` at `.codex-plugin/plugin.json`: it
-rejects Codex's `interface` block as an unknown field, which is noise, not a
-finding. None of these commands, nor `claude --plugin-dir` or `claude plugin
-details`, runs the check a marketplace install runs on the `hooks` field
+`check_plugin.py` scans for every plugin root under `--root` (a
+`plugins[]` sibling, an assembled `plugins/<name>/` tree, or a maintainer
+`dev/`) and checks each independently, so one sibling's identity is never
+compared against another's. Pass `--spec` so dev-plugin checks (version lag,
+skills disjointness) read which directories actually *are* dev plugins from
+the spec's own `dev` declarations — tree shape alone cannot tell a dev
+plugin nested under its product apart from an ordinary sibling product
+nested the same way. **Without `--spec`, dev-plugin checks run against
+nothing** in the common case: the fallback path only warns when the repo
+*also* has no local `.claude-plugin/marketplace.json` (hub mode); a
+single-repo tree with a local marketplace and no `--spec` silently skips
+dev-plugin validation with no message at all. This is exactly the case for
+the copied-into-`tests/` pytest entry point in step 7, which never passes
+`--spec` — if a repo relies on that copy for its only structural check, its
+dev plugin (if it has one) is unguarded; pass `--spec` there too, or accept
+the gap knowingly.
+
+Do not point `claude plugin validate` at the root `plugin.json`: it rejects
+`extensions` (and, inside it, `interface`) as unknown fields, which is
+noise, not a finding — there is no separate Codex manifest to validate
+instead, because Codex reads this same file
+(`references/traps.md#validate-codex`). None of these commands, nor
+`claude --plugin-dir` or `claude plugin details`, runs the check a
+marketplace install runs on the `hooks` field
 (`references/hooks.md#one-file-per-event-class`); `check_plugin.py` does, and
 the install-path oracle is a scratch marketplace: a directory holding a
 `.claude-plugin/marketplace.json` with a throwaway `name` whose plugin
@@ -136,12 +193,19 @@ README rather than implying parity.
 
 ### 5. Wire the version
 
-The plugin version appears in three or four manifests and in every MCP pin.
-One bump must move all of them, or the next release ships a plugin that
-launches the previous server. `references/versioning.md` gives the
+The plugin version appears in two or three manifests (`plugin.json`,
+`.claude-plugin/plugin.json`, and `dev/.claude-plugin/plugin.json` when a dev
+plugin exists — Codex reads the first of these, no separate file of its own)
+and in every MCP pin. One bump must move all of them, or the next release
+ships a plugin that launches the previous server; a static `plugin.json`
+version also means Codex's reinstall gate never fires
+(`references/versioning.md`). `references/versioning.md` gives the
 commitizen `version_files` list, the semantic-release `prepareCmd`, and the
 bare-`sed` fallback when the repo has no release tooling; pick the one the
-repo already uses. `check_plugin.py` catches the drift when nothing else does.
+repo already uses. With `plugins[]`, each sibling bumps independently — wire
+each one's own release config to its own `dir`, never a single bumper
+walking fixed top-level paths. `check_plugin.py` catches the drift when
+nothing else does.
 
 ### 6. Tell installers and maintainers
 
@@ -155,6 +219,13 @@ get wrong (`references/traps.md#namespaces`). If the repo has an `AGENTS.md`
 or `CLAUDE.md`, add one line saying the repo is a plugin, where the manifests
 are, and how to load the dev plugin (`claude --plugin-dir ./dev`).
 
+**`install-snippet` was not extended for `plugins[]`:** it reads only the
+spec's top-level `name` and marketplace names, so on a multi-plugin spec it
+prints one section for the top-level identity, not one per sibling. Write
+each sibling's README section by hand, or by editing the printed snippet's
+plugin name and `dir` for each one
+(`references/manifests.md#multi-plugin-repositories`).
+
 ### 7. Keep it from drifting
 
 Copy the checker into the test suite; it is pytest-collectable as is:
@@ -165,9 +236,13 @@ cp <skill>/scripts/check_plugin.py <repo>/tests/test_plugin_structure.py
 
 It walks up from its own location to the first directory holding a plugin
 manifest, so it needs no configuration; set `REPO_ROOT` at the top if the
-tests live somewhere unusual. Commit the manifests with the vocabulary the
-repo uses; where the repo has none, `build(plugin): package the repo as a
-Claude Code, Codex and Agent Plugins 1.0 plugin` is the shape colgrep-mcp used.
+tests live somewhere unusual. This entry point calls `collect_problems`
+with no `--spec`, so the dev-plugin gap in step 4 applies here by
+default — a repo with both a local marketplace and a `dev/` plugin gets no
+dev-plugin validation from this copy unless it is edited to pass one.
+Commit the manifests with the vocabulary the repo uses; where the repo has
+none, `build(plugin): package the repo as a Claude Code, Codex and Agent
+Plugins 1.0 plugin` is the shape colgrep-mcp used.
 
 ## Rules that survived a cycle
 
@@ -184,29 +259,43 @@ Claude Code, Codex and Agent Plugins 1.0 plugin` is the shape colgrep-mcp used.
   loaders claim unasked, so no second generic name (`claude-code.json`) sits
   beside it.
 - **The Claude Code manifest's `hooks` names exactly the per-event files and
-  never `./hooks/hooks.json`; the Codex manifest names `./hooks/hooks.json`
-  and nothing else.** Claude Code always loads `hooks/hooks.json` and reads
-  the field as additional files, so naming it again fails every marketplace
-  install with "Duplicate hooks file detected" while `--plugin-dir`,
-  `plugin details` and `plugin validate` stay silent (Claude Code 2.1.270).
-  Codex discovers `hooks/hooks.json` only when the manifest defines no
-  `hooks`; an explicit value replaces that discovery. The generator omits the
-  Claude field when every event is portable; the checker pins both manifests.
+  never `./hooks/hooks.json`; Codex's `extensions["com.openai"].hooks` names
+  `./hooks/hooks.json` and nothing else.** Claude Code always loads
+  `hooks/hooks.json` and reads the field as additional files, so naming it
+  again fails every marketplace install with "Duplicate hooks file detected"
+  while `--plugin-dir`, `plugin details` and `plugin validate` stay silent
+  (Claude Code 2.1.270). Codex discovers `hooks/hooks.json` only when its
+  extensions carry no `hooks` key; an explicit value replaces that discovery.
+  The generator omits the Claude field when every event is portable; the
+  checker pins both.
 - **The hook script is stdlib-only and exits 0 on every path.** It runs under
   `uv run --no-project python` on each matched tool call; a crash or a
   non-stdlib import makes the session unusable.
 - **The dev plugin carries knowledge, never a server, and its skills tree is
   disjoint from the product's.** The marketplace lists both from `./` and
   `./dev`; the product manifest's `skills` never reaches into `dev/`.
-- **`plugin.json` (Agent Plugins 1.0) takes whitelisted fields only.** No
-  `hooks`, `skills` or `mcpServers` keys; the spec defines skills and MCP
-  through its own files and says extra component types are ignored.
+- **`plugin.json` (Agent Plugins 1.0, also Codex's) takes whitelisted fields
+  only, `extensions` included.** No `hooks`, `skills` or `mcpServers` keys at
+  the top level; the spec defines skills and MCP through its own files and
+  says extra component types are ignored. Codex's presentation metadata and
+  hooks pointer live inside `extensions["com.openai"]`, the one namespace the
+  whitelist permits for client-specific data.
+- **No repo but one hub owns a marketplace `name`.** Two repositories that
+  each write a marketplace under the same name collide — silently in Claude
+  Code, hard-erroring in Codex
+  (`references/traps.md#marketplace-name-collision`). A spec whose plugins
+  belong to someone else's catalogue sets the top-level `marketplace` key so
+  the generator writes neither local marketplace file.
+- **A `plugins[]` sibling's `dir` is committed, assembled content — never a
+  symlink into `skills/`.** Agent Plugins 1.0 requires a plugin to be a
+  single self-contained directory tree; `references/traps.md#assembled-tree-drift`
+  is what happens when the assembled copy and its source skill disagree.
 
 ## References
 
 | Read | When |
 |:--|:--|
-| `references/manifests.md` | filling a spec field you are unsure of; what each manifest may and may not contain; the placeholder rules table |
+| `references/manifests.md` | filling a spec field you are unsure of; what each manifest may and may not contain; the placeholder rules table; multi-plugin repositories and hub marketplaces; the cross-format equivalence matrix |
 | `references/hooks.md` | designing the hook script: the per-event file rule and what each manifest may name, events, matcher names per harness, I/O contract, context cap, Cursor and Codex limits |
-| `references/versioning.md` | wiring the version bump: commitizen, semantic-release, npm, or none |
-| `references/traps.md` | a plugin lists but does not connect, "Duplicate hooks file detected" at install, hooks do not fire, `x@x` install strings, stale uvx cache, Codex hooks |
+| `references/versioning.md` | wiring the version bump: commitizen, semantic-release, npm, or none; independent sibling version lines; why tags need no migration |
+| `references/traps.md` | a plugin lists but does not connect, "Duplicate hooks file detected" at install, hooks do not fire, `x@x` install strings, stale uvx cache, Codex hooks, the marketplace-name collision, an assembled plugin tree drifting from its source, a Codex marketplace entry with an invalid auth enum |

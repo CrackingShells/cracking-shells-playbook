@@ -25,13 +25,15 @@ generic name beside it, the former `claude-code.json`, is the kind a loader
 could claim next; a name derived from the event is claimed by nothing.
 `check_plugin.py` pins the split and the stems.
 
-The two manifests then read the same `hooks` field with opposite semantics,
-and no single value serves both:
+Claude Code's manifest field and Codex's `extensions["com.openai"].hooks`
+key (`manifests.md#codex` — Codex has no manifest file of its own; this key
+lives on the shared root `plugin.json`) then read the same concept with
+opposite semantics, and no single value serves both:
 
-| Loader | `hooks/hooks.json` | The manifest's `hooks` field | So the manifest says |
+| Loader | `hooks/hooks.json` | Its own `hooks` field/key | So it says |
 |:--|:--|:--|:--|
-| Claude Code | always loaded | *additional* files; naming the default again fails the whole plugin at marketplace install ("Duplicate hooks file detected", Claude Code 2.1.270) | exactly the per-event files: `"./hooks/worktree-remove.json"` (a string for one, an array for several), omitted when every event is portable |
-| Codex | discovered only when the manifest defines no `hooks` | *replaces* the discovery | `"./hooks/hooks.json"` and nothing else, or no field |
+| Claude Code (`.claude-plugin/plugin.json` `hooks`) | always loaded | *additional* files; naming the default again fails the whole plugin at marketplace install ("Duplicate hooks file detected", Claude Code 2.1.270) | exactly the per-event files: `"./hooks/worktree-remove.json"` (a string for one, an array for several), omitted when every event is portable |
+| Codex (`plugin.json` `extensions["com.openai"].hooks`) | discovered only when the key is absent | *replaces* the discovery | `"./hooks/hooks.json"` and nothing else, or no key |
 
 The Claude Code failure is invisible before the install: `claude
 --plugin-dir`, `claude plugin details` and `claude plugin validate` all
