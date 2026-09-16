@@ -18,7 +18,10 @@ This playbook provides standardized guidelines, workflows, and best practices th
 
 ## Installation
 
-Skills are packaged as `.skill` files — zip archives that Claude Code extracts into its skills directory. Each release publishes one `.skill` file per skill as a GitHub Release asset.
+This playbook publishes skills in two ways:
+
+- **`.skill` files** — zip archives that Claude Code extracts into its skills directory. Each release publishes one `.skill` file per skill as a GitHub Release asset. All skills in this repo are available this way (Options A–C below).
+- **Agent plugins** — five skills are also packaged as installable plugins, conformant with Claude Code, Codex, and Agent Plugins 1.0, and listed in the `CrackingShells/Nest` marketplace (Option D below): `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins`. The other skills in this repo are not (yet) plugins and remain `.skill`-only.
 
 ### Option A — Download from GitHub Releases (recommended)
 
@@ -80,6 +83,22 @@ The `managing-roadmaps` skill ships a pre-compiled Rust CLI (`dirtree-rdm`). Use
    uv run tools/package_skill.py skills/managing-roadmaps dist/
    unzip dist/managing-roadmaps.skill -d ~/.claude/skills/
    ```
+
+### Option D — Install as an agent plugin (Claude Code, Codex)
+
+Five of this repo's skills — `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins` — are listed by git source in the `CrackingShells/Nest` marketplace, which is the single marketplace for every CrackingShells-org plugin. This repository does not ship a marketplace of its own.
+
+1. Add the marketplace once:
+   ```bash
+   claude plugin marketplace add CrackingShells/Nest
+   ```
+2. Install any of the five plugins from it:
+   ```bash
+   claude plugin install <plugin-name>@cracking-shells
+   ```
+   e.g. `claude plugin install writing-history@cracking-shells`.
+
+Marketplace entries carry no pinned version — Claude Code resolves the source's current commit, and each plugin's own `plugin.json` version (bumped on every release of that skill) is what both Claude Code and Codex read to decide whether to reinstall. The same versioned release also still publishes that skill's `.skill` file, so Options A–C above continue to work unchanged for every skill, plugin or not.
 
 ---
 
