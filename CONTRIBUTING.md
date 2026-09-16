@@ -21,9 +21,28 @@ This command does three things: registers `.githooks/` as the active git hooks d
 
 ## Pre-commit hook
 
-The hook at `.githooks/pre-commit` runs automatically on every `git commit`. It inspects the staged file list and re-packages any skill directory that has staged changes, writing the updated `.skill` file to `dist/` (gitignored — never committed). The hook does **not** stage anything into git and does **not** recompile Rust binaries (that step is too slow for a commit hook; see below).
+The hook at `.githooks/pre-commit` runs automatically on every `git commit`. It inspects the staged file list and, for every skill directory that has staged changes:
+
+- re-packages it, writing the updated `.skill` file to `dist/` (gitignored — never committed, and not staged by the hook), and
+- if that skill also ships a plugin root (`plugins/<name>/`, see below), re-assembles `plugins/<name>/skills/<name>/` from the skill source and **does** `git add plugins/<name>/` so the refreshed tree rides along in the same commit as the skill change that produced it.
+
+The hook does not recompile Rust binaries (that step is too slow for a commit hook; see below).
 
 If you stage any `.rs` or `Cargo.toml` file under `skills/managing-roadmaps/scripts/dirtree-rdm/`, the hook prints a reminder to rebuild the local binary — but it does not block the commit.
+
+## Plugin distribution (`plugins/`)
+
+Five skills — `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins` — are also distributed as installable agent plugins, in addition to their `.skill` files. Each has a plugin root at `plugins/<name>/`: a Claude Code manifest (`.claude-plugin/plugin.json`), an Agent Plugins 1.0 / Codex manifest (`plugin.json`), and an assembled copy of the skill (`skills/<name>/`).
+
+Unlike `dist/`, **`plugins/` is committed.** These trees are installed by git source (a marketplace entry pointing at this repo and a path inside it), so the assembled output has to exist in the repository at the resolved ref — it cannot be gitignored build output the way `.skill` files are. That makes `plugins/<name>/` generated content that lives in git beside the source it's generated from, which is a drift risk `dist/` never had. Three things keep it honest:
+
+- the pre-commit hook above regenerates `plugins/<name>/` whenever `skills/<name>/` has staged changes,
+- `release-config.js`'s `@semantic-release/exec` step writes each release's version into `plugins/<name>/plugin.json` and `.claude-plugin/plugin.json` (via `tools/set_plugin_version.py`) and the `@semantic-release/git` step commits it, and
+- CI fails the build if regenerating `plugins/` from `skills/` would produce a diff (drift check).
+
+`skills/<name>/` is the only editable source. **Nobody hand-edits anything under `plugins/`** — a manual edit there is indistinguishable from drift and will be reverted by the next regeneration or flagged by CI.
+
+**Releases are meant to run in CI, not locally.** The release job checks out a fresh clone and never sets `core.hooksPath`, so the pre-commit hook cannot fire there. Running a release locally is a different story: the hook *will* fire on the release commit, and separately, `@semantic-release/git` commits with a plain `git commit -m` — no pathspec — which sweeps in everything already staged, not just this release's files. Do not run a release from a working copy that has other staged or hook-triggering changes sitting around.
 
 ## Rust binary rebuild
 
