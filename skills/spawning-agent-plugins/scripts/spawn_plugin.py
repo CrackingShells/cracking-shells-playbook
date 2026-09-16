@@ -510,6 +510,9 @@ class Writer:
         self.written: list[str] = []
         self.skipped: list[str] = []
         self.merged: list[str] = []
+        # Divergences `--force` can never resolve, kept apart from `skipped` so the CLI does
+        # not tell an operator to run --force on a file the generator refuses to overwrite.
+        self.protected: list[str] = []
 
     def put(self, rel: str, text: str) -> None:
         path = self.root / rel
@@ -536,7 +539,7 @@ class Writer:
         """
         path = self.root / rel
         if path.exists():
-            self.skipped.append(rel + _key_diff(path, text))
+            self.protected.append(rel + _key_diff(path, text))
             return
         self.written.append(rel)
         if not self.dry_run:
@@ -877,7 +880,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'would merge' if args.dry_run else 'merged'}  {rel}")
     for rel in w.skipped:
         print(f"kept     {rel}   (differs from the spec; --force overwrites)")
-    if not (w.written or w.merged or w.skipped):
+    for rel in w.protected:
+        print(f"kept     {rel}   (yours to edit; the generator only seeds it, --force included)")
+    if not (w.written or w.merged or w.skipped or w.protected):
         print("nothing to do: every manifest already matches the spec")
     print("\nnext: python3 check_plugin.py --root . ; claude plugin validate . (see SKILL.md step 4)")
     return 0

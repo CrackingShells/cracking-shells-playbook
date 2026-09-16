@@ -213,6 +213,14 @@ echo '{"hook_event_name":"SessionStart","cwd":"/"}' | python3 hooks/<name>_polic
 Codex cannot be verified without a Codex CLI on the machine; say so in the
 README rather than implying parity.
 
+Install **every entry in the catalogue**, not only the ones this change shipped. Listing an entry
+and installing it are different claims: a marketplace lists entries without fetching them, so a
+broken source shape stays invisible until something installs it. The failure that taught this was a
+single entry using the `github` shorthand among six using explicit URLs — every verified entry
+shared the working shape, so there was no counter-example anywhere in the evidence. Read the load
+state afterwards too, and re-check the installed set: re-pointing a marketplace name can drop
+previously installed plugins out of it silently.
+
 ### 5. Wire the version
 
 The plugin version appears in two or three manifests (`plugin.json`,

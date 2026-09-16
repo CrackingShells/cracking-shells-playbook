@@ -218,6 +218,24 @@ a plugin") say an explicit `hooks` replaces the default discovery of
 `hooks/hooks.json`, so naming the per-event file would drop the portable
 events and hand Codex an event it may not know.
 
+## `claude plugin validate` passed, and proved less than you think {#validate-picks-one}
+
+**Symptom.** `claude plugin validate <dir>` reports `✔ Validation passed`, and a manifest error
+later turns out to have been there the whole time. Or: deleting a marketplace file makes the same
+command start reporting problems it never mentioned before.
+
+**Cause.** It validates **one** manifest per invocation and prefers
+`.claude-plugin/marketplace.json`. It announces which file it chose on its first line — read that
+line, not just the tick. A repository that ships both a marketplace and a plugin manifest has only
+ever had its *catalogue* validated; `plugin.json` is never reached. Observed on a repo carrying
+both: the command named only the marketplace, though a `plugin.json` sat beside it.
+
+**Do.** Point it at what you mean. For a hub-and-spoke org this falls out naturally — the hub holds
+only a marketplace, and each plugin root holds only a plugin manifest, so validating each separately
+covers everything. For a repo that ships both, validate the plugin manifest by its own path as well.
+Treat "validation passed" as a claim about one named file, and let `check_plugin.py` carry the
+cross-manifest invariants it cannot see.
+
 ## `claude plugin validate` fails on the shared manifest {#validate-codex}
 
 **Symptom.** `extensions: Unknown field 'extensions'` (or, on an older tree,

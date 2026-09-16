@@ -134,7 +134,10 @@ def test_spec_regenerates_manifests() -> None:
     assert w.merged == [], f"spec would merge marketplace entries — generator and checkout have drifted: {w.merged}"
 
     unexpected = []
-    for entry in w.skipped:
+    # Both ledgers, held to the same allowlist. `protected` exists so the CLI can stop telling
+    # an operator to run --force on a file the generator refuses to overwrite; it must not become
+    # a ledger this guard silently ignores, or a divergence hides by moving between lists.
+    for entry in list(w.skipped) + list(w.protected):
         rel, keys = _parse_skipped(entry)
         if rel not in ALLOWED_DIVERGENCE:
             unexpected.append(entry)
@@ -144,7 +147,10 @@ def test_spec_regenerates_manifests() -> None:
             continue  # whole-file exemption (e.g. hand-maintained prose)
         if keys is None or not keys <= allowed_keys:
             unexpected.append(entry)
-    assert not unexpected, f"unexpected divergence from the spec: {unexpected} (full detail: {w.skipped})"
+    assert not unexpected, (
+        f"unexpected divergence from the spec: {unexpected} "
+        f"(full detail: skipped={w.skipped} protected={w.protected})"
+    )
 
 
 if __name__ == "__main__":
