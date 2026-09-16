@@ -36,9 +36,9 @@ Publish every CrackingShells plugin from one `cracking-shells` marketplace owned
 ## Status
 ```mermaid
 graph TD
-    nest_catalogue[Nest Catalogue]:::planned
-    regeneration_guard[Regeneration Guard]:::planned
-    plugin_assembly_tool[Plugin Assembly Tool]:::planned
+    nest_catalogue[Nest Catalogue]:::inprogress
+    regeneration_guard[Regeneration Guard]:::inprogress
+    plugin_assembly_tool[Plugin Assembly Tool]:::inprogress
     generator[Generator Extensions]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -50,9 +50,9 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `nest_catalogue.md` | 📄 Leaf Task | ⬜ Planned |
-| `regeneration_guard.md` | 📄 Leaf Task | ⬜ Planned |
-| `plugin_assembly_tool.md` | 📄 Leaf Task | ⬜ Planned |
+| `nest_catalogue.md` | 📄 Leaf Task | 🔄 In Progress |
+| `regeneration_guard.md` | 📄 Leaf Task | 🔄 In Progress |
+| `plugin_assembly_tool.md` | 📄 Leaf Task | 🔄 In Progress |
 | `generator/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
