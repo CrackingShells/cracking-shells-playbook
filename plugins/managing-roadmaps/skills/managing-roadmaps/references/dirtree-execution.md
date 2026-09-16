@@ -1,0 +1,222 @@
+# Roadmap Execution Guide
+
+## Contents
+
+- [CRUD: Update](#crud-update)
+- [CRUD: Delete](#crud-delete)
+- [Breadth-First Traversal Algorithm](#breadth-first-traversal-algorithm)
+- [Execution Rules](#execution-rules)
+- [Git Workflow](#git-workflow)
+- [Step Execution](#step-execution)
+- [Progress Tracking](#progress-tracking)
+- [Failure Handling](#failure-handling)
+- [Subagent Dispatch Protocol](#subagent-dispatch-protocol)
+- [Completion Checklist](#completion-checklist)
+- [Key References](#key-references)
+
+---
+
+## CRUD: Update
+
+**Status updates** — use `dirtree-rdm update`, do not hand-edit README.md:
+```bash
+# Starting a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md inprogress
+
+# Completing a task
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md done
+
+# Marking blocked
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+```
+
+**Read current status** (read-only):
+```bash
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh status __roadmap__/<campaign>/node.md
+```
+
+**Restructure nodes** (move/insert):
+```bash
+# Move a node to a different parent
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh move __roadmap__/<campaign>/node.md __roadmap__/<campaign>/new-parent/
+
+# Insert an intermediate directory wrapping one node
+bash skills/managing-roadmaps/scripts/dirtree-rdm.sh insert __roadmap__/<campaign>/new-group --wraps __roadmap__/<campaign>/node.md
+```
+
+**Amendment workflow** (planned changes):
+1. Produce gap analysis report in `__reports__/`
+2. Submit for review (any entity generically: human, LLM, or automated)
+3. On approval: Create new task files at appropriate depth
+4. Update README.md in affected level (add nodes + amendment log entry)
+5. Use `:::amendment` styling until executed, then `:::done`
+6. Never rename or renumber existing nodes
+
+---
+
+## CRUD: Delete
+
+- Never physically delete or rename roadmap nodes
+- Mark abandoned work as `blocked` using `dirtree-rdm update`:
+  ```bash
+  bash skills/managing-roadmaps/scripts/dirtree-rdm.sh update __roadmap__/<campaign>/node.md blocked
+  ```
+- Embed reason in the Progress table notes column
+
+---
+
+## Breadth-First Traversal Algorithm
+
+```
+ENTER directory
+  READ README.md → understand goal, context, status
+  IDENTIFY leaf files and subdirectories
+  EXECUTE all leaf files (parallel — dispatch to subagents)
+  WAIT for all leaves to complete
+  EXECUTE all subdirectories (parallel — dispatch to subagents)
+  WAIT for all subdirectories to complete
+  MARK this directory as done in parent README.md
+EXIT directory
+```
+
+### Parallelization Discipline
+
+When multiple sibling leaves exist at the same level:
+- **Dispatch each to a subagent** with the leaf task file content and any referenced reports as context
+- The dispatching agent waits for all subagents to complete before proceeding to subdirectories
+- If subagents are not available, execute leaves sequentially — but document that parallelism was not exploited
+
+When multiple sibling subdirectories exist:
+- Same rule — dispatch each to a subagent if possible
+  - WARNING: 1 subagent per subdirectory can overflow memory. Escalating back to orchestrating agent might be more advisable unless depth of the implementation tree is small.
+- Each subagent recursively applies this algorithm within its subdirectory
+
+---
+
+## Execution Rules
+
+These invariants are enforced by the BFS traversal algorithm above. See [references/graph-model.md](graph-model.md) for the abstract contract.
+
+---
+
+## Git Workflow
+
+```bash
+Before task: git checkout -b task/<name> milestone/<campaign>
+Per step:    Implement → Run checks → Commit
+After task:  Verify success gates → Merge task into milestone → Update README.md
+```
+
+---
+
+## Step Execution
+
+For each step:
+1. **Read step**: Goal, Implementation Logic, References
+2. **Produce**: Generate deliverables
+3. **Check consistency**: Run the listed commands AND verify that every named deliverable appears in the changed files — search for the specific symbol, file, or artifact by name. For each deliverable and each runnable gate, record a verdict before committing: `PASS` (found, evidence cited), `DEVIATION` (present but differs from spec — document the delta), `MISSING` (not in diff), or `BLOCKED` (requires a running system or human observation — flag explicitly). Do not proceed to step 4 until all deliverables are `PASS` and all runnable gates are `PASS`.
+4. **Commit immediately**: Use exact commit message from task file
+5. **Update progress**: Record in parent README.md Progress table
+6. **If checks fail**: Diagnostic ladder (see Failure Handling)
+
+The four verdict acts serve a specific purpose: `DEVIATION` and `MISSING` are not the same failure. A deviation means the intent was understood but executed differently — worth examining before deciding if it matters. Missing means the step was skipped or incomplete. `BLOCKED` is honest acknowledgment that some gates (behavioral, visual, integration) can only be confirmed with more infrastructure than is available at commit time — surfacing them explicitly is better than silently skipping them.
+
+---
+
+## Progress Tracking
+
+### When to Update
+
+| Event | Action |
+|:------|:-------|
+| Starting a leaf task | Mark `:::inprogress` in parent README |
+| Completing a leaf task | Mark `:::done`, update Progress table |
+| Starting a subdirectory | Mark `:::inprogress` in parent README |
+| Completing a subdirectory | Mark `:::done` in parent README |
+| Discovering blocker | Mark `:::blocked` with note |
+
+### What to Update
+
+1. **Mermaid status graph**: Change `classDef` of the node
+2. **Nodes table**: Update Status column
+3. **Progress table**: Record branch name, commit count, notes
+
+---
+
+## Failure Handling
+
+When a consistency check fails unexpectedly, follow this escalation ladder in order. Do NOT immediately raise an amendment.
+
+**Level 1: Check Yourself**
+- Re-read Implementation Logic
+- Re-read References
+- Check for typos, wrong paths, syntax errors
+- Run check again to rule out flakiness
+
+**Level 2: Check Downstream**
+- Read ahead in task for later steps
+- Check sibling leaves or subdirectories
+- Check parent README context
+
+**Level 3: Check Upstream**
+- Check git history for previous bugs
+- Verify pre-conditions are met
+- Is prior work in unexpected state?
+
+**Level 4: Prove the Problem**
+- Write minimal reproduction
+- Document exact failure
+- Identify root cause
+
+**Level 5: Raise an Amendment**
+- Produce gap analysis in `__reports__/`
+- Submit for review
+- On approval: Create new task files, update README
+- See [amendments.md](amendments.md) for full amendment cycle
+
+### What is NOT an Amendment
+- UX/API usability issues (log for future campaign)
+- "Nice to have" improvements out of scope
+- Speculative problems without evidence
+
+---
+
+## Subagent Dispatch Protocol
+
+When dispatching work to subagents (parallel leaf execution or parallel subdirectory execution):
+
+### What to Provide
+
+- **Git instructions**: branch name to create (`task/<name>`), milestone branch to merge into after completion
+- **Referenced reports**: architecture report sections cited in the task's References field
+
+### What to Expect Back
+
+- Commits on the task branch (1 per step) and confirmation that success gates are met
+- Any level 5 escalation report if a consistency check could not be resolved at levels 1–4
+
+### Coordination
+
+- Pause execution at the current depth level if any subagent raises a level 5 escalation (amendment); do not proceed to the next depth until the amendment is reviewed and approved
+- Update the parent README.md status only after all parallel subagents at that level have completed
+
+---
+
+## Completion Checklist
+
+When all nodes at all levels are `done`:
+
+- [ ] All leaf task success gates met
+- [ ] All README.md status visualizations show all-green
+- [ ] All Progress tables have branch names and commit counts
+- [ ] All task branches merged into milestone
+- [ ] Full test suite passes on the milestone branch
+- [ ] Final agent review (human or automated)
+- [ ] Milestone branch merged into `dev`
+
+---
+
+## Key References
+
+- [amendments.md](amendments.md) — Full amendment cycle, gap analysis format, common patterns, and escalation vs. amendment decision guide
+- [dirtree-schema-validation.md](dirtree-schema-validation.md) — Validation rules for steps, commits, and progress tracking compliance

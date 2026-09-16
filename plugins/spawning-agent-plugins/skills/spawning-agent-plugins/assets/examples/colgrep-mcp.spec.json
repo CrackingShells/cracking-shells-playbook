@@ -1,0 +1,94 @@
+{
+  "name": "colgrep-mcp",
+  "displayName": "colgrep",
+  "description": "Semantic and hybrid code search for coding agents, exposed as MCP tools backed by colgrep.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/colgrep-mcp",
+  "repository": "https://github.com/CrackingShells/colgrep-mcp",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "mcp",
+    "colgrep",
+    "semantic-search",
+    "code-search",
+    "agents"
+  ],
+  "version_from": "pyproject:server/pyproject.toml",
+  "ecosystems": [
+    "claude",
+    "codex",
+    "agent-plugins"
+  ],
+  "skills": "./skills/",
+  "mcp": {
+    "server": "colgrep",
+    "command": "uvx",
+    "args": [
+      "colgrep-mcp=={version}"
+    ],
+    "claude_env": {
+      "COLGREP_MCP_ROOT": "${CLAUDE_PROJECT_DIR}"
+    }
+  },
+  "hooks": {
+    "script": "hooks/colgrep_policy.py",
+    "codex": true,
+    "portable_description": "colgrep-mcp: state the search policy at session and subagent start; deny the built-in Grep tool and shell corpus searches in favour of the colgrep MCP tools. Only events every hook-capable harness (Claude Code, Codex, Cursor) understands live here, in the one file both Claude Code and Codex load by default; an event not every harness knows gets its own file named after it (worktree-remove.json).",
+    "portable": [
+      {
+        "event": "SessionStart",
+        "statusMessage": "Loading the colgrep search policy"
+      },
+      {
+        "event": "SubagentStart",
+        "statusMessage": "Loading the colgrep search policy"
+      },
+      {
+        "event": "PreToolUse",
+        "matcher": "Grep|Bash"
+      }
+    ],
+    "extra": [
+      {
+        "event": "WorktreeRemove",
+        "timeout": 90,
+        "description": "colgrep-mcp: the WorktreeRemove event, which only Claude Code fires. One file per event that not every hook-capable harness knows, named after the event; named from .claude-plugin/plugin.json only, never from the Codex manifest, so a parser that knows no WorktreeRemove never sees it. Clears the colgrep index a removed worktree owned (never one it was folded into)."
+      }
+    ]
+  },
+  "codex": {
+    "marketplace_name": "cracking-shells",
+    "shortDescription": "Semantic and hybrid code search for coding agents, backed by colgrep.",
+    "longDescription": "Exposes colgrep's semantic and hybrid (grep + ranking) code search as MCP tools, resources and prompts, so agents search code by meaning instead of shelling out to grep. Supports 18+ languages and incremental indexing, with agent-facing usage guidance via a bundled skill.",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Search this repo for the authentication logic.",
+      "Find where errors are handled for database connections.",
+      "Show the index status for this project."
+    ],
+    "marketplace_displayName": "CrackingShells"
+  },
+  "claude_marketplace": {
+    "name": "cracking-shells",
+    "description": "CrackingShells marketplace. Here: colgrep-mcp, the product plugin (semantic and hybrid code search as MCP tools), and colgrep-mcp-dev, the maintainer's plugin of skills."
+  },
+  "dev": {
+    "dir": "dev",
+    "name": "colgrep-mcp-dev",
+    "displayName": "colgrep-mcp maintainer skills",
+    "description": "The maintainer's dev environment for colgrep-mcp as skills: policy, campaign leadership, landing and release mechanics, stack traps. For agents maintaining this repository, not for end users of the colgrep tools.",
+    "marketplace_description": "Maintainer skills for this repository (policy, campaign leadership, landing and release, stack traps). Not for end users.",
+    "keywords": [
+      "colgrep-mcp",
+      "maintainer",
+      "skills",
+      "agents"
+    ]
+  }
+}

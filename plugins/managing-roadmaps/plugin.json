@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "managing-roadmaps",
+  "version": "1.0.0",
+  "description": "Creates, executes, and amends graph-based campaign roadmaps.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "roadmap",
+    "campaign",
+    "planning",
+    "agents"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Managing Roadmaps",
+        "shortDescription": "Creates, executes, and amends graph-based campaign roadmaps.",
+        "longDescription": "Creates, executes, and amends graph-based campaign roadmaps.",
+        "developerName": "Eliott Jacopin",
+        "category": "Productivity",
+        "capabilities": [
+          "Read"
+        ]
+      }
+    }
+  }
+}

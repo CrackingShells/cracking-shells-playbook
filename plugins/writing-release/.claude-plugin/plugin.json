@@ -1,0 +1,20 @@
+{
+  "name": "writing-release",
+  "displayName": "Writing Release",
+  "version": "1.0.0",
+  "description": "Writes GitHub pull request bodies and Discord release announcements for fork-based release workflows.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "release",
+    "changelog",
+    "pull-request",
+    "agents"
+  ],
+  "skills": "./skills/"
+}
