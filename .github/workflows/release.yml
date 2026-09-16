@@ -81,7 +81,7 @@ jobs:
 
   release:
     needs: [detect, build-managing-roadmaps-binaries, drift]
-    if: always() && !failure() && !cancelled()
+    if: ${{ always() && !contains(needs.*.result, 'failure') && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
