@@ -60,3 +60,32 @@ records that the file diverges without protecting it, which reads as safety but 
   regenerated, so a generator fix to their contents can never reach an already-generated repo. The
   `authentication: "NONE"` fix is the live instance — colgrep-mcp's file had to be repaired by hand.
   Documentation only.
+
+## Chosen Resolution (A1, approved 2026-09-16)
+
+The maintainer rejected the first proposed fix — sniffing whether the `marketplace` key's value
+looked like an `owner/repo` slug — on the grounds that this is a *skill*, not only a CLI: the LLM
+using it can ask the human for information the human already knows, rather than the generator
+inferring it. That is the better resolution, and the reason it is better is visible in finding 2
+and 3 above: the only two consumers of marketplace identity are `dev_readme()` and
+`install_snippet`, both **documentation outputs**. No manifest that a loader reads needs it. So the
+generator was never the right place to derive that identity.
+
+The fields therefore stay, reframed: `claude_marketplace.name` and `codex.marketplace_name` are the
+*recorded answer* to a question the skill asks. Recording it rather than prompting at generation
+time is what keeps `spawn` reproducible — an interactively supplied name would make the regeneration
+guard meaningless, since the guard re-runs `spawn` and compares output.
+
+Two consequences for the fix:
+
+- The `marketplace` key gains an explicit shape carrying the hub repository, and `load_spec`
+  **fails** when hub mode is declared with no hub recorded, naming the key to add. A load-time error
+  is how a human gets asked. Falling back to `spec["repository"]` is the wrong answer by
+  construction, and a hedged "cannot determine the hub" line in generated prose is worse than
+  refusing to generate it.
+- `SKILL.md` gains the question in its spec-writing step, stated as a principle rather than a
+  special case: the generator reads recorded answers and never infers human-facing identity.
+
+Findings 5 and 6 (`dev/README.md` clobbered under `--force`) and finding 1 (the example spec not
+being hub-mode) are untouched by this reframing — no amount of asking protects a file from `--force`
+or makes a fixture hub-mode. They remain steps 1 and 3.
