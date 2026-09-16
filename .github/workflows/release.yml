@@ -64,20 +64,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Fail drift when a declared plugin's directory is missing
-        run: |
-          if [ ! -f plugin.spec.json ]; then
-            echo "no plugin.spec.json at repo root; nothing declared, skipping"
-            exit 0
-          fi
-          missing=0
-          for name in $(python3 -c "import json; d = json.load(open('plugin.spec.json')); print('\n'.join(p['name'] for p in d.get('plugins', [])))"); do
-            if [ ! -d "plugins/$name" ]; then
-              echo "::error::plugin.spec.json declares plugin '$name' but plugins/$name/ does not exist — a declared plugin whose directory is missing or deleted must fail this gate, not pass it green."
-              missing=1
-            fi
-          done
-          exit "$missing"
+      - name: Confirm every declared plugin has a complete root
+        run: uv run skills/spawning-agent-plugins/scripts/check_plugin.py --root . --spec plugin.spec.json
       - name: Re-assemble every plugin and check for drift
         run: |
           if [ -d plugins ]; then
