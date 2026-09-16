@@ -292,7 +292,14 @@ def build_codex_plugin(spec: dict, version: str) -> dict:
     return out
 
 
-def build_claude_marketplace(spec: dict) -> dict:
+def build_claude_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict:
+    """One marketplace entry per plugin `entries` holds, plus one per declared `dev` sibling.
+
+    `entries` is the (normalised plugin dict, resolved version) pairs for every plugin this
+    spawn wrote into the `claude` ecosystem — one element for a single-plugin spec, one per
+    `plugins[]` item for a multi-plugin spec. `source` is still the literal `"./"` here
+    regardless of an entry's `dir`; parameterising it per-entry is a later step.
+    """
     market = spec.get("claude_marketplace", {})
     out = {
         "name": market.get("name", f"{spec['name']}-marketplace"),
@@ -300,31 +307,34 @@ def build_claude_marketplace(spec: dict) -> dict:
     }
     if spec.get("author"):
         out["owner"] = spec["author"]
-    out["plugins"] = [{"name": spec["name"], "source": "./", "description": spec["description"]}]
-    if spec.get("dev"):
-        dev = spec["dev"]
-        out["plugins"].append(
-            {
-                "name": dev["name"],
-                "source": "./" + dev.get("dir", "dev").strip("/"),
-                "description": dev.get("marketplace_description", dev["description"]),
-            }
-        )
+    out["plugins"] = [{"name": entry["name"], "source": "./", "description": entry["description"]} for entry, _ in entries]
+    for entry, _ in entries:
+        if entry.get("dev"):
+            dev = entry["dev"]
+            out["plugins"].append(
+                {
+                    "name": dev["name"],
+                    "source": "./" + dev.get("dir", "dev").strip("/"),
+                    "description": dev.get("marketplace_description", dev["description"]),
+                }
+            )
     return out
 
 
-def build_codex_marketplace(spec: dict) -> dict:
+def build_codex_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict:
+    """One marketplace entry per plugin `entries` holds. See `build_claude_marketplace`."""
     codex = spec.get("codex", {})
     return {
         "name": codex.get("marketplace_name", f"{spec['name']}-marketplace"),
         "interface": {"displayName": codex.get("marketplace_displayName", spec.get("displayName", spec["name"]))},
         "plugins": [
             {
-                "name": spec["name"],
+                "name": entry["name"],
                 "source": {"source": "local", "path": "./"},
                 "policy": {"installation": "AVAILABLE", "authentication": "NONE"},
-                "category": codex.get("category", "Developer Tools"),
+                "category": entry.get("codex", {}).get("category", codex.get("category", "Developer Tools")),
             }
+            for entry, _ in entries
         ],
     }
 
@@ -455,9 +465,22 @@ class Writer:
             path.write_text(_dump(current))
 
 
+def _prefixed(dir_: str, rel: str) -> str:
+    """`rel` inside a plugin's own directory: unprefixed for a root plugin (`dir_ == ""`)."""
+    return f"{dir_}/{rel}" if dir_ else rel
+
+
 def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
-    version = resolve_version(spec, root)
-    eco = set(spec["ecosystems"])
+    """Write every declared plugin's manifest set, one entry at a time.
+
+    `plugin_entries(spec)` normalises the spec to a list of one (single-plugin spec)
+    or more (multi-plugin spec) per-plugin dicts; each is otherwise built exactly as
+    a single-plugin spec always was, with every written path prefixed by the entry's
+    `dir` (empty for a root plugin, so single-plugin output is byte-for-byte
+    unchanged). Each entry resolves its own version independently. Marketplace
+    entries accumulate across every plugin and are written with one
+    `merge_marketplace` call per ecosystem, never one per plugin.
+    """
     w = Writer(root, force=force, dry_run=dry_run)
 
     if (root / ".mcp.json").exists():
@@ -467,58 +490,73 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
             file=sys.stderr,
         )
 
-    if "agent-plugins" in eco:
-        w.put("plugin.json", _dump(build_agent_plugin(spec, version)))
-        if spec.get("mcp"):
-            w.put("mcp.json", _dump(build_mcp(spec, version, "agent-plugins")))
-    if "claude" in eco:
-        w.put(".claude-plugin/plugin.json", _dump(build_claude_plugin(spec, version)))
-        w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec))
-        if spec.get("mcp"):
-            w.put(".claude-plugin/mcp.json", _dump(build_mcp(spec, version, "claude")))
-    if "codex" in eco:
-        w.put(".codex-plugin/plugin.json", _dump(build_codex_plugin(spec, version)))
-        w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec))
-        if spec.get("mcp"):
-            w.put(".codex-plugin/mcp.json", _dump(build_mcp(spec, version, "codex")))
+    claude_entries: list[tuple[dict, str]] = []
+    codex_entries: list[tuple[dict, str]] = []
 
-    if spec.get("hooks"):
-        hooks = spec["hooks"]
-        if hooks.get("portable"):
-            w.put("hooks/hooks.json", _dump(build_portable_hooks(spec)))
-        for event in hooks.get("extra", []):
-            w.put(extra_hook_files({"extra": [event]})[0].removeprefix("./"), _dump(build_event_hooks(spec, event)))
-        if (root / "hooks" / "claude-code.json").exists():
-            print(
-                "warning: hooks/claude-code.json is the retired layout (one file per harness); each non-portable "
-                "event now has its own file named after it. Delete it once the per-event files are written.",
-                file=sys.stderr,
-            )
-        script = root / hooks["script"]
-        if not script.exists() and not dry_run:
-            script.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(HOOK_TEMPLATE, script)
-            w.written.append(hooks["script"] + "  (from assets/hooks/policy_template.py; edit it)")
-        elif not script.exists():
-            w.written.append(hooks["script"] + "  (template)")
+    for entry in plugin_entries(spec):
+        version = resolve_version(entry, root)
+        eco = set(entry.get("ecosystems", ["claude", "codex", "agent-plugins"]))
+        dir_ = entry.get("dir", "")
 
-    if spec.get("dev"):
-        dev = spec["dev"]
-        ddir = dev.get("dir", "dev").strip("/")
-        w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(spec, version)))
-        w.put(f"{ddir}/README.md", dev_readme(spec))
-        if not dry_run:
-            (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
+        if "agent-plugins" in eco:
+            w.put(_prefixed(dir_, "plugin.json"), _dump(build_agent_plugin(entry, version)))
+            if entry.get("mcp"):
+                w.put(_prefixed(dir_, "mcp.json"), _dump(build_mcp(entry, version, "agent-plugins")))
+        if "claude" in eco:
+            w.put(_prefixed(dir_, ".claude-plugin/plugin.json"), _dump(build_claude_plugin(entry, version)))
+            claude_entries.append((entry, version))
+            if entry.get("mcp"):
+                w.put(_prefixed(dir_, ".claude-plugin/mcp.json"), _dump(build_mcp(entry, version, "claude")))
+        if "codex" in eco:
+            w.put(_prefixed(dir_, ".codex-plugin/plugin.json"), _dump(build_codex_plugin(entry, version)))
+            codex_entries.append((entry, version))
+            if entry.get("mcp"):
+                w.put(_prefixed(dir_, ".codex-plugin/mcp.json"), _dump(build_mcp(entry, version, "codex")))
 
-    if spec.get("skills") and not (root / spec["skills"]).is_dir():
-        print(f"warning: skills path {spec['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
+        if entry.get("hooks"):
+            hooks = entry["hooks"]
+            if hooks.get("portable"):
+                w.put(_prefixed(dir_, "hooks/hooks.json"), _dump(build_portable_hooks(entry)))
+            for event in hooks.get("extra", []):
+                rel = extra_hook_files({"extra": [event]})[0].removeprefix("./")
+                w.put(_prefixed(dir_, rel), _dump(build_event_hooks(entry, event)))
+            if (root / dir_ / "hooks" / "claude-code.json").exists():
+                print(
+                    "warning: hooks/claude-code.json is the retired layout (one file per harness); each non-portable "
+                    "event now has its own file named after it. Delete it once the per-event files are written.",
+                    file=sys.stderr,
+                )
+            script_rel = _prefixed(dir_, hooks["script"])
+            script = root / script_rel
+            if not script.exists() and not dry_run:
+                script.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(HOOK_TEMPLATE, script)
+                w.written.append(script_rel + "  (from assets/hooks/policy_template.py; edit it)")
+            elif not script.exists():
+                w.written.append(script_rel + "  (template)")
+
+        if entry.get("dev"):
+            dev = entry["dev"]
+            ddir = _prefixed(dir_, dev.get("dir", "dev").strip("/"))
+            market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
+            w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(entry, version)))
+            w.put(f"{ddir}/README.md", dev_readme(entry, ddir, market))
+            if not dry_run:
+                (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
+
+        if entry.get("skills") and not (root / dir_ / entry["skills"]).is_dir():
+            print(f"warning: skills path {entry['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
+
+    if claude_entries:
+        w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec, claude_entries))
+    if codex_entries:
+        w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec, codex_entries))
+
     return w
 
 
-def dev_readme(spec: dict) -> str:
+def dev_readme(spec: dict, ddir: str, market: str) -> str:
     dev = spec["dev"]
-    market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
-    ddir = dev.get("dir", "dev").strip("/")
     return f"""# {dev["name"]}
 
 The maintainer's dev environment for this repository, packaged as a Claude Code
