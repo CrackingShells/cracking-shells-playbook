@@ -12,6 +12,7 @@
 - ⬜ `check_plugin.py` passes on a repo with two sibling plugins at different versions [run]
 - ⬜ The regeneration guard passes against its re-baselined colgrep-mcp expectation [run]
 - ⬜ No call site passes `force=True` to `Writer.merge_marketplace` [static]
+- ⬜ The generator emits no `authentication: "NONE"`, and the checker rejects it [run]
 **References**: [R02 §Codex](../../../skills/spawning-agent-plugins/references/manifests.md) — the fields each ecosystem permits
 
 ## Step 1: Accept several plugins in one spec
@@ -54,7 +55,9 @@ This deliberately changes colgrep-mcp's generated output, so the regeneration gu
 
 **Implementation Logic**:
 Add a spec key — `marketplace: "hub"` or an explicit hub repository — that suppresses writing `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` into the product repo, since two repos declaring one marketplace name silently replace each other in Claude Code and hard-error in Codex. When a marketplace *is* written, parameterise the `source` instead of hardcoding `"./"`: a plugin in a subdirectory uses `git-subdir` with its `path` for Claude Code, and Codex takes the same shape via `url` + `path` because it has no `github` shorthand. Emit no `version`, `ref` or `sha` on any generated entry.
-**Deliverables**: `skills/spawning-agent-plugins/scripts/spawn_plugin.py` — `build_claude_marketplace`/`build_codex_marketplace` emitting parameterised sources, a hub mode suppressing both files
+
+Fix a shipped bug while here: `spawn_plugin.py:273` hardcodes `"authentication": "NONE"` in the Codex marketplace entry. That value is not in Codex's auth-policy enum (`ON_INSTALL` | `ON_USE`, no catch-all), and Codex parses the marketplace in one pass, so it makes every entry in the file unparseable. Every plugin this generator has produced carries it, colgrep-mcp's live marketplace included. Emit `ON_INSTALL`.
+**Deliverables**: `skills/spawning-agent-plugins/scripts/spawn_plugin.py` — `build_claude_marketplace`/`build_codex_marketplace` emitting parameterised sources and a valid `authentication` value, a hub mode suppressing both files
 **Consistency Checks**: `uv run python3 -c "src=open('skills/spawning-agent-plugins/scripts/spawn_plugin.py').read();assert 'git-subdir' in src"` (expected: PASS)
 **Commit**: `feat(spawning-agent-plugins): support marketplaces owned by a hub repository`
 
@@ -64,6 +67,8 @@ Add a spec key — `marketplace: "hub"` or an explicit hub repository — that s
 
 **Implementation Logic**:
 Scope `collect_problems` to one plugin root at a time and iterate roots, so the cross-manifest name/version identity check compares a plugin against itself rather than against its siblings. Three existing rules currently misfire and must change together: the entry-source assertion that demands `"./"`, the dev-plugin rule that reports any non-root marketplace entry as "lagging the product version", and the Codex `interface` checks, which must now read `extensions["com.openai"]`. Keep the dev-plugin version rule alive but scope it to entries a spec actually declares as `dev` — a maintainer plugin should still track its product's version; a sibling product plugin should not.
+
+Add one rule the checker lacks: it currently asserts only that `policy` and `category` are *present*, never their values, which is why the invalid `authentication: "NONE"` survived every check. Validate `policy.installation` against `NOT_AVAILABLE | AVAILABLE | INSTALLED_BY_DEFAULT` and `policy.authentication` against `ON_INSTALL | ON_USE`.
 **Deliverables**: `skills/spawning-agent-plugins/scripts/check_plugin.py` — `collect_problems(root)` iterating plugin roots, `_check_codex_interface(extensions)` replacing the `.codex-plugin` reads, the `"./"` source assertion and dev-lag rule scoped
 **Consistency Checks**: `uv run skills/spawning-agent-plugins/scripts/check_plugin.py --root /Users/hacker/Documents/src/CrackingShells/colgrep-mcp` (expected: PASS)
 **Commit**: `feat(spawning-agent-plugins): validate sibling plugins and the extensions shape`

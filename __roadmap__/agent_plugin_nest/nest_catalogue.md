@@ -10,6 +10,8 @@
 - ⬜ No plugin entry anywhere carries a `version`, `sha` or `ref` key [run]
 - ⬜ Every playbook entry uses a `git-subdir` source whose `path` is `plugins/<name>` [run]
 - ⬜ Every entry inlines `displayName`, `description` and `category` for Codex's pre-install browse view [run]
+- ⬜ Every Codex `policy.authentication` is `ON_INSTALL` or `ON_USE`; the string `NONE` appears nowhere [run]
+- ⬜ `category` is chosen per plugin, not one value applied to all seven [run]
 **References**: [R01 §Decisions already settled](~/.claude/plans/good-news-overall-it-s-gleaming-wreath.md) — entry shape and why no version/sha
 
 ## Step 1: Author the Claude Code marketplace
@@ -27,7 +29,7 @@ Write `.claude-plugin/marketplace.json` with `name: "cracking-shells"`, an `owne
 **Goal**: Mirror the catalogue for Codex, whose source variants and required entry fields differ.
 
 **Implementation Logic**:
-Write `.agents/plugins/marketplace.json` with `name: "cracking-shells"`, an `interface.displayName` of `"CrackingShells"`, and the same plugins. Codex has no `github` shorthand: playbook entries use `{"source":"git-subdir","url":"https://github.com/CrackingShells/cracking-shells-playbook.git","path":"plugins/<name>"}` and colgrep-mcp uses `{"source":"url","url":"https://github.com/CrackingShells/colgrep-mcp.git"}`. Every entry needs a `policy` block (`installation: "AVAILABLE"`, `authentication: "NONE"`) and a `category`; Codex's loader defaults `policy` but the reference treats both as expected. Inline the same display metadata — Codex does not clone at listing time, so an entry without it renders blank until install. Remember `category` here permanently overrides the plugin manifest's own, so it must be the value you actually want shown.
+Write `.agents/plugins/marketplace.json` with `name: "cracking-shells"`, an `interface.displayName` of `"CrackingShells"`, and the same plugins. Codex has no `github` shorthand: playbook entries use `{"source":"git-subdir","url":"https://github.com/CrackingShells/cracking-shells-playbook.git","path":"plugins/<name>"}` and colgrep-mcp uses `{"source":"url","url":"https://github.com/CrackingShells/colgrep-mcp.git"}`. Every entry needs a `policy` block and a `category`. Use `installation: "AVAILABLE"` and `authentication: "ON_INSTALL"`: Codex's auth-policy enum has exactly two variants, `ON_INSTALL` and `ON_USE`, with no catch-all, and it deserialises the whole file in one pass — so a single invalid value makes every entry unparseable, not just its own. There is no way to say "no authentication"; omitting the field defaults to `ON_INSTALL` anyway. Inline the same display metadata — Codex does not clone at listing time, so an entry without it renders blank until install. `category` here permanently overrides the plugin manifest's own, so choose it per plugin rather than applying one value to all: only genuine developer tooling should read as such, and a roadmapping or report-writing skill should not.
 **Deliverables**: `/Users/hacker/Documents/src/CrackingShells/Nest/.agents/plugins/marketplace.json` — keys `name`, `interface.displayName`, `plugins[]` each with `name`, `source`, `policy`, `category`
 **Consistency Checks**: `python3 -c "import json;d=json.load(open('/Users/hacker/Documents/src/CrackingShells/Nest/.agents/plugins/marketplace.json'));assert d['name']=='cracking-shells';assert len(d['plugins'])==7;assert all('policy' in p and 'category' in p for p in d['plugins'])"` (expected: PASS)
 **Commit**: `feat(marketplace): add the cracking-shells Codex catalogue`
