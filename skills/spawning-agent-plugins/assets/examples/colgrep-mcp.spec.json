@@ -78,6 +78,9 @@
     "name": "cracking-shells",
     "description": "CrackingShells marketplace. Here: colgrep-mcp, the product plugin (semantic and hybrid code search as MCP tools), and colgrep-mcp-dev, the maintainer's plugin of skills."
   },
+  "marketplace": {
+    "hub": "https://github.com/CrackingShells/Nest"
+  },
   "dev": {
     "dir": "dev",
     "name": "colgrep-mcp-dev",
