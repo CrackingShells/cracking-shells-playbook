@@ -23,8 +23,8 @@ Five playbook skills exist as five installable plugins whose versions bump on ev
 ```mermaid
 graph TD
     playbook_plugins[Playbook Plugins]:::done
-    release_wiring[Release Wiring]:::inprogress
-    verify[Verification]:::planned
+    release_wiring[Release Wiring]:::done
+    verify[Verification]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -36,8 +36,8 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `playbook_plugins.md` | 📄 Leaf Task | ✅ Done |
-| `release_wiring.md` | 📄 Leaf Task | 🔄 In Progress |
-| `verify/` | 📁 Directory | ⬜ Planned |
+| `release_wiring.md` | 📄 Leaf Task | ✅ Done |
+| `verify/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
