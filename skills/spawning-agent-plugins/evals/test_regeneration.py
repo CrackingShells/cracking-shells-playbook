@@ -27,6 +27,7 @@ maintainer check and never ships to consumers.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -58,7 +59,31 @@ SPEC_PATH = SKILL_ROOT / "assets" / "examples" / "colgrep-mcp.spec.json"
 # run now reports exactly `kept plugin.json [keys: extensions]` plus the
 # pre-existing `dev/README.md`, and nothing else — no .codex-plugin/* write or
 # skip appears at all, because the generator no longer references that path.
-ALLOWED_DIVERGENCE = {"dev/README.md", "plugin.json"}
+#
+# Key-scoped, not file-scoped: `None` is a whole-file exemption (dev/README.md
+# is hand-maintained prose with no JSON keys to compare); a set restricts the
+# exemption to those top-level keys. A file-scoped allowlist (bare
+# `{"plugin.json"}`) would silently absorb ANY future divergence in
+# plugin.json — a corrupted `name`, `version` or `license` included — as "the
+# expected extensions divergence". `_parse_skipped` below reads the `[keys:
+# ...]` suffix `Writer._key_diff` reports and this is enforced as a subset
+# check, not just logged in the failure message.
+ALLOWED_DIVERGENCE: dict[str, set[str] | None] = {
+    "dev/README.md": None,
+    "plugin.json": {"extensions"},
+}
+
+_SKIPPED_RE = re.compile(r"^(?P<rel>.*?)(?:  \[keys: (?P<keys>.*)\])?$")
+
+
+def _parse_skipped(entry: str) -> tuple[str, set[str] | None]:
+    """Split one `Writer.skipped` entry into its path and the differing top-level
+    keys (`None` when the file carries no `[keys: ...]` suffix at all, i.e. a
+    non-JSON file or one whose parsed content is actually identical)."""
+    match = _SKIPPED_RE.match(entry)
+    rel = match.group("rel")
+    keys = match.group("keys")
+    return rel, ({k.strip() for k in keys.split(",")} if keys else None)
 
 # Where to find the colgrep-mcp checkout when COLGREP_MCP_ROOT is unset.
 # Resolved against this skill's root (spawning-agent-plugins/), not against
@@ -89,9 +114,18 @@ def test_spec_regenerates_manifests() -> None:
     assert w.written == [], f"spec would write new files — generator and checkout have drifted: {w.written}"
     assert w.merged == [], f"spec would merge marketplace entries — generator and checkout have drifted: {w.merged}"
 
-    skipped_names = {rel.split("  [keys:", 1)[0].strip() for rel in w.skipped}
-    unexpected = skipped_names - ALLOWED_DIVERGENCE
-    assert not unexpected, f"unexpected divergence from the spec: {sorted(unexpected)} (full detail: {w.skipped})"
+    unexpected = []
+    for entry in w.skipped:
+        rel, keys = _parse_skipped(entry)
+        if rel not in ALLOWED_DIVERGENCE:
+            unexpected.append(entry)
+            continue
+        allowed_keys = ALLOWED_DIVERGENCE[rel]
+        if allowed_keys is None:
+            continue  # whole-file exemption (e.g. hand-maintained prose)
+        if keys is None or not keys <= allowed_keys:
+            unexpected.append(entry)
+    assert not unexpected, f"unexpected divergence from the spec: {unexpected} (full detail: {w.skipped})"
 
 
 if __name__ == "__main__":
