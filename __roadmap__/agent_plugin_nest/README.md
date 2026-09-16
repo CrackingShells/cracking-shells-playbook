@@ -40,6 +40,7 @@ graph TD
     regeneration_guard[Regeneration Guard]:::done
     plugin_assembly_tool[Plugin Assembly Tool]:::done
     generator[Generator Extensions]:::inprogress
+    hub_mode_reconciliation[Hub Mode Reconciliation]:::amendment
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -54,10 +55,12 @@ graph TD
 | `regeneration_guard.md` | 📄 Leaf Task | ✅ Done |
 | `plugin_assembly_tool.md` | 📄 Leaf Task | ✅ Done |
 | `generator/` | 📁 Directory | 🔄 In Progress |
+| `hub_mode_reconciliation.md` | 📄 Leaf Task | 🔵 Amendment |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
 |:---|:-----|:-------|:------------|:----------|
+| A1 | 2026-09-16 | __reports__/agent_plugin_nest/00-gap_analysis_hub_mode_v0.md | ["hub_mode_reconciliation.md"] | Hub mode suppresses the marketplace files but nothing else, so the docs' own advice breaks the generated dev README, and the example spec is not hub-mode so the guard fails once colgrep-mcp relinquishes |
 
 ## Progress
 | Node | Branch | Commits | Notes |
