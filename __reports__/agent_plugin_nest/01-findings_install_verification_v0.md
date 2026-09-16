@@ -34,16 +34,32 @@ The `drift` job also ran green, which is its first real execution against a popu
 and had no `package.json`, so `multi-semantic-release` could not see it: pushing it published nothing,
 silently, with a green pipeline.
 
-## Validated only, not exercised
+## All three ecosystems exercised — reported by the maintainer
 
-**Codex.** No Codex CLI is available on this machine, so every Codex claim rests on its published
-manifest format and its loader source, never on a live run. The Codex catalogue in Nest, the
-`extensions["com.openai"]` manifests and the `ON_INSTALL` policy values are written to that reference
-and statically checked. This is the same distinction `references/manifests.md` keeps in its
-verification-status table, and it must not blur now that the catalogue has moved.
+Superseding this report's original "validated only" section: the maintainer installed the plugins
+from **Claude Code, Codex and VS Code**, all pointing at Nest. Reported by him rather than measured
+here, so attributed as such — but it retires the largest caveat this campaign carried, and confirms
+several decisions that had rested on documentation alone:
 
-**Agent Plugins 1.0 clients.** Conformance is asserted against the spec's closed schema, with no
-Cursor, VS Code or Kiro install performed.
+- **The `extensions["com.openai"]` shape works in a real Codex.** It was written to the
+  `openai/codex` reference and never exercised; the whole `.codex-plugin/` removal rested on that
+  reading.
+- **The `authentication` fix was load-bearing, not cosmetic.** Codex deserialises a marketplace file
+  in one pass, so the `"NONE"` value that the generator hardcoded would have made *every* entry in
+  Nest's Codex catalogue unparseable. A successful Codex install is only possible because that
+  defect was caught. Its enum (`ON_INSTALL` | `ON_USE`) had been established by reading Rust source,
+  with no live run to confirm it.
+- **Codex's `git-subdir` / `url` source forms resolve**, including the absence of a `github`
+  shorthand, which is why the Codex catalogue differs in shape from the Claude one.
+- **Agent Plugins 1.0 conformance holds in a real client.** VS Code discovered the package by
+  location — root `plugin.json` and `skills/` — which is what the assembled `plugins/<name>/` layout
+  exists to satisfy, given the spec's containment rule and its symlink prohibition.
+
+What remains genuinely untested: Cursor and Kiro, and Codex's `hooks` field, which the generator
+emits only on an explicit opt-in that this repo's plugins do not set.
+
+`references/manifests.md`'s verification-status table should be updated from this, since it still
+records the Codex rows as written-to-spec rather than exercised.
 
 ## Outstanding
 
