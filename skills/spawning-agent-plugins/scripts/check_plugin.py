@@ -123,12 +123,17 @@ def find_plugin_roots(root: Path) -> list[Path]:
 
 def _resolve_local_source_path(source) -> str | None:
     """The relative path a marketplace `source` points at, when it names a location in
-    THIS repo: a plain string, or a dict carrying `path` (`local` or `git-subdir`). None
-    for a source this checker cannot resolve locally (e.g. a bare `github`/`url` source
-    with no `path`, naming a different repo entirely)."""
+    THIS repo: a plain string, or a dict whose `source` discriminator is `local` or
+    `git-subdir` (both always same-repo by construction). A dict's `path` is NOT treated
+    as repo-local for any other discriminator: Codex's `url` source legitimately carries
+    an optional `path` too (`Url { url, path: Option<String>, .. }`, for a subdirectory
+    inside a non-GitHub git host), so a cross-repo entry like `{"source": "url", "url":
+    "https://gitlab.com/other-org/monorepo.git", "path": "plugins/foo"}` — exactly the
+    shape a hub catalogue's real entries take — must resolve to None here, not to a path
+    inside this repo."""
     if isinstance(source, str):
         return source
-    if isinstance(source, dict) and "path" in source:
+    if isinstance(source, dict) and source.get("source") in ("local", "git-subdir") and "path" in source:
         return source["path"]
     return None
 
@@ -165,9 +170,15 @@ def _check_codex_interface(extensions: dict | None, agent: dict | None, version:
     return out
 
 
-def collect_problems(root: Path) -> list[str]:
+def collect_problems(root: Path, spec_path: Path | None = None) -> list[str]:
     """Check every plugin root under `root` independently, plus the shared, repo-level
-    marketplace files and any maintainer `dev/` plugins nested under a product root."""
+    marketplace files and any maintainer `dev/` plugins.
+
+    `spec_path`, when given, is the spec.json this tree was spawned from: dev-plugin
+    identity is read from its `dev` declarations (see `_dev_pairs_from_spec`), never
+    inferred from directory nesting — tree shape alone cannot tell a dev plugin nested
+    under its product apart from an ordinary sibling PRODUCT plugin nested the same way
+    (e.g. an assembled `plugins/<name>/` tree)."""
     problems: list[str] = []
     say = problems.append
 
@@ -193,8 +204,37 @@ def collect_problems(root: Path) -> list[str]:
         except ValueError as exc:
             say(str(exc))
 
-    problems.extend(_collect_dev_problems(root, roots, claude_market))
+    dev_pairs = _dev_pairs_from_spec(root, spec_path) if spec_path is not None else None
+    problems.extend(_collect_dev_problems(root, roots, claude_market, dev_pairs))
     return problems
+
+
+def _dev_pairs_from_spec(repo_root: Path, spec_path: Path) -> dict[Path, Path]:
+    """Every (dev directory, its product's directory) pair `spec_path` actually declares,
+    by replaying spawn_plugin.py's own path construction (`spawn()`'s `dev` branch)
+    exactly — read from the spec, never inferred from directory structure. An entry
+    without a `dev` block contributes nothing."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    from spawn_plugin import load_spec, plugin_entries  # noqa: PLC0415  (local: only
+    # needed with --spec. spawn_plugin.py itself imports PORTABLE_EVENTS/event_file_stem
+    # from THIS file at its own module level, so a top-level import here would form an
+    # import cycle when check_plugin.py is the one being run; deferring it to call time
+    # avoids that entirely, at the cost of loading spawn_plugin lazily.)
+
+    spec = load_spec(spec_path)
+    pairs: dict[Path, Path] = {}
+    for entry in plugin_entries(spec):
+        dev = entry.get("dev")
+        if not dev:
+            continue
+        entry_dir = (entry.get("dir") or "").strip("/")
+        product_root = (repo_root / entry_dir).resolve() if entry_dir else repo_root.resolve()
+        dev_rel = dev.get("dir", "dev").strip("/")
+        dev_dir_rel = f"{entry_dir}/{dev_rel}" if entry_dir else dev_rel
+        pairs[(repo_root / dev_dir_rel).resolve()] = product_root
+    return pairs
 
 
 def _collect_plugin_problems(root: Path, repo_root: Path, claude_market: dict | None, codex_market: dict | None) -> list[str]:
@@ -403,58 +443,69 @@ def _collect_plugin_problems(root: Path, repo_root: Path, claude_market: dict | 
     return problems
 
 
-def _collect_dev_problems(repo_root: Path, roots: list[Path], claude_market: dict | None) -> list[str]:
-    """Maintainer `dev/` plugins: claude-only (no root `plugin.json` of their own) AND
-    nested under another discovered plugin root, whose version they must track.
+def _check_declared_dev(dev_dir: Path, product_root: Path, dev_manifest: dict) -> list[str]:
+    """Version lag, "never a server", and skills disjointness for ONE spec-declared
+    (dev, product) pair. The only checks that actually need to know which side of the
+    relationship is the dev plugin — everything else about `dev_dir` is already covered
+    generically by `_collect_plugin_problems` via its own entry in `roots`."""
+    problems: list[str] = []
+    say = problems.append
+    product_version = _root_version(product_root)
+    if product_version is not None and dev_manifest.get("version") != product_version:
+        say(f"{dev_dir}: version {dev_manifest.get('version')} lags the product version {product_version}")
+    if "mcpServers" in dev_manifest:
+        say(f"{dev_dir}: a skills plugin should carry knowledge, never a server")
+    dev_skills = (dev_dir / dev_manifest.get("skills", "./skills/")).resolve()
+    product_claude = _load(product_root, ".claude-plugin/plugin.json")
+    if product_claude and product_claude.get("skills"):
+        product_skills = (product_root / product_claude["skills"]).resolve()
+        if product_skills == dev_skills or dev_skills in product_skills.parents or product_skills in dev_skills.parents:
+            say(f"{dev_dir}: the product plugin would ship the dev skills: keep the two skills trees disjoint")
+    problems.extend(_check_skills(dev_skills, f"{dev_dir}/.claude-plugin/plugin.json"))
+    return problems
 
-    Both halves of that discriminator are load-bearing. Claude-only alone is not enough:
-    a legitimate sibling PRODUCT plugin can be claude-only too (ecosystems restricted to
-    `["claude"]`) and can legitimately carry an MCP server — nesting is what actually
-    distinguishes "this directory belongs to another plugin" from "this is its own
-    top-level plugin", and a top-level claude-only entry is already fully checked in its
-    own right by `_collect_plugin_problems` via its own entry in `roots`.
 
-    Candidates are enumerated from `roots` (the independently discovered plugin
-    directories), NOT from marketplace entries: `roots` exists with or without a local
-    marketplace, so a hub-mode repo (no `.claude-plugin/marketplace.json` at all) still
-    gets its dev plugins validated — a marketplace-driven enumeration would silently
-    validate nothing in the very mode this reshape exists to enable.
+def _collect_dev_problems(
+    repo_root: Path, roots: list[Path], claude_market: dict | None, dev_pairs: dict[Path, Path] | None
+) -> list[str]:
+    """Maintainer `dev/` plugin checks — version lag, "never a server", skills
+    disjointness — need to know exactly which directories ARE dev plugins, and tree
+    shape cannot answer that reliably: a claude-only plugin nested under another
+    discovered root is just as easily an ordinary sibling PRODUCT nested the same way
+    (e.g. an assembled `plugins/<name>/` tree, or two independently-versioned siblings
+    both living under a repo-root product) as it is that root's dev plugin. Structural
+    inference conflates "nested under a root" with "IS the dev plugin of that root",
+    which tree shape alone cannot separate.
 
-    The marketplace, when present, is instead used for a second, narrower pass: a
-    `source` that resolves to a manifest `find_plugin_roots`'s walk never reached (outside
-    `repo_root`, or inside a pruned directory name) is invisible to the roots-based pass
-    above. Rather than silently trusting or silently ignoring it, it is reported as a
-    named ambiguity the checker cannot resolve on its own.
+    So `dev_pairs` — built by `_dev_pairs_from_spec` from the spec's own `dev`
+    declarations, never inferred — is the ONLY source of dev-specific checks. Passing
+    `None` (no `--spec` given) intentionally runs NONE of those checks; there is no
+    tree-shape fallback for them, because any such fallback is exactly the guessing that
+    caused the false positive this replaces. What DOES still run without a spec is the
+    marketplace-entry dangling-reference check below, since it never needs to classify
+    dev vs. product at all — a source `find_plugin_roots` never reached is suspicious
+    regardless of which kind of plugin it would have been.
     """
     problems: list[str] = []
     say = problems.append
     root_set = set(roots)
 
-    dev_candidates: dict[Path, Path] = {}
-    for candidate in roots:
-        if _load(candidate, "plugin.json"):
-            continue  # has its own root manifest: a real product, never a dev plugin
-        ancestors = [r for r in root_set if r != candidate and r in candidate.parents]
-        if not ancestors:
-            continue  # claude-only but NOT nested under anything: a legitimate top-level
-            # claude-only PRODUCT (e.g. ecosystems restricted to ["claude"]) — not a dev
-            # plugin, and already fully checked via its own entry in `roots`
-        dev_candidates[candidate] = max(ancestors, key=lambda p: len(p.parts))
-
-    for candidate, product_root in dev_candidates.items():
-        dev_manifest = _load(candidate, ".claude-plugin/plugin.json")
-        product_version = _root_version(product_root)
-        if product_version is not None and dev_manifest.get("version") != product_version:
-            say(f"{candidate}: version {dev_manifest.get('version')} lags the product version {product_version}")
-        if "mcpServers" in dev_manifest:
-            say(f"{candidate}: a skills plugin should carry knowledge, never a server")
-        dev_skills = (candidate / dev_manifest.get("skills", "./skills/")).resolve()
-        product_claude = _load(product_root, ".claude-plugin/plugin.json")
-        if product_claude and product_claude.get("skills"):
-            product_skills = (product_root / product_claude["skills"]).resolve()
-            if product_skills == dev_skills or dev_skills in product_skills.parents or product_skills in dev_skills.parents:
-                say(f"{candidate}: the product plugin would ship the dev skills: keep the two skills trees disjoint")
-        problems.extend(_check_skills(dev_skills, f"{candidate}/.claude-plugin/plugin.json"))
+    if dev_pairs is not None:
+        for dev_dir, product_root in dev_pairs.items():
+            dev_manifest = _load(dev_dir, ".claude-plugin/plugin.json")
+            if not dev_manifest:
+                say(f"the spec declares a dev plugin at {dev_dir}, but no .claude-plugin/plugin.json is there")
+                continue
+            problems.extend(_check_declared_dev(dev_dir, product_root, dev_manifest))
+    elif not claude_market:
+        # No spec AND no local marketplace to fall back on (hub mode): dev-plugin
+        # validation has nothing to run against. Say so — a silent skip here is exactly
+        # how the original defect (no dev validation at all in hub mode) hid.
+        say(
+            "dev-plugin validation skipped: no --spec was given and no local "
+            ".claude-plugin/marketplace.json exists to fall back on (hub mode) — pass "
+            "--spec <spec.json> to validate this repo's declared dev plugins"
+        )
 
     if claude_market:
         for entry in claude_market.get("plugins", []):
@@ -540,8 +591,17 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--spec",
+        type=Path,
+        default=None,
+        help="the spec.json this tree was spawned from — reads dev-plugin declarations from it rather than "
+        "guessing from directory structure. Without it, dev-plugin checks fall back to the marketplace's own "
+        "entries (never inferred from nesting), and hub mode (no local marketplace) reports that dev-plugin "
+        "validation was skipped rather than silently running none.",
+    )
     args = parser.parse_args(argv)
-    problems = collect_problems(args.root.resolve())
+    problems = collect_problems(args.root.resolve(), args.spec)
     for p in problems:
         print(f"- {p}")
     print("ok: plugin structure is consistent" if not problems else f"{len(problems)} problem(s)")
