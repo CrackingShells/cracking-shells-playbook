@@ -9,7 +9,9 @@
   "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
   "license": "AGPL-3.0-or-later",
   "ecosystems": ["claude", "codex", "agent-plugins"],
-  "marketplace": "hub",
+  "marketplace": {
+    "hub": "https://github.com/CrackingShells/Nest"
+  },
   "plugins": [
     {
       "name": "managing-roadmaps",
