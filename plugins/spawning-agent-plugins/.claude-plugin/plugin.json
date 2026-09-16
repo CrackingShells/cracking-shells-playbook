@@ -1,7 +1,7 @@
 {
   "name": "spawning-agent-plugins",
   "displayName": "Spawning Agent Plugins",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turns a repository into an installable plugin for Claude Code, Codex, and Agent Plugins 1.0 clients.",
   "author": {
     "name": "Eliott Jacopin",

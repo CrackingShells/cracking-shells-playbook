@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "spawning-agent-plugins",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turns a repository into an installable plugin for Claude Code, Codex, and Agent Plugins 1.0 clients.",
   "author": {
     "name": "Eliott Jacopin",

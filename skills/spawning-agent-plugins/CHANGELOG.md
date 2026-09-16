@@ -1,3 +1,10 @@
+## spawning-agent-plugins [1.0.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/spawning-agent-plugins@1.0.0...spawning-agent-plugins@1.0.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **spawning-agent-plugins:** stop advising --force on a file it refuses to overwrite ([a62a69a](https://github.com/CrackingShells/cracking-shells-playbook/commit/a62a69a9171685b65422522c3e724af9d3a0ffd7))
+
 # spawning-agent-plugins 1.0.0 (2026-09-16)
 
 
