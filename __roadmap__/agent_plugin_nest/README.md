@@ -39,7 +39,7 @@ graph TD
     nest_catalogue[Nest Catalogue]:::done
     regeneration_guard[Regeneration Guard]:::done
     plugin_assembly_tool[Plugin Assembly Tool]:::done
-    generator[Generator Extensions]:::planned
+    generator[Generator Extensions]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -53,7 +53,7 @@ graph TD
 | `nest_catalogue.md` | 📄 Leaf Task | ✅ Done |
 | `regeneration_guard.md` | 📄 Leaf Task | ✅ Done |
 | `plugin_assembly_tool.md` | 📄 Leaf Task | ✅ Done |
-| `generator/` | 📁 Directory | ⬜ Planned |
+| `generator/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

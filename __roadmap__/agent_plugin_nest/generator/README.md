@@ -22,7 +22,7 @@ Make the generator and checker capable of multi-plugin, hub-aware, Agent-Plugins
 ## Status
 ```mermaid
 graph TD
-    generator_reshape[Generator Reshape]:::planned
+    generator_reshape[Generator Reshape]:::inprogress
     reference_docs[Reference Documentation]:::planned
     rollout[Rollout]:::planned
     classDef done       fill:#166534,color:#bbf7d0
@@ -35,7 +35,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `generator_reshape.md` | 📄 Leaf Task | ⬜ Planned |
+| `generator_reshape.md` | 📄 Leaf Task | 🔄 In Progress |
 | `reference_docs.md` | 📄 Leaf Task | ⬜ Planned |
 | `rollout/` | 📁 Directory | ⬜ Planned |
 
