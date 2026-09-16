@@ -71,6 +71,21 @@ def load_spec(path: Path) -> dict:
     spec.setdefault("ecosystems", ["claude", "codex", "agent-plugins"])
     spec.setdefault("keywords", [])
     spec.setdefault("author", {})
+    if spec.get("marketplace") and not (isinstance(spec["marketplace"], dict) and spec["marketplace"].get("hub")):
+        # Hub mode (`marketplace` truthy) suppresses this repo's own marketplace files, but
+        # two things still need to know which marketplace lists this plugin: dev_readme() and
+        # install_snippet(), both documentation outputs, never a manifest a loader reads. The
+        # generator must never infer that identity (an owner/repo-shaped `repository` fallback
+        # is the product repo, not the hub, and is wrong by construction) — it reads a recorded
+        # answer, and refusing to generate one is better than generating wrong install
+        # instructions that fail silently in a reader's hands.
+        _die(
+            "spec sets `marketplace` (hub mode) but records no hub repository; add "
+            '`marketplace.hub` — e.g. "marketplace": {"hub": "https://github.com/<org>/<hub-repo>"} '
+            "— naming the repository that owns and hosts the marketplace listing this plugin. "
+            "Ask a human which repository that is; never guess it from `repository` (this "
+            "plugin's own repo) or from the marketplace name."
+        )
     if spec.get("hooks"):
         _check_hooks_spec(spec["hooks"])
     if spec.get("plugins"):
@@ -597,18 +612,20 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
             dev = entry["dev"]
             ddir = _prefixed(dir_, dev.get("dir", "dev").strip("/"))
             market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
+            market_slug = _marketplace_source_slug(spec)
             w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(entry, version)))
-            w.put(f"{ddir}/README.md", dev_readme(entry, ddir, market))
+            w.put(f"{ddir}/README.md", dev_readme(entry, ddir, market, market_slug))
             if not dry_run:
                 (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
 
         if entry.get("skills") and not (root / dir_ / entry["skills"]).is_dir():
             print(f"warning: skills path {entry['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
 
-    # `marketplace: "hub"` (or an explicit hub repository string) means some other repo owns
-    # the marketplace naming these plugins: two repos declaring one marketplace name silently
-    # replace each other in Claude Code and hard-error in Codex, so this repo writes neither
-    # marketplace file at all.
+    # `marketplace: {"hub": "<repository>"}` means some other repo owns the marketplace naming
+    # these plugins: two repos declaring one marketplace name silently replace each other in
+    # Claude Code and hard-error in Codex, so this repo writes neither marketplace file at all.
+    # `load_spec` already refused a hub-mode spec recording no hub, so `marketplace["hub"]` is
+    # guaranteed present whenever this is truthy (see `_marketplace_source_slug`).
     if not spec.get("marketplace"):
         if claude_entries:
             w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec, claude_entries))
@@ -618,7 +635,21 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
     return w
 
 
-def dev_readme(spec: dict, ddir: str, market: str) -> str:
+def _marketplace_source_slug(spec: dict) -> str:
+    """The `claude/codex plugin marketplace add <slug>` target: the hub's repository in hub
+    mode (its marketplace lists this plugin), this plugin's own `repository` otherwise.
+
+    Hub mode never falls back to `repository` — that names the product repo, not the hub, and
+    is the wrong answer by construction. `load_spec` already refused a hub-mode spec that
+    records no hub, so `spec["marketplace"]["hub"]` is guaranteed present whenever
+    `spec.get("marketplace")` is truthy; this function never guesses.
+    """
+    marketplace = spec.get("marketplace")
+    repo = marketplace["hub"] if marketplace else spec.get("repository", "https://github.com/<owner>/<repo>")
+    return re.sub(r"^https://github\.com/", "", repo)
+
+
+def dev_readme(spec: dict, ddir: str, market: str, market_slug: str) -> str:
     dev = spec["dev"]
     return f"""# {dev["name"]}
 
@@ -628,7 +659,8 @@ agent installs it:
 
 ```bash
 claude --plugin-dir ./{ddir}                       # from a clone
-claude plugin install {dev["name"]}@{market}   # from the repo's own marketplace
+claude plugin marketplace add {market_slug}        # from the marketplace that lists it
+claude plugin install {dev["name"]}@{market}
 ```
 
 The product plugin (`{spec["name"]}`, repository root) never ships these skills;
@@ -740,26 +772,31 @@ def detect_license(root: Path) -> str:
 
 def install_snippet(spec: dict) -> str:
     repo = spec.get("repository", "https://github.com/<owner>/<repo>")
-    slug = re.sub(r"^https://github\.com/", "", repo)
+    repo_slug = re.sub(r"^https://github\.com/", "", repo)
+    # The `marketplace add` target: the hub's repository in hub mode (this plugin's own
+    # marketplace files were never written), `repo_slug` otherwise. The Agent Plugins 1.0
+    # section below always uses `repo_slug` regardless of hub mode — that ecosystem has no
+    # marketplace concept, so it always installs from this plugin's own repository.
+    market_slug = _marketplace_source_slug(spec)
     claude_market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
     codex_market = spec.get("codex", {}).get("marketplace_name", f"{spec['name']}-marketplace")
     dev = spec.get("dev")
     parts = [
         "## Install\n",
         "### Claude Code\n",
-        f"```bash\nclaude plugin marketplace add {slug}\n```\n",
+        f"```bash\nclaude plugin marketplace add {market_slug}\n```\n",
         f"```bash\nclaude plugin install {spec['name']}@{claude_market}\n```\n",
         "Add `--scope project` to the marketplace command to declare it in the repository's own "
         "`.claude/settings.json` instead of your user settings.\n",
         "### Codex\n",
-        f"```bash\ncodex plugin marketplace add {slug}\n```\n",
+        f"```bash\ncodex plugin marketplace add {market_slug}\n```\n",
         f"```bash\ncodex plugin add {spec['name']}@{codex_market}\n```\n",
         "The Codex manifests are `.agents/plugins/marketplace.json` and the root `plugin.json` "
         "(Codex extras live under its `extensions[\"com.openai\"]`).\n",
         "### Agent Plugins 1.0 clients (Cursor, GitHub Copilot, VS Code, Kiro)\n",
         "The [Agent Plugins 1.0 spec](https://agent-plugins.org/specification) defines the package "
         "(`plugin.json`, `mcp.json`) and leaves installation to each client, so the install command is the "
-        f"client's own. In VS Code: Command Palette, **Chat: Install Plugin from Source**, git repository, `{slug}`.\n",
+        f"client's own. In VS Code: Command Palette, **Chat: Install Plugin from Source**, git repository, `{repo_slug}`.\n",
     ]
     if spec.get("mcp"):
         cmd = " ".join([spec["mcp"]["command"], *spec["mcp"].get("args", [])]).replace("{version}", "<version>")
