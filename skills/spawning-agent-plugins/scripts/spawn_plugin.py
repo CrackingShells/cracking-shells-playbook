@@ -302,13 +302,34 @@ def build_claude_plugin(spec: dict, version: str) -> dict:
     return out
 
 
+def _git_clone_url(repository: str | None, dir_: str) -> str:
+    if not repository:
+        _die(f"a plugin at {dir_!r} needs a `repository` to build its marketplace source (git-subdir)")
+    return repository if repository.endswith(".git") else repository + ".git"
+
+
+def _claude_source(dir_: str, repository: str | None):
+    """A root plugin (`dir_ == ""`) is a plain relative path; a subdirectory plugin uses
+    the `git-subdir` source shape (`url` + `path`), the only one that names a subdirectory."""
+    if not dir_:
+        return "./"
+    return {"source": "git-subdir", "url": _git_clone_url(repository, dir_), "path": f"./{dir_}"}
+
+
+def _codex_source(dir_: str, repository: str | None) -> dict:
+    """Codex has no `github`-style shorthand, so a subdirectory source is the identical
+    `git-subdir`/`url`/`path` shape Claude Code uses; the root case stays `local`."""
+    if not dir_:
+        return {"source": "local", "path": "./"}
+    return {"source": "git-subdir", "url": _git_clone_url(repository, dir_), "path": f"./{dir_}"}
+
+
 def build_claude_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict:
     """One marketplace entry per plugin `entries` holds, plus one per declared `dev` sibling.
 
     `entries` is the (normalised plugin dict, resolved version) pairs for every plugin this
     spawn wrote into the `claude` ecosystem — one element for a single-plugin spec, one per
-    `plugins[]` item for a multi-plugin spec. `source` is still the literal `"./"` here
-    regardless of an entry's `dir`; parameterising it per-entry is a later step.
+    `plugins[]` item for a multi-plugin spec. No entry ever carries `version`, `ref` or `sha`.
     """
     market = spec.get("claude_marketplace", {})
     out = {
@@ -317,14 +338,22 @@ def build_claude_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dic
     }
     if spec.get("author"):
         out["owner"] = spec["author"]
-    out["plugins"] = [{"name": entry["name"], "source": "./", "description": entry["description"]} for entry, _ in entries]
+    out["plugins"] = [
+        {
+            "name": entry["name"],
+            "source": _claude_source(entry.get("dir", ""), entry.get("repository") or spec.get("repository")),
+            "description": entry["description"],
+        }
+        for entry, _ in entries
+    ]
     for entry, _ in entries:
         if entry.get("dev"):
             dev = entry["dev"]
+            ddir = _prefixed(entry.get("dir", ""), dev.get("dir", "dev").strip("/"))
             out["plugins"].append(
                 {
                     "name": dev["name"],
-                    "source": "./" + dev.get("dir", "dev").strip("/"),
+                    "source": _claude_source(ddir, entry.get("repository") or spec.get("repository")),
                     "description": dev.get("marketplace_description", dev["description"]),
                 }
             )
@@ -340,8 +369,11 @@ def build_codex_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict
         "plugins": [
             {
                 "name": entry["name"],
-                "source": {"source": "local", "path": "./"},
-                "policy": {"installation": "AVAILABLE", "authentication": "NONE"},
+                "source": _codex_source(entry.get("dir", ""), entry.get("repository") or spec.get("repository")),
+                # Codex's auth-policy enum is exactly ON_INSTALL | ON_USE, with no catch-all,
+                # and it parses a marketplace file in one pass: "NONE" makes every entry in
+                # the file unparseable, not just this one.
+                "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
                 "category": entry.get("codex", {}).get("category", codex.get("category", "Developer Tools")),
             }
             for entry, _ in entries
@@ -557,10 +589,15 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
         if entry.get("skills") and not (root / dir_ / entry["skills"]).is_dir():
             print(f"warning: skills path {entry['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
 
-    if claude_entries:
-        w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec, claude_entries))
-    if codex_entries:
-        w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec, codex_entries))
+    # `marketplace: "hub"` (or an explicit hub repository string) means some other repo owns
+    # the marketplace naming these plugins: two repos declaring one marketplace name silently
+    # replace each other in Claude Code and hard-error in Codex, so this repo writes neither
+    # marketplace file at all.
+    if not spec.get("marketplace"):
+        if claude_entries:
+            w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec, claude_entries))
+        if codex_entries:
+            w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec, codex_entries))
 
     return w
 
