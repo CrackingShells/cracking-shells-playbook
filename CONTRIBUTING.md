@@ -42,6 +42,8 @@ Unlike `dist/`, **`plugins/` is committed.** These trees are installed by git so
 
 `skills/<name>/` is the only editable source. **Nobody hand-edits anything under `plugins/`** — a manual edit there is indistinguishable from drift and will be reverted by the next regeneration or flagged by CI.
 
+**Releases are meant to run in CI, not locally.** The release job checks out a fresh clone and never sets `core.hooksPath`, so the pre-commit hook cannot fire there. Running a release locally is a different story: the hook *will* fire on the release commit, and separately, `@semantic-release/git` commits with a plain `git commit -m` — no pathspec — which sweeps in everything already staged, not just this release's files. Do not run a release from a working copy that has other staged or hook-triggering changes sitting around.
+
 ## Rust binary rebuild
 
 The `managing-roadmaps` skill ships a pre-compiled Rust CLI (`dirtree-rdm`). The hook skips Rust recompilation. To rebuild the binary for your local architecture after changing Rust source:
