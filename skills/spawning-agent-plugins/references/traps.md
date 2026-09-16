@@ -57,6 +57,72 @@ resolves against a clone of the marketplace, so it works for
 `marketplace add <owner/repo>` and for a local path, and not for a direct
 URL to the `marketplace.json` file itself.
 
+## A catalogue is missing plugins a user expects, with no error {#marketplace-name-collision}
+
+**Symptom.** A user who added two CrackingShells repositories as
+marketplaces sees only some of the org's plugins under `cracking-shells`,
+or the wrong repository's plugins entirely; `claude plugin marketplace list`
+shows one entry named `cracking-shells`, not two; nothing in Claude Code's
+output says a marketplace was replaced. In Codex the same setup instead
+refuses outright: `already added from a different source`.
+
+**Cause.** A marketplace's identity is its `name` field, not the repository
+it came from. If two repositories each declare a marketplace named
+`cracking-shells`, Claude Code's documented behaviour is a **silent
+replace** — "when they add a second marketplace with the same name, Claude
+Code replaces the first" — while Codex hard-errors. Nothing in either tool's
+output before that point distinguishes "one org, one catalogue" from
+"two unrelated repos that happen to agree on a string". This is the reason
+this campaign's generator gained a hub mode at all: a second product
+repository writing its own `.claude-plugin/marketplace.json` and
+`.agents/plugins/marketplace.json` under the same name as an existing one
+is not a merge, it is a replacement nobody asked for.
+
+**Do.** One hub repository owns the marketplace name for the organization
+(`CrackingShells/Nest` owns `cracking-shells`); every other repository's
+spec sets the top-level `marketplace` key (any truthy value) so
+`spawn_plugin.py` writes **no** local marketplace file for it at all
+(`manifests.md#codex` describes the suppression). A client that already
+registered the name from the wrong source must
+`claude plugin marketplace remove cracking-shells` (and the Codex
+equivalent) before adding the hub — re-adding under the same name does not
+retroactively fix which source it points at. When auditing an existing
+install, check the registration's `source` field
+(`known_marketplaces.json` for Claude Code), not just which plugins
+`claude plugin list` shows: a truncated-but-present catalogue and a
+wrong-source catalogue look identical from the plugin list alone.
+
+## The assembled plugin tree drifts from its source skill {#assembled-tree-drift}
+
+**Symptom.** `check_plugin.py` and `claude plugin validate` both pass, the
+plugin installs, but it ships stale skill content — a fix landed in
+`skills/<name>/` never reaches users of `plugins/<name>/skills/<name>/`, or
+`git status --porcelain plugins/` is unexpectedly non-empty (or, worse,
+unexpectedly empty right after an editing session).
+
+**Cause.** `plugins/<name>/` is **assembled, committed content**, not a
+symlink and not gitignored build output like `dist/`: Agent Plugins 1.0
+requires a plugin to be a directory rooted at a single filesystem location
+with every path inside it and forbids symlink escapes, so
+`plugins/<name>/skills/<name>/` must be a real copy of
+`skills/<name>/`. `spawn_plugin.py` never makes that copy — it only writes
+manifests — so nothing about running `spawn` catches a stale copy. `git`
+tracks the assembled tree beside its own source, which is a drift risk
+`dist/*.skill` (gitignored) never had: someone can edit `skills/<name>/`,
+commit, and never re-run the assembly step, and every static check still
+passes because it only checks manifest *shape*, never content parity with
+the source skill.
+
+**Do.** Never hand-edit anything under `plugins/`; `skills/<name>/` is the
+only editable source of truth. Regenerating `plugins/` must be wired into
+three places, not one: the `.githooks/pre-commit` hook (regenerate on
+staged skill changes, the same pattern it already uses for `dist/`), the
+release tooling's asset list (so a release commits the tree it actually
+ships), and CI (fail the build on any diff after a clean regenerate). A
+`check_plugin.py` pass is necessary but not sufficient evidence the
+assembled tree is current — it says the shape is valid, not that the
+content matches; the only sufficient check is "regenerate and diff".
+
 ## `claude plugin list` says "failed to load: Duplicate hooks file detected" {#hooks-manifest-duplicate}
 
 **Symptom.** After `claude plugin install` or `update` the plugin shows
@@ -102,31 +168,64 @@ Test the script by piping JSON (`hooks.md#testing-without-a-harness`).
 
 ## Codex and the `hooks` field {#codex-hooks}
 
-**Symptom.** Uncertainty whether `"hooks"` belongs in
-`.codex-plugin/plugin.json`.
+**Symptom.** Uncertainty whether `"hooks"` belongs in the manifest Codex
+reads.
 
 **Cause.** Codex's own `plugin-json-spec.md` lists `hooks` (a path) among the
 top-level fields and, under validation notes, says the validator "rejects
 unsupported manifest fields such as `hooks`". Codex was never run against
-colgrep-mcp, which ships the field.
+colgrep-mcp, which ships the field — now under
+`extensions["com.openai"].hooks` on the shared root `plugin.json`, not a
+manifest of its own (`manifests.md#codex`).
 
 **Do.** Opt in with `hooks.codex: true` when the user wants Codex hooks and
-can test them; leave it off otherwise. Either way the Codex manifest names
+can test them; leave it off otherwise. Either way the key names
 only `hooks/hooks.json`, never a per-event file: Codex's plugin docs ("Build
 a plugin") say an explicit `hooks` replaces the default discovery of
 `hooks/hooks.json`, so naming the per-event file would drop the portable
 events and hand Codex an event it may not know.
 
-## `claude plugin validate` fails on the Codex manifest {#validate-codex}
+## `claude plugin validate` fails on the shared manifest {#validate-codex}
 
-**Symptom.** `interface: Unknown field 'interface'` and `✘ Validation failed`.
+**Symptom.** `extensions: Unknown field 'extensions'` (or, on an older tree,
+`interface: Unknown field 'interface'`) and `✘ Validation failed`.
 
-**Cause.** You pointed Claude Code's validator at `.codex-plugin/plugin.json`.
-It validates Claude manifests, marketplaces and skill directories.
+**Cause.** You pointed Claude Code's validator at the root `plugin.json` —
+the Agent Plugins 1.0 / Codex manifest, which carries `extensions` and,
+inside it, `interface`. Claude Code's validator knows only its own
+manifest shape (`.claude-plugin/plugin.json`), its marketplace, and skill
+directories; there is no Codex-specific manifest to point it at instead,
+because none exists.
 
 **Do.** Validate `<repo>` (its marketplace), `<repo>/.claude-plugin/plugin.json`
-and `<repo>/dev`; run `check_plugin.py` for the cross-ecosystem invariants.
-Add `--strict` in CI so unknown fields in the Claude manifest fail.
+and `<repo>/dev`; run `check_plugin.py` for the cross-ecosystem invariants,
+including everything under `extensions["com.openai"]`. Add `--strict` in CI
+so unknown fields in the Claude manifest fail.
+
+## A Codex marketplace entry makes every plugin in the file fail to parse {#codex-auth-enum}
+
+**Symptom.** Adding a marketplace under Codex reports the whole marketplace
+as unreadable or empty, not just one plugin — even though only one entry's
+`policy` looks unusual, and the same file's `.claude-plugin/marketplace.json`
+counterpart loads fine in Claude Code.
+
+**Cause.** Codex's `policy.authentication` enum is exactly `ON_INSTALL |
+ON_USE`, with **no `"NONE"` value and no serde catch-all** — and Codex
+parses a marketplace file in **one pass**, so one entry with an unparseable
+enum value fails the deserialisation of the entire file, not just that
+entry. An earlier version of this generator wrote `"authentication":
+"NONE"` for a plugin with no auth step, and `references/manifests.md`
+documented that value as unverified; it is now confirmed invalid by the
+enum definition itself, not merely untested.
+
+**Do.** Never write `"NONE"`, `null`, or omit `authentication` and hope for
+a default. `build_codex_marketplace` now hardcodes
+`{"installation": "AVAILABLE", "authentication": "ON_INSTALL"}` for every
+entry it writes, and `check_plugin.py` rejects any other value in either
+field (`policy.installation` ∉ `{NOT_AVAILABLE, AVAILABLE,
+INSTALLED_BY_DEFAULT}` or `policy.authentication` ∉ `{ON_INSTALL, ON_USE}`).
+If a plugin genuinely needs `ON_USE` semantics, set it explicitly per entry
+rather than relying on the generator's default.
 
 ## An Agent Plugins 1.0 client ignores the skills or the server {#agent-plugins-fields}
 
