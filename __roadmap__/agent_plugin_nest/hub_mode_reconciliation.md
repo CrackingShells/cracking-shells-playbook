@@ -6,7 +6,7 @@
 - [x] Amendment A1 approved by the maintainer
 **Success Gates**:
 - ⬜ The example spec declares hub mode, names the hub, and keeps both marketplace-name fields [static]
-- ⬜ `spawn --dry-run` against colgrep-mcp writes and merges nothing, with `dev/README.md` the only divergence [run]
+- ⬜ `spawn --dry-run` against colgrep-mcp writes and merges nothing; the two known divergences (`plugin.json`'s `extensions`, and `dev/README.md`) are the only ones [run]
 - ⬜ A hub-mode spec with no recorded hub is rejected at load with a message naming what to add [run]
 - ⬜ `install_snippet` and the generated dev README both name the hub's slug, never the product repo's [run]
 - ⬜ `spawn --force` leaves an existing `dev/README.md` untouched and reports it as kept [run]
@@ -21,11 +21,13 @@
 **Implementation Logic**:
 Add hub mode to `assets/examples/colgrep-mcp.spec.json` and **keep** `claude_marketplace.name` and `codex.marketplace_name` at `cracking-shells`. Those fields stop producing marketplace files and remain what they always were: the recorded answer to "which marketplace do these plugins belong to". Do not remove them.
 
-Without this the guard goes red the moment colgrep-mcp's `relinquish_marketplace` leaf deletes its two marketplace files — the non-hub spec would try to create them, `w.written` becomes non-empty, and the guard fails for a reason unrelated to any drift it exists to catch. The manifest reshape alone does not break it: colgrep-mcp's `plugin.json` now carries `extensions`, so that divergence has already stopped appearing, which makes `ALLOWED_DIVERGENCE["plugin.json"]` inert. Drop that entry while re-baselining, leaving only the `dev/README.md` exemption.
+Without this the guard goes red the moment colgrep-mcp's `relinquish_marketplace` leaf deletes its two marketplace files — the non-hub spec would try to create them, `w.written` becomes non-empty, and the guard fails for a reason unrelated to any drift it exists to catch.
+
+**Keep `ALLOWED_DIVERGENCE["plugin.json"] = {"extensions"}`.** An earlier draft of this leaf called that entry inert and told you to drop it. That was wrong: the claim came from the colgrep-mcp coordinator describing its own `roadmap/nest-migration` branch, and the coordinator here transcribed it as a fact about the shared checkout the guard measures. That checkout is on `main` at `ef54b8f`, whose `plugin.json` has no `extensions` key, so the divergence is live and dropping the entry turns the guard red. The entry becomes genuinely droppable only once colgrep-mcp's own `regenerate_manifests` work reaches its default branch — a follow-up here, since the guard is this repo's file, triggered by that merge rather than scheduled.
 
 Re-baseline deliberately and show before and after in the commit body.
-**Deliverables**: `skills/spawning-agent-plugins/assets/examples/colgrep-mcp.spec.json` — hub mode declared with the hub named, name fields retained; `skills/spawning-agent-plugins/evals/test_regeneration.py` — `ALLOWED_DIVERGENCE` reduced to `{"dev/README.md": None}`
-**Consistency Checks**: `uv run skills/spawning-agent-plugins/scripts/spawn_plugin.py --root /Users/hacker/Documents/src/CrackingShells/colgrep-mcp spawn --spec skills/spawning-agent-plugins/assets/examples/colgrep-mcp.spec.json --dry-run 2>&1 | grep -c "^kept" | grep -qx 1` (expected: PASS)
+**Deliverables**: `skills/spawning-agent-plugins/assets/examples/colgrep-mcp.spec.json` — hub mode declared with the hub named, name fields retained; `skills/spawning-agent-plugins/evals/test_regeneration.py` — a re-baseline comment recording why both entries stay and when the `plugin.json` one becomes droppable
+**Consistency Checks**: `uv run skills/spawning-agent-plugins/scripts/spawn_plugin.py --root /Users/hacker/Documents/src/CrackingShells/colgrep-mcp spawn --spec skills/spawning-agent-plugins/assets/examples/colgrep-mcp.spec.json --dry-run 2>&1 | grep -c "^kept" | grep -qx 2` (expected: PASS)
 **Commit**: `fix(spawning-agent-plugins): move the example spec to hub mode`
 
 ## Step 2: Record the hub, do not infer it
