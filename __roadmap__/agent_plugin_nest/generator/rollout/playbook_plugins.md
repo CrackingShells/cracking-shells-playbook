@@ -11,6 +11,7 @@
 - ⬜ No root contains a `.codex-plugin/` directory [run]
 - ⬜ `check_plugin.py` reports no problems for any root [run]
 - ⬜ Each plugin's `name` matches its Nest entry name exactly [run]
+- ⬜ The drift job fails when a declared plugin's directory is missing, not only when an existing one is stale [run]
 **References**: [R01 §Scope](~/.claude/plans/good-news-overall-it-s-gleaming-wreath.md) — which five skills, and which are excluded and why
 
 ## Step 1: Write the multi-plugin spec
@@ -41,6 +42,8 @@ Run the assembly tool for each of the five skills to populate `plugins/<name>/sk
 
 **Implementation Logic**:
 Re-run assembly and generation over the committed tree and confirm `git status --porcelain plugins/` is empty. This is the first real exercise of the drift gate `plugin_assembly_tool` installed, and it is the check that makes a tracked generated directory safe to keep in git. If it is not empty, the difference is either non-determinism in the tools (file ordering, timestamps) or a hand edit that crept in — report which, rather than committing the diff to make the check pass.
-**Deliverables**: no new files — the reproducibility evidence goes in the commit body
+
+Then close a gap that gate cannot see on its own. It iterates the `plugins/*/` directories that already exist, so a plugin directory that was never created — or was deleted — is invisible to it and the job passes green. This was proven empirically during verification of `plugin_assembly_tool`. Now that `plugin.spec.json` exists, it is the authoritative list of what `plugins/` must contain, so extend the drift job to compare the declared plugin names against the directories actually present and fail on a missing one. Without this, "the tree is in sync" only ever means "the directories that exist are in sync".
+**Deliverables**: `.github/workflows/release.yml` — the `drift` job extended to read the declared plugin names from `plugin.spec.json` and fail on a directory that is declared but absent; reproducibility evidence in the commit body
 **Consistency Checks**: `test -z "$(git status --porcelain plugins/)"` (expected: PASS)
-**Commit**: `chore(plugins): confirm the assembled plugin tree regenerates identically`
+**Commit**: `fix(ci): fail drift on a declared plugin whose directory is missing`
