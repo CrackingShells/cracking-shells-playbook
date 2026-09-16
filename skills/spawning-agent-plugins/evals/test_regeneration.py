@@ -39,13 +39,26 @@ from spawn_plugin import load_spec, spawn  # noqa: E402  (needs the sys.path.ins
 
 SPEC_PATH = SKILL_ROOT / "assets" / "examples" / "colgrep-mcp.spec.json"
 
-# Measured 2026-09-16 against colgrep-mcp ef54b8f (v0.5.1): the invariant holds
-# for every manifest and hook file. The ONLY divergence is this hand-maintained
-# prose file. SKILL.md's claim is specifically about manifests and hook files,
-# so this is exactly what the guard allows — asserting `not w.skipped` outright
-# would fail today, before any generator change, training its readers to
-# ignore it.
-ALLOWED_DIVERGENCE = {"dev/README.md"}
+# Re-baselined 2026-09-16 against colgrep-mcp ef54b8f (v0.5.1), inside the
+# generator_reshape leaf's step 3 (com.openai extensions namespace) commit.
+#
+# Before step 3: the invariant held for every manifest and hook file, with the
+# ONLY divergence being this hand-maintained prose file.
+#
+# Step 3 moves the `interface` block and any Codex `hooks` value out of
+# `.codex-plugin/plugin.json` (no longer written by any code path) and into
+# `extensions["com.openai"]` of the root `plugin.json` — deliberately, per the
+# leaf spec ("Codex parses a root Agent-Plugins-conformant plugin.json ... reads
+# its Codex-specific data from extensions[\"com.openai\"]"). colgrep-mcp's own
+# `plugin.json` on disk still holds the pre-reshape shape (no `extensions` key)
+# until a later leaf (`nest_migration/regenerate_manifests` in colgrep-mcp's own
+# roadmap) regenerates it with the extended generator — that leaf is explicitly
+# out of scope here, so `plugin.json` is added to ALLOWED_DIVERGENCE rather than
+# silently dropped or the guard loosened wholesale. Confirmed empirically: dry
+# run now reports exactly `kept plugin.json [keys: extensions]` plus the
+# pre-existing `dev/README.md`, and nothing else — no .codex-plugin/* write or
+# skip appears at all, because the generator no longer references that path.
+ALLOWED_DIVERGENCE = {"dev/README.md", "plugin.json"}
 
 # Where to find the colgrep-mcp checkout when COLGREP_MCP_ROOT is unset.
 # Resolved against this skill's root (spawning-agent-plugins/), not against

@@ -6,13 +6,14 @@ out. The layout is the one proven on CrackingShells/colgrep-mcp (Claude Code
 verified end-to-end; Codex and Agent Plugins 1.0 documented against their
 specs, see references/manifests.md):
 
-    plugin.json                      Agent Plugins 1.0 manifest (whitelisted fields only)
-    mcp.json                         Agent Plugins 1.0 MCP manifest        [mcp]
+    plugin.json                      Agent Plugins 1.0 manifest (whitelisted fields only);
+                                      also the manifest Codex parses, with its extras under
+                                      extensions["com.openai"] when codex is an ecosystem
+    mcp.json                         Agent Plugins 1.0 MCP manifest, also Codex's (auto-wired
+                                      by convention: no separate Codex plugin folder is ever written) [mcp]
     .claude-plugin/plugin.json       Claude Code manifest
     .claude-plugin/marketplace.json  Claude Code marketplace (product [+ dev] plugin)
     .claude-plugin/mcp.json          Claude Code MCP manifest              [mcp]
-    .codex-plugin/plugin.json        Codex manifest (with the `interface` block)
-    .codex-plugin/mcp.json           Codex MCP manifest                    [mcp]
     .agents/plugins/marketplace.json Codex marketplace
     hooks/hooks.json                 portable hook events, auto-loaded     [hooks]
     hooks/<event>.json               one file per non-portable event       [hooks]
@@ -237,7 +238,44 @@ def build_mcp(spec: dict, version: str, ecosystem: str) -> dict:
 
 
 def build_agent_plugin(spec: dict, version: str) -> dict:
-    return {"$schema": AGENT_PLUGINS_SCHEMA.format(name="plugin"), **_identity(spec, version)}
+    """The root Agent Plugins 1.0 manifest — also the one Codex parses natively.
+
+    Codex reads a root AP-conformant `plugin.json`, takes its Codex-specific data from
+    `extensions["com.openai"]`, and auto-wires `skills` -> `./skills` and `mcp_servers`
+    -> `./mcp.json` by convention (neither needs a field here). So when `codex` is one of
+    the spec's ecosystems, this is Codex's only manifest: no separate Codex plugin
+    folder is ever written.
+    """
+    out = {"$schema": AGENT_PLUGINS_SCHEMA.format(name="plugin"), **_identity(spec, version)}
+    eco = set(spec.get("ecosystems", ["claude", "codex", "agent-plugins"]))
+    if "codex" in eco:
+        out["extensions"] = {"com.openai": build_codex_extensions(spec)}
+    return out
+
+
+def build_codex_extensions(spec: dict) -> dict:
+    """Codex's `extensions["com.openai"]` payload: presentation metadata with no root
+    slot in Agent Plugins 1.0, plus the portable hooks file when the spec opts in.
+    """
+    codex = spec.get("codex", {})
+    interface = {
+        "displayName": spec.get("displayName", spec["name"]),
+        "shortDescription": codex.get("shortDescription", spec["description"]),
+        "longDescription": codex.get("longDescription", spec["description"]),
+        "developerName": spec.get("author", {}).get("name", ""),
+        "category": codex.get("category", "Developer Tools"),
+        "capabilities": codex.get("capabilities", ["Read"]),
+    }
+    if codex.get("defaultPrompt"):
+        interface["defaultPrompt"] = codex["defaultPrompt"][:3]
+    extensions = {"interface": interface}
+    if spec.get("hooks") and spec["hooks"].get("codex"):
+        # Codex discovers hooks/hooks.json only when the manifest defines no `hooks`; an
+        # explicit value *replaces* that discovery, so this names the portable file and
+        # never a per-event file whose event a Codex parser may not know
+        # (references/hooks.md).
+        extensions["hooks"] = "./hooks/hooks.json"
+    return extensions
 
 
 def build_claude_plugin(spec: dict, version: str) -> dict:
@@ -261,34 +299,6 @@ def build_claude_plugin(spec: dict, version: str) -> dict:
             out["hooks"] = files
     if spec.get("skills"):
         out["skills"] = spec["skills"]
-    return out
-
-
-def build_codex_plugin(spec: dict, version: str) -> dict:
-    codex = spec.get("codex", {})
-    out = _identity(spec, version, homepage=False, license_=False)
-    if spec.get("skills"):
-        out["skills"] = spec["skills"]
-    if spec.get("mcp"):
-        out["mcpServers"] = "./.codex-plugin/mcp.json"
-    if spec.get("hooks") and spec["hooks"].get("codex"):
-        # Codex discovers hooks/hooks.json only when the manifest defines no `hooks`;
-        # an explicit value *replaces* that discovery (Codex plugin docs, "Build a
-        # plugin"), so the field names the portable file and never a per-event file
-        # whose event a Codex parser may not know. Opt-in: Codex's plugin-creator
-        # sample both lists `hooks` and says its validator rejects the field.
-        out["hooks"] = "./hooks/hooks.json"
-    interface = {
-        "displayName": spec.get("displayName", spec["name"]),
-        "shortDescription": codex.get("shortDescription", spec["description"]),
-        "longDescription": codex.get("longDescription", spec["description"]),
-        "developerName": spec.get("author", {}).get("name", ""),
-        "category": codex.get("category", "Developer Tools"),
-        "capabilities": codex.get("capabilities", ["Read"]),
-    }
-    if codex.get("defaultPrompt"):
-        interface["defaultPrompt"] = codex["defaultPrompt"][:3]
-    out["interface"] = interface
     return out
 
 
@@ -498,7 +508,10 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
         eco = set(entry.get("ecosystems", ["claude", "codex", "agent-plugins"]))
         dir_ = entry.get("dir", "")
 
-        if "agent-plugins" in eco:
+        # Codex parses this same root Agent Plugins manifest natively (extras under
+        # extensions["com.openai"]) and auto-wires mcp_servers -> ./mcp.json, so
+        # "codex" shares agent-plugins's files rather than owning a separate plugin folder.
+        if "agent-plugins" in eco or "codex" in eco:
             w.put(_prefixed(dir_, "plugin.json"), _dump(build_agent_plugin(entry, version)))
             if entry.get("mcp"):
                 w.put(_prefixed(dir_, "mcp.json"), _dump(build_mcp(entry, version, "agent-plugins")))
@@ -508,10 +521,7 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
             if entry.get("mcp"):
                 w.put(_prefixed(dir_, ".claude-plugin/mcp.json"), _dump(build_mcp(entry, version, "claude")))
         if "codex" in eco:
-            w.put(_prefixed(dir_, ".codex-plugin/plugin.json"), _dump(build_codex_plugin(entry, version)))
             codex_entries.append((entry, version))
-            if entry.get("mcp"):
-                w.put(_prefixed(dir_, ".codex-plugin/mcp.json"), _dump(build_mcp(entry, version, "codex")))
 
         if entry.get("hooks"):
             hooks = entry["hooks"]
@@ -691,7 +701,8 @@ def install_snippet(spec: dict) -> str:
         "### Codex\n",
         f"```bash\ncodex plugin marketplace add {slug}\n```\n",
         f"```bash\ncodex plugin add {spec['name']}@{codex_market}\n```\n",
-        "The Codex manifests are `.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json`.\n",
+        "The Codex manifests are `.agents/plugins/marketplace.json` and the root `plugin.json` "
+        "(Codex extras live under its `extensions[\"com.openai\"]`).\n",
         "### Agent Plugins 1.0 clients (Cursor, GitHub Copilot, VS Code, Kiro)\n",
         "The [Agent Plugins 1.0 spec](https://agent-plugins.org/specification) defines the package "
         "(`plugin.json`, `mcp.json`) and leaves installation to each client, so the install command is the "
