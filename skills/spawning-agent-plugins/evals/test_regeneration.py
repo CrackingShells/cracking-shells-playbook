@@ -27,6 +27,7 @@ maintainer check and never ships to consumers.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -39,13 +40,50 @@ from spawn_plugin import load_spec, spawn  # noqa: E402  (needs the sys.path.ins
 
 SPEC_PATH = SKILL_ROOT / "assets" / "examples" / "colgrep-mcp.spec.json"
 
-# Measured 2026-09-16 against colgrep-mcp ef54b8f (v0.5.1): the invariant holds
-# for every manifest and hook file. The ONLY divergence is this hand-maintained
-# prose file. SKILL.md's claim is specifically about manifests and hook files,
-# so this is exactly what the guard allows — asserting `not w.skipped` outright
-# would fail today, before any generator change, training its readers to
-# ignore it.
-ALLOWED_DIVERGENCE = {"dev/README.md"}
+# Re-baselined 2026-09-16 against colgrep-mcp ef54b8f (v0.5.1), inside the
+# generator_reshape leaf's step 3 (com.openai extensions namespace) commit.
+#
+# Before step 3: the invariant held for every manifest and hook file, with the
+# ONLY divergence being this hand-maintained prose file.
+#
+# Step 3 moves the `interface` block and any Codex `hooks` value out of
+# `.codex-plugin/plugin.json` (no longer written by any code path) and into
+# `extensions["com.openai"]` of the root `plugin.json` — deliberately, per the
+# leaf spec ("Codex parses a root Agent-Plugins-conformant plugin.json ... reads
+# its Codex-specific data from extensions[\"com.openai\"]"). colgrep-mcp's own
+# `plugin.json` on disk still holds the pre-reshape shape (no `extensions` key)
+# until a later leaf (`nest_migration/regenerate_manifests` in colgrep-mcp's own
+# roadmap) regenerates it with the extended generator — that leaf is explicitly
+# out of scope here, so `plugin.json` is added to ALLOWED_DIVERGENCE rather than
+# silently dropped or the guard loosened wholesale. Confirmed empirically: dry
+# run now reports exactly `kept plugin.json [keys: extensions]` plus the
+# pre-existing `dev/README.md`, and nothing else — no .codex-plugin/* write or
+# skip appears at all, because the generator no longer references that path.
+#
+# Key-scoped, not file-scoped: `None` is a whole-file exemption (dev/README.md
+# is hand-maintained prose with no JSON keys to compare); a set restricts the
+# exemption to those top-level keys. A file-scoped allowlist (bare
+# `{"plugin.json"}`) would silently absorb ANY future divergence in
+# plugin.json — a corrupted `name`, `version` or `license` included — as "the
+# expected extensions divergence". `_parse_skipped` below reads the `[keys:
+# ...]` suffix `Writer._key_diff` reports and this is enforced as a subset
+# check, not just logged in the failure message.
+ALLOWED_DIVERGENCE: dict[str, set[str] | None] = {
+    "dev/README.md": None,
+    "plugin.json": {"extensions"},
+}
+
+_SKIPPED_RE = re.compile(r"^(?P<rel>.*?)(?:  \[keys: (?P<keys>.*)\])?$")
+
+
+def _parse_skipped(entry: str) -> tuple[str, set[str] | None]:
+    """Split one `Writer.skipped` entry into its path and the differing top-level
+    keys (`None` when the file carries no `[keys: ...]` suffix at all, i.e. a
+    non-JSON file or one whose parsed content is actually identical)."""
+    match = _SKIPPED_RE.match(entry)
+    rel = match.group("rel")
+    keys = match.group("keys")
+    return rel, ({k.strip() for k in keys.split(",")} if keys else None)
 
 # Where to find the colgrep-mcp checkout when COLGREP_MCP_ROOT is unset.
 # Resolved against this skill's root (spawning-agent-plugins/), not against
@@ -76,9 +114,18 @@ def test_spec_regenerates_manifests() -> None:
     assert w.written == [], f"spec would write new files — generator and checkout have drifted: {w.written}"
     assert w.merged == [], f"spec would merge marketplace entries — generator and checkout have drifted: {w.merged}"
 
-    skipped_names = {rel.split("  [keys:", 1)[0].strip() for rel in w.skipped}
-    unexpected = skipped_names - ALLOWED_DIVERGENCE
-    assert not unexpected, f"unexpected divergence from the spec: {sorted(unexpected)} (full detail: {w.skipped})"
+    unexpected = []
+    for entry in w.skipped:
+        rel, keys = _parse_skipped(entry)
+        if rel not in ALLOWED_DIVERGENCE:
+            unexpected.append(entry)
+            continue
+        allowed_keys = ALLOWED_DIVERGENCE[rel]
+        if allowed_keys is None:
+            continue  # whole-file exemption (e.g. hand-maintained prose)
+        if keys is None or not keys <= allowed_keys:
+            unexpected.append(entry)
+    assert not unexpected, f"unexpected divergence from the spec: {unexpected} (full detail: {w.skipped})"
 
 
 if __name__ == "__main__":

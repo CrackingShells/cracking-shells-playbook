@@ -6,13 +6,14 @@ out. The layout is the one proven on CrackingShells/colgrep-mcp (Claude Code
 verified end-to-end; Codex and Agent Plugins 1.0 documented against their
 specs, see references/manifests.md):
 
-    plugin.json                      Agent Plugins 1.0 manifest (whitelisted fields only)
-    mcp.json                         Agent Plugins 1.0 MCP manifest        [mcp]
+    plugin.json                      Agent Plugins 1.0 manifest (whitelisted fields only);
+                                      also the manifest Codex parses, with its extras under
+                                      extensions["com.openai"] when codex is an ecosystem
+    mcp.json                         Agent Plugins 1.0 MCP manifest, also Codex's (auto-wired
+                                      by convention: no separate Codex plugin folder is ever written) [mcp]
     .claude-plugin/plugin.json       Claude Code manifest
     .claude-plugin/marketplace.json  Claude Code marketplace (product [+ dev] plugin)
     .claude-plugin/mcp.json          Claude Code MCP manifest              [mcp]
-    .codex-plugin/plugin.json        Codex manifest (with the `interface` block)
-    .codex-plugin/mcp.json           Codex MCP manifest                    [mcp]
     .agents/plugins/marketplace.json Codex marketplace
     hooks/hooks.json                 portable hook events, auto-loaded     [hooks]
     hooks/<event>.json               one file per non-portable event       [hooks]
@@ -72,7 +73,59 @@ def load_spec(path: Path) -> dict:
     spec.setdefault("author", {})
     if spec.get("hooks"):
         _check_hooks_spec(spec["hooks"])
+    if spec.get("plugins"):
+        _check_plugins_spec(spec["plugins"])
     return spec
+
+
+def _check_plugins_spec(plugins: list) -> None:
+    """Each entry needs a kebab-case `name` and a `dir`; no two entries may share either."""
+    seen_names: set = set()
+    seen_dirs: set = set()
+    for entry in plugins:
+        name = entry.get("name")
+        if not name or not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+            _die(f"plugins entry needs a kebab-case name, got {name!r}")
+        dir_ = entry.get("dir")
+        if dir_ is None or not isinstance(dir_, str):
+            _die(f"plugins entry {name!r} needs a dir")
+        if not entry.get("description"):
+            _die(f"plugins entry {name!r} needs a non-empty description")
+        if name in seen_names:
+            _die(f"duplicate plugin name in plugins[]: {name!r}")
+        dir_key = dir_.strip("/")
+        if dir_key in seen_dirs:
+            _die(f"duplicate plugin dir in plugins[]: {dir_!r}")
+        seen_names.add(name)
+        seen_dirs.add(dir_key)
+        if entry.get("hooks"):
+            _check_hooks_spec(entry["hooks"])
+
+
+def plugin_entries(spec: dict) -> list[dict]:
+    """Normalised per-plugin dicts: what `spawn()`'s ecosystem branches loop over.
+
+    A single-plugin spec (no top-level `plugins`) yields a one-element list holding
+    the spec itself, `dir` defaulted to `""` (a root plugin) — so single-plugin
+    behaviour is byte-for-byte unchanged. A multi-plugin spec yields one normalised
+    entry per `plugins[]` item, each shaped exactly like a single-plugin spec (so
+    every build_* function needs no change): `author`, `homepage`, `repository`,
+    `license`, `ecosystems` and `keywords` fall back to the top-level spec's value
+    when the entry doesn't set its own.
+    """
+    if not spec.get("plugins"):
+        entry = dict(spec)
+        entry.setdefault("dir", "")
+        entry.pop("plugins", None)
+        return [entry]
+    entries = []
+    for raw in spec["plugins"]:
+        entry = dict(raw)
+        entry["dir"] = (entry.get("dir") or "").strip("/")
+        for key in ("author", "homepage", "repository", "license", "ecosystems", "keywords"):
+            entry.setdefault(key, spec.get(key))
+        entries.append(entry)
+    return entries
 
 
 def _event_name(event) -> str:
@@ -185,7 +238,44 @@ def build_mcp(spec: dict, version: str, ecosystem: str) -> dict:
 
 
 def build_agent_plugin(spec: dict, version: str) -> dict:
-    return {"$schema": AGENT_PLUGINS_SCHEMA.format(name="plugin"), **_identity(spec, version)}
+    """The root Agent Plugins 1.0 manifest — also the one Codex parses natively.
+
+    Codex reads a root AP-conformant `plugin.json`, takes its Codex-specific data from
+    `extensions["com.openai"]`, and auto-wires `skills` -> `./skills` and `mcp_servers`
+    -> `./mcp.json` by convention (neither needs a field here). So when `codex` is one of
+    the spec's ecosystems, this is Codex's only manifest: no separate Codex plugin
+    folder is ever written.
+    """
+    out = {"$schema": AGENT_PLUGINS_SCHEMA.format(name="plugin"), **_identity(spec, version)}
+    eco = set(spec.get("ecosystems", ["claude", "codex", "agent-plugins"]))
+    if "codex" in eco:
+        out["extensions"] = {"com.openai": build_codex_extensions(spec)}
+    return out
+
+
+def build_codex_extensions(spec: dict) -> dict:
+    """Codex's `extensions["com.openai"]` payload: presentation metadata with no root
+    slot in Agent Plugins 1.0, plus the portable hooks file when the spec opts in.
+    """
+    codex = spec.get("codex", {})
+    interface = {
+        "displayName": spec.get("displayName", spec["name"]),
+        "shortDescription": codex.get("shortDescription", spec["description"]),
+        "longDescription": codex.get("longDescription", spec["description"]),
+        "developerName": spec.get("author", {}).get("name", ""),
+        "category": codex.get("category", "Developer Tools"),
+        "capabilities": codex.get("capabilities", ["Read"]),
+    }
+    if codex.get("defaultPrompt"):
+        interface["defaultPrompt"] = codex["defaultPrompt"][:3]
+    extensions = {"interface": interface}
+    if spec.get("hooks") and spec["hooks"].get("codex"):
+        # Codex discovers hooks/hooks.json only when the manifest defines no `hooks`; an
+        # explicit value *replaces* that discovery, so this names the portable file and
+        # never a per-event file whose event a Codex parser may not know
+        # (references/hooks.md).
+        extensions["hooks"] = "./hooks/hooks.json"
+    return extensions
 
 
 def build_claude_plugin(spec: dict, version: str) -> dict:
@@ -212,35 +302,35 @@ def build_claude_plugin(spec: dict, version: str) -> dict:
     return out
 
 
-def build_codex_plugin(spec: dict, version: str) -> dict:
-    codex = spec.get("codex", {})
-    out = _identity(spec, version, homepage=False, license_=False)
-    if spec.get("skills"):
-        out["skills"] = spec["skills"]
-    if spec.get("mcp"):
-        out["mcpServers"] = "./.codex-plugin/mcp.json"
-    if spec.get("hooks") and spec["hooks"].get("codex"):
-        # Codex discovers hooks/hooks.json only when the manifest defines no `hooks`;
-        # an explicit value *replaces* that discovery (Codex plugin docs, "Build a
-        # plugin"), so the field names the portable file and never a per-event file
-        # whose event a Codex parser may not know. Opt-in: Codex's plugin-creator
-        # sample both lists `hooks` and says its validator rejects the field.
-        out["hooks"] = "./hooks/hooks.json"
-    interface = {
-        "displayName": spec.get("displayName", spec["name"]),
-        "shortDescription": codex.get("shortDescription", spec["description"]),
-        "longDescription": codex.get("longDescription", spec["description"]),
-        "developerName": spec.get("author", {}).get("name", ""),
-        "category": codex.get("category", "Developer Tools"),
-        "capabilities": codex.get("capabilities", ["Read"]),
-    }
-    if codex.get("defaultPrompt"):
-        interface["defaultPrompt"] = codex["defaultPrompt"][:3]
-    out["interface"] = interface
-    return out
+def _git_clone_url(repository: str | None, dir_: str) -> str:
+    if not repository:
+        _die(f"a plugin at {dir_!r} needs a `repository` to build its marketplace source (git-subdir)")
+    return repository if repository.endswith(".git") else repository + ".git"
 
 
-def build_claude_marketplace(spec: dict) -> dict:
+def _claude_source(dir_: str, repository: str | None):
+    """A root plugin (`dir_ == ""`) is a plain relative path; a subdirectory plugin uses
+    the `git-subdir` source shape (`url` + `path`), the only one that names a subdirectory."""
+    if not dir_:
+        return "./"
+    return {"source": "git-subdir", "url": _git_clone_url(repository, dir_), "path": f"./{dir_}"}
+
+
+def _codex_source(dir_: str, repository: str | None) -> dict:
+    """Codex has no `github`-style shorthand, so a subdirectory source is the identical
+    `git-subdir`/`url`/`path` shape Claude Code uses; the root case stays `local`."""
+    if not dir_:
+        return {"source": "local", "path": "./"}
+    return {"source": "git-subdir", "url": _git_clone_url(repository, dir_), "path": f"./{dir_}"}
+
+
+def build_claude_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict:
+    """One marketplace entry per plugin `entries` holds, plus one per declared `dev` sibling.
+
+    `entries` is the (normalised plugin dict, resolved version) pairs for every plugin this
+    spawn wrote into the `claude` ecosystem — one element for a single-plugin spec, one per
+    `plugins[]` item for a multi-plugin spec. No entry ever carries `version`, `ref` or `sha`.
+    """
     market = spec.get("claude_marketplace", {})
     out = {
         "name": market.get("name", f"{spec['name']}-marketplace"),
@@ -248,31 +338,45 @@ def build_claude_marketplace(spec: dict) -> dict:
     }
     if spec.get("author"):
         out["owner"] = spec["author"]
-    out["plugins"] = [{"name": spec["name"], "source": "./", "description": spec["description"]}]
-    if spec.get("dev"):
-        dev = spec["dev"]
-        out["plugins"].append(
-            {
-                "name": dev["name"],
-                "source": "./" + dev.get("dir", "dev").strip("/"),
-                "description": dev.get("marketplace_description", dev["description"]),
-            }
-        )
+    out["plugins"] = [
+        {
+            "name": entry["name"],
+            "source": _claude_source(entry.get("dir", ""), entry.get("repository") or spec.get("repository")),
+            "description": entry["description"],
+        }
+        for entry, _ in entries
+    ]
+    for entry, _ in entries:
+        if entry.get("dev"):
+            dev = entry["dev"]
+            ddir = _prefixed(entry.get("dir", ""), dev.get("dir", "dev").strip("/"))
+            out["plugins"].append(
+                {
+                    "name": dev["name"],
+                    "source": _claude_source(ddir, entry.get("repository") or spec.get("repository")),
+                    "description": dev.get("marketplace_description", dev["description"]),
+                }
+            )
     return out
 
 
-def build_codex_marketplace(spec: dict) -> dict:
+def build_codex_marketplace(spec: dict, entries: list[tuple[dict, str]]) -> dict:
+    """One marketplace entry per plugin `entries` holds. See `build_claude_marketplace`."""
     codex = spec.get("codex", {})
     return {
         "name": codex.get("marketplace_name", f"{spec['name']}-marketplace"),
         "interface": {"displayName": codex.get("marketplace_displayName", spec.get("displayName", spec["name"]))},
         "plugins": [
             {
-                "name": spec["name"],
-                "source": {"source": "local", "path": "./"},
-                "policy": {"installation": "AVAILABLE", "authentication": "NONE"},
-                "category": codex.get("category", "Developer Tools"),
+                "name": entry["name"],
+                "source": _codex_source(entry.get("dir", ""), entry.get("repository") or spec.get("repository")),
+                # Codex's auth-policy enum is exactly ON_INSTALL | ON_USE, with no catch-all,
+                # and it parses a marketplace file in one pass: "NONE" makes every entry in
+                # the file unparseable, not just this one.
+                "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+                "category": entry.get("codex", {}).get("category", codex.get("category", "Developer Tools")),
             }
+            for entry, _ in entries
         ],
     }
 
@@ -403,9 +507,22 @@ class Writer:
             path.write_text(_dump(current))
 
 
+def _prefixed(dir_: str, rel: str) -> str:
+    """`rel` inside a plugin's own directory: unprefixed for a root plugin (`dir_ == ""`)."""
+    return f"{dir_}/{rel}" if dir_ else rel
+
+
 def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
-    version = resolve_version(spec, root)
-    eco = set(spec["ecosystems"])
+    """Write every declared plugin's manifest set, one entry at a time.
+
+    `plugin_entries(spec)` normalises the spec to a list of one (single-plugin spec)
+    or more (multi-plugin spec) per-plugin dicts; each is otherwise built exactly as
+    a single-plugin spec always was, with every written path prefixed by the entry's
+    `dir` (empty for a root plugin, so single-plugin output is byte-for-byte
+    unchanged). Each entry resolves its own version independently. Marketplace
+    entries accumulate across every plugin and are written with one
+    `merge_marketplace` call per ecosystem, never one per plugin.
+    """
     w = Writer(root, force=force, dry_run=dry_run)
 
     if (root / ".mcp.json").exists():
@@ -415,58 +532,78 @@ def spawn(spec: dict, root: Path, *, force: bool, dry_run: bool) -> Writer:
             file=sys.stderr,
         )
 
-    if "agent-plugins" in eco:
-        w.put("plugin.json", _dump(build_agent_plugin(spec, version)))
-        if spec.get("mcp"):
-            w.put("mcp.json", _dump(build_mcp(spec, version, "agent-plugins")))
-    if "claude" in eco:
-        w.put(".claude-plugin/plugin.json", _dump(build_claude_plugin(spec, version)))
-        w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec))
-        if spec.get("mcp"):
-            w.put(".claude-plugin/mcp.json", _dump(build_mcp(spec, version, "claude")))
-    if "codex" in eco:
-        w.put(".codex-plugin/plugin.json", _dump(build_codex_plugin(spec, version)))
-        w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec))
-        if spec.get("mcp"):
-            w.put(".codex-plugin/mcp.json", _dump(build_mcp(spec, version, "codex")))
+    claude_entries: list[tuple[dict, str]] = []
+    codex_entries: list[tuple[dict, str]] = []
 
-    if spec.get("hooks"):
-        hooks = spec["hooks"]
-        if hooks.get("portable"):
-            w.put("hooks/hooks.json", _dump(build_portable_hooks(spec)))
-        for event in hooks.get("extra", []):
-            w.put(extra_hook_files({"extra": [event]})[0].removeprefix("./"), _dump(build_event_hooks(spec, event)))
-        if (root / "hooks" / "claude-code.json").exists():
-            print(
-                "warning: hooks/claude-code.json is the retired layout (one file per harness); each non-portable "
-                "event now has its own file named after it. Delete it once the per-event files are written.",
-                file=sys.stderr,
-            )
-        script = root / hooks["script"]
-        if not script.exists() and not dry_run:
-            script.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(HOOK_TEMPLATE, script)
-            w.written.append(hooks["script"] + "  (from assets/hooks/policy_template.py; edit it)")
-        elif not script.exists():
-            w.written.append(hooks["script"] + "  (template)")
+    for entry in plugin_entries(spec):
+        version = resolve_version(entry, root)
+        eco = set(entry.get("ecosystems", ["claude", "codex", "agent-plugins"]))
+        dir_ = entry.get("dir", "")
 
-    if spec.get("dev"):
-        dev = spec["dev"]
-        ddir = dev.get("dir", "dev").strip("/")
-        w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(spec, version)))
-        w.put(f"{ddir}/README.md", dev_readme(spec))
-        if not dry_run:
-            (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
+        # Codex parses this same root Agent Plugins manifest natively (extras under
+        # extensions["com.openai"]) and auto-wires mcp_servers -> ./mcp.json, so
+        # "codex" shares agent-plugins's files rather than owning a separate plugin folder.
+        if "agent-plugins" in eco or "codex" in eco:
+            w.put(_prefixed(dir_, "plugin.json"), _dump(build_agent_plugin(entry, version)))
+            if entry.get("mcp"):
+                w.put(_prefixed(dir_, "mcp.json"), _dump(build_mcp(entry, version, "agent-plugins")))
+        if "claude" in eco:
+            w.put(_prefixed(dir_, ".claude-plugin/plugin.json"), _dump(build_claude_plugin(entry, version)))
+            claude_entries.append((entry, version))
+            if entry.get("mcp"):
+                w.put(_prefixed(dir_, ".claude-plugin/mcp.json"), _dump(build_mcp(entry, version, "claude")))
+        if "codex" in eco:
+            codex_entries.append((entry, version))
 
-    if spec.get("skills") and not (root / spec["skills"]).is_dir():
-        print(f"warning: skills path {spec['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
+        if entry.get("hooks"):
+            hooks = entry["hooks"]
+            if hooks.get("portable"):
+                w.put(_prefixed(dir_, "hooks/hooks.json"), _dump(build_portable_hooks(entry)))
+            for event in hooks.get("extra", []):
+                rel = extra_hook_files({"extra": [event]})[0].removeprefix("./")
+                w.put(_prefixed(dir_, rel), _dump(build_event_hooks(entry, event)))
+            if (root / dir_ / "hooks" / "claude-code.json").exists():
+                print(
+                    "warning: hooks/claude-code.json is the retired layout (one file per harness); each non-portable "
+                    "event now has its own file named after it. Delete it once the per-event files are written.",
+                    file=sys.stderr,
+                )
+            script_rel = _prefixed(dir_, hooks["script"])
+            script = root / script_rel
+            if not script.exists() and not dry_run:
+                script.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(HOOK_TEMPLATE, script)
+                w.written.append(script_rel + "  (from assets/hooks/policy_template.py; edit it)")
+            elif not script.exists():
+                w.written.append(script_rel + "  (template)")
+
+        if entry.get("dev"):
+            dev = entry["dev"]
+            ddir = _prefixed(dir_, dev.get("dir", "dev").strip("/"))
+            market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
+            w.put(f"{ddir}/.claude-plugin/plugin.json", _dump(build_dev_plugin(entry, version)))
+            w.put(f"{ddir}/README.md", dev_readme(entry, ddir, market))
+            if not dry_run:
+                (root / ddir / "skills").mkdir(parents=True, exist_ok=True)
+
+        if entry.get("skills") and not (root / dir_ / entry["skills"]).is_dir():
+            print(f"warning: skills path {entry['skills']} does not exist yet; the loaders warn on a missing directory.", file=sys.stderr)
+
+    # `marketplace: "hub"` (or an explicit hub repository string) means some other repo owns
+    # the marketplace naming these plugins: two repos declaring one marketplace name silently
+    # replace each other in Claude Code and hard-error in Codex, so this repo writes neither
+    # marketplace file at all.
+    if not spec.get("marketplace"):
+        if claude_entries:
+            w.merge_marketplace(".claude-plugin/marketplace.json", build_claude_marketplace(spec, claude_entries))
+        if codex_entries:
+            w.merge_marketplace(".agents/plugins/marketplace.json", build_codex_marketplace(spec, codex_entries))
+
     return w
 
 
-def dev_readme(spec: dict) -> str:
+def dev_readme(spec: dict, ddir: str, market: str) -> str:
     dev = spec["dev"]
-    market = spec.get("claude_marketplace", {}).get("name", f"{spec['name']}-marketplace")
-    ddir = dev.get("dir", "dev").strip("/")
     return f"""# {dev["name"]}
 
 The maintainer's dev environment for this repository, packaged as a Claude Code
@@ -601,7 +738,8 @@ def install_snippet(spec: dict) -> str:
         "### Codex\n",
         f"```bash\ncodex plugin marketplace add {slug}\n```\n",
         f"```bash\ncodex plugin add {spec['name']}@{codex_market}\n```\n",
-        "The Codex manifests are `.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json`.\n",
+        "The Codex manifests are `.agents/plugins/marketplace.json` and the root `plugin.json` "
+        "(Codex extras live under its `extensions[\"com.openai\"]`).\n",
         "### Agent Plugins 1.0 clients (Cursor, GitHub Copilot, VS Code, Kiro)\n",
         "The [Agent Plugins 1.0 spec](https://agent-plugins.org/specification) defines the package "
         "(`plugin.json`, `mcp.json`) and leaves installation to each client, so the install command is the "
