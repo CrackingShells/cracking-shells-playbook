@@ -99,10 +99,11 @@ Agent Plugins 1.0 reserves for client-specific data in an otherwise closed
 schema. Codex then auto-wires `skills` to `./skills` and `mcp_servers` to
 the root `mcp.json` *by convention* — neither needs a field anywhere. There
 is no second plugin folder, no second `mcp.json`, and no code path in
-`spawn_plugin.py` that writes one: `.codex-plugin/plugin.json` and
-`.codex-plugin/mcp.json` do not exist in the generator's output, for any
-spec. (An older layout wrote both; if you are reading a plugin tree or a
-doc that still has them, it predates this shape and should be regenerated.)
+`spawn_plugin.py` that writes one: a `.codex-plugin` directory holding its
+own `plugin.json` and `mcp.json` is not part of the generator's output, for
+any spec. (An older layout wrote such a directory; if you are reading a
+plugin tree or a doc that still has one, it predates this shape and should
+be regenerated.)
 
 `build_codex_extensions(spec)` produces the `extensions["com.openai"]`
 payload, attached under `build_agent_plugin` whenever `"codex"` is one of
