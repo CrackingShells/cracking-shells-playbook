@@ -14,4 +14,9 @@ for skill in $changed; do
     uv run tools/package_skill.py "skills/$skill" dist/
     echo "[hook] Built dist/$skill.skill"
   fi
+  if [ -d "plugins/$skill" ]; then
+    uv run tools/assemble_plugin.py "$skill"
+    git add "plugins/$skill"
+    echo "[hook] Refreshed plugins/$skill"
+  fi
 done

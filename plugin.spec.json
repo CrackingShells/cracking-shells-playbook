@@ -1,0 +1,67 @@
+{
+  "name": "cracking-shells-playbook",
+  "description": "Five playbook skills, packaged as five installable plugins from one repository.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "ecosystems": ["claude", "codex", "agent-plugins"],
+  "marketplace": {
+    "hub": "https://github.com/CrackingShells/Nest"
+  },
+  "plugins": [
+    {
+      "name": "managing-roadmaps",
+      "dir": "plugins/managing-roadmaps",
+      "displayName": "Managing Roadmaps",
+      "description": "Creates, executes, and amends graph-based campaign roadmaps.",
+      "version_from": "package.json:skills/managing-roadmaps/package.json",
+      "skills": "./skills/",
+      "keywords": ["roadmap", "campaign", "planning", "agents"],
+      "codex": { "category": "Productivity" }
+    },
+    {
+      "name": "writing-history",
+      "dir": "plugins/writing-history",
+      "displayName": "Writing History",
+      "description": "Guides the git-discipline lifecycle for commit history: vocabulary, versioning, commits, and branch integration.",
+      "version_from": "package.json:skills/writing-history/package.json",
+      "skills": "./skills/",
+      "keywords": ["git", "commits", "versioning", "agents"],
+      "codex": { "category": "Developer Tools" }
+    },
+    {
+      "name": "writing-release",
+      "dir": "plugins/writing-release",
+      "displayName": "Writing Release",
+      "description": "Writes GitHub pull request bodies and Discord release announcements for fork-based release workflows.",
+      "version_from": "package.json:skills/writing-release/package.json",
+      "skills": "./skills/",
+      "keywords": ["release", "changelog", "pull-request", "agents"],
+      "codex": { "category": "Productivity" }
+    },
+    {
+      "name": "writing-reports",
+      "dir": "plugins/writing-reports",
+      "displayName": "Writing Reports",
+      "description": "Guides production of stakeholder-reviewable reports for coding, research, and writing work.",
+      "version_from": "package.json:skills/writing-reports/package.json",
+      "skills": "./skills/",
+      "keywords": ["reports", "documentation", "agents"],
+      "codex": { "category": "Productivity" }
+    },
+    {
+      "name": "spawning-agent-plugins",
+      "dir": "plugins/spawning-agent-plugins",
+      "displayName": "Spawning Agent Plugins",
+      "description": "Turns a repository into an installable plugin for Claude Code, Codex, and Agent Plugins 1.0 clients.",
+      "version_from": "package.json:skills/spawning-agent-plugins/package.json",
+      "skills": "./skills/",
+      "keywords": ["plugin", "generator", "agents"],
+      "codex": { "category": "Developer Tools" }
+    }
+  ]
+}

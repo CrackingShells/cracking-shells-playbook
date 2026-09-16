@@ -1,0 +1,19 @@
+{
+  "name": "spawning-agent-plugins",
+  "displayName": "Spawning Agent Plugins",
+  "version": "1.0.0",
+  "description": "Turns a repository into an installable plugin for Claude Code, Codex, and Agent Plugins 1.0 clients.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "plugin",
+    "generator",
+    "agents"
+  ],
+  "skills": "./skills/"
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "writing-history",
+  "version": "1.0.0",
+  "description": "Guides the git-discipline lifecycle for commit history: vocabulary, versioning, commits, and branch integration.",
+  "author": {
+    "name": "Eliott Jacopin",
+    "email": "eliott.jacopin@riken.jp"
+  },
+  "homepage": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "repository": "https://github.com/CrackingShells/cracking-shells-playbook",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "git",
+    "commits",
+    "versioning",
+    "agents"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Writing History",
+        "shortDescription": "Guides the git-discipline lifecycle for commit history: vocabulary, versioning, commits, and branch integration.",
+        "longDescription": "Guides the git-discipline lifecycle for commit history: vocabulary, versioning, commits, and branch integration.",
+        "developerName": "Eliott Jacopin",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Read"
+        ]
+      }
+    }
+  }
+}
