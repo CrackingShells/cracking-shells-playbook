@@ -111,7 +111,7 @@ Each leaf contains 1–5 steps. Steps are strictly sequential.
 | `implementation_logic` | ✓ | What and why (no code dumps; pseudocode for complex logic) |
 | `deliverables` | ✓ | Concrete outputs with scope |
 | `consistency_checks` | ✓ | Verifiable check with expected outcome (PASS or FAIL) |
-| `commit` | ✓ | Git commit message (conventional format: `type(scope): description`); every step must produce exactly one commit |
+| `commit` | ✓ | Git commit message (`type(scope): description` shape; type and scope come from the project's vocabulary); every step must produce exactly one commit |
 | `references` | — | Step-level supporting documents |
 | `requires` | — | Non-obvious prerequisites only |
 
