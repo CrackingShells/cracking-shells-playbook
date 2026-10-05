@@ -1,3 +1,10 @@
+# managing-roadmaps [1.2.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.1.1...managing-roadmaps@1.2.0) (2026-10-05)
+
+
+### Features
+
+* **dirtree-rdm:** accept project-defined commit types and scopes ([e8afff7](https://github.com/CrackingShells/cracking-shells-playbook/commit/e8afff7cc44603139bba373e8389b3aefb085f7b))
+
 ## managing-roadmaps [1.1.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.1.0...managing-roadmaps@1.1.1) (2026-06-16)
 
 
