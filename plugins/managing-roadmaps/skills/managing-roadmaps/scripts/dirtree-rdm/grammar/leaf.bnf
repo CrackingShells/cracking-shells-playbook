@@ -74,7 +74,9 @@
 
 <step-field-consistency> ::= /^\*\*Consistency Checks\*\*: .+\(expected: (PASS|FAIL)\)$/ EOL
 
-<step-field-commit>      ::= /^\*\*Commit\*\*: `(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\([a-z][a-z0-9_-]*\): .+`$/ EOL
+# Commit type and scope are project-defined (derived from the project's own commit
+# vocabulary, e.g. per the writing-history skill); only the shape is checked here.
+<step-field-commit>      ::= /^\*\*Commit\*\*: `[^\s()`!:]+\([^\s()`]+\)!?: .+`$/ EOL
 
 <step-field-requires>    ::= /^\*\*Requires\*\*: .+/ EOL
 
