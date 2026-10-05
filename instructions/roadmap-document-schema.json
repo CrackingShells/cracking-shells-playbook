@@ -170,8 +170,8 @@
 
     "commit_message": {
       "type": "string",
-      "pattern": "^(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\\(.+\\): .+$",
-      "description": "Conventional commit message. Format: type(scope): description."
+      "pattern": "^[^\\s()`!:]+\\([^\\s()`]+\\)!?: .+$",
+      "description": "Commit message. Format: type(scope)[!]: description. Type and scope are project-defined (from the project's own commit vocabulary); only the shape is checked, and the scope is required."
     },
 
     "step": {
@@ -210,7 +210,7 @@
         },
         "commit": {
           "$ref": "#/$defs/commit_message",
-          "description": "REQUIRED. Conventional commit message for this step."
+          "description": "REQUIRED. Commit message for this step (type(scope)[!]: description; type and scope are project-defined)."
         },
         "requires": {
           "type": "string",
