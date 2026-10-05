@@ -130,9 +130,9 @@ Verify 1:1 mapping between:
 - **Mismatch:** Raises Level 1-2 failure in escalation ladder
 
 ### Commit Message Format
-**Conventional commit**: `type(scope): description`
+**Shape**: `type(scope)[!]: description`
 
-Allowed types: `feat`, `fix`, `test`, `docs`, `chore`, `refactor`, `style`, `perf`, `ci`, `build`, `revert`
+Type and scope follow the project's own commit vocabulary (see the `writing-history` skill); only the shape is validated. An optional `!` before the colon marks a breaking change.
 
 **Required:** scope in parentheses
 
