@@ -58,7 +58,7 @@ pub fn leaf_template(title: &str) -> String {
 <WHAT and WHY. Describe scope.>
 **Deliverables**: <file paths — for each, list the named symbols it will contain: function/method names, type names, exported identifiers, endpoint paths, component names>
 **Consistency Checks**: `<command>` (expected: PASS)
-**Commit**: `feat(<scope>): <description>`
+**Commit**: `<type>(<scope>): <description>`
 "#
     )
 }

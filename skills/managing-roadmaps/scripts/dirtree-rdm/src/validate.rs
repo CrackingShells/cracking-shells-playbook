@@ -574,7 +574,7 @@ pub fn validate_leaf_str(content: &str) -> Result<Vec<Violation>> {
     }
 
     // Steps: 1-5, sequential numbering
-    let commit_re = re(r"^\*\*Commit\*\*: `(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\([a-z][a-z0-9_-]*\): .+`$");
+    let commit_re = re(r"^\*\*Commit\*\*: `[^\s()`!:]+\([^\s()`]+\)!?: .+`$");
     let consistency_re = re(r"^\*\*Consistency Checks\*\*: .+\(expected: (PASS|FAIL)\)$");
     // Loose match that catches lines starting with the field but malformed
     // (most commonly: trailing content after `PASS)`/`FAIL)`, or wrong outcome word).
@@ -1015,5 +1015,70 @@ add code
             rendered.starts_with("header:"),
             "file-level violation must render with `header:` prefix, not `line 0:`; got:\n{rendered}"
         );
+    }
+
+    // ── Commit line: project-defined type and scope, shape-only check ──────
+
+    /// Build a minimal valid leaf whose single step carries `commit_line`.
+    fn leaf_with_commit(commit_line: &str) -> String {
+        format!(
+            "\
+# Test Leaf
+
+**Goal**: do the thing
+**Pre-conditions**:
+- [ ] precond
+**Success Gates**:
+- ⬜ gate
+**References**: R01
+
+## Step 1: do it
+**Goal**: implement
+**Implementation Logic**:
+add code
+**Deliverables**: file.rs
+**Consistency Checks**: `pytest` (expected: PASS)
+{commit_line}
+"
+        )
+    }
+
+    #[test]
+    fn test_commit_line_accepts_project_defined_types_and_scopes() {
+        for commit in [
+            "`revise(methods): tighten wording`",
+            "`ops(ci-pipeline): add cache step`",
+            "`feat(UserProfile): add avatar`",
+            "`feat(api/auth)!: drop legacy token`",
+            "`feat(x)!: y`",
+        ] {
+            let violations = validate_leaf_str(&leaf_with_commit(&format!("**Commit**: {commit}"))).unwrap();
+            assert!(
+                !violations.iter().any(|v| v.rule == Rule::StepFieldCommit),
+                "commit line {commit} should be accepted; got: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_commit_line_rejects_malformed_shape() {
+        for commit in [
+            "`feat: x`",            // no scope
+            "`feat(): x`",          // empty scope
+            "`my type(x): y`",      // whitespace in type
+            "`feat(core):`",        // no summary
+            "`feat(core): `",       // blank summary
+            "`feat!(x): y`",        // breaking marker before the scope
+            "`feat(x)!!: y`",       // doubled breaking marker
+            "`feat(x) !: y`",       // whitespace before the marker
+            "`feat((x)): y`",       // parentheses in scope
+            "`feat(x(y)): z`",      // nested parentheses in scope
+        ] {
+            let violations = validate_leaf_str(&leaf_with_commit(&format!("**Commit**: {commit}"))).unwrap();
+            assert!(
+                violations.iter().any(|v| v.rule == Rule::StepFieldCommit),
+                "commit line {commit} should be rejected with step-field-commit; got: {violations:?}"
+            );
+        }
     }
 }

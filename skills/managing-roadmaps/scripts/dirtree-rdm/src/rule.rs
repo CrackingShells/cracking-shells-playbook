@@ -305,7 +305,7 @@ impl Rule {
                 expected_form: "**Consistency Checks**: <command> (expected: PASS|FAIL)",
             },
             Rule::StepFieldCommit => Diagnostic {
-                expected_form: "**Commit**: `<type>(<scope>): <summary>`   (type ∈ feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)",
+                expected_form: "**Commit**: `<type>(<scope>)[!]: <summary>`   (type and scope are project-defined)",
             },
             Rule::Step => Diagnostic {
                 expected_form: "(constraint: 1 ≤ step count ≤ 5; numbering starts at 1)",
@@ -388,7 +388,7 @@ impl Rule {
                 "<step-field-consistency> ::= /^\\*\\*Consistency Checks\\*\\*: .+\\(expected: (PASS|FAIL)\\)$/ EOL"
             }
             Rule::StepFieldCommit => {
-                "<step-field-commit> ::= /^\\*\\*Commit\\*\\*: `(feat|fix|test|docs|chore|refactor|style|perf|ci|build|revert)\\([a-z][a-z0-9_-]*\\): .+`$/ EOL"
+                "<step-field-commit> ::= /^\\*\\*Commit\\*\\*: `[^\\s()`!:]+\\([^\\s()`]+\\)!?: .+`$/ EOL"
             }
             Rule::Step => {
                 "<step> ::= <step-heading>\n           BLANK_LINE*\n           <step-field>+\n# CONSTRAINT: step count must be in range [1, 5]"

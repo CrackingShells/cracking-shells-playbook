@@ -145,7 +145,7 @@ The Rust validator (`dirtree-rdm`) embeds these files at compile time and valida
 
 **Required step fields (5):** Goal, Implementation Logic, Deliverables, Consistency Checks, Commit
 
-**Commit type** must be one of: `feat fix test docs chore refactor style perf ci build revert`
+**Commit line:** type and scope follow the project's own commit vocabulary (see the `writing-history` skill); the validator checks only the shape `<type>(<scope>)[!]: <summary>`. The scope is required, and an optional `!` before the colon marks a breaking change.
 
 **Step count:** minimum 1, maximum 5
 
@@ -159,7 +159,6 @@ The Rust validator (`dirtree-rdm`) embeds these files at compile time and valida
 | node-name-file | `^[a-z][a-z0-9_-]*\.md$` |
 | node-name-dir | `^[a-z][a-z0-9_-]*$` |
 | status-value | `done \| inprogress \| planned \| amendment \| blocked` |
-| commit-type | `feat \| fix \| test \| docs \| chore \| refactor \| style \| perf \| ci \| build \| revert` |
 | date | `\d{4}-\d{2}-\d{2}` |
 
 ---
