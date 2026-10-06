@@ -25,7 +25,7 @@ Copy this checklist and check off items as you work.
 [ ] 3. Apply equivalence classes and boundary sets to collapse redundant cases.
 [ ] 4. Self-review each proposed test against the feedback loop (see below).
 [ ] 5. Draft the report sections: executive summary, scope, test matrix, fixtures.
-[ ] 6. Save the finished report to __reports__/<topic>/test-definition.md
+[ ] 6. Save the finished report to __reports__/<topic>/<round>-test_definition_v<version>.md
 ```
 
 ---
