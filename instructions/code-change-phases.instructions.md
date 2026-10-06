@@ -37,9 +37,9 @@ Test Definition (v0) → Agent Review → Test Definition (v1) → ...
 
 ### Deliverables
 
-Versioned reports in `__reports__/<topic>/` following [reporting guidelines](./reporting.instructions.md):
-- Architecture reports: [reporting-architecture.instructions.md](./reporting-architecture.instructions.md)
-- Test definition reports: [reporting-tests.instructions.md](./reporting-tests.instructions.md)
+Versioned reports in `__reports__/<topic>/` produced with the `writing-reports` skill:
+- Architecture reports: its `architecture` report type
+- Test definition reports: its `test-definition` report type
 
 ### Exit Criteria
 
@@ -65,7 +65,7 @@ Translate the approved design into an executable directory tree.
 
 ### Deliverables
 
-Complete `__roadmap__/<campaign>/` directory tree per [roadmap generation guidelines](./roadmap-generation.instructions.md).
+Complete `__roadmap__/<campaign>/` directory tree, authored with the `managing-roadmaps` skill.
 
 ### Exit Criteria
 
@@ -77,7 +77,7 @@ Reviewing agent approves. All leaf tasks have Implementation Logic and Reference
 
 Navigate the roadmap tree and implement.
 
-For the detailed operational manual (failure handling, subagent dispatch, status updates), see [roadmap-execution.instructions.md](./roadmap-execution.instructions.md).
+For the detailed operational manual (failure handling, subagent dispatch, status updates), see the `managing-roadmaps` skill's execution reference.
 
 ### The Algorithm
 
@@ -92,7 +92,7 @@ For the detailed operational manual (failure handling, subagent dispatch, status
    - Commit with the prescribed message (**1 step = 1 commit**)
 6. When a leaf task's success gates are met: merge task branch into milestone
 7. When all nodes in a directory are done: mark the directory node as `done` in the parent `README.md`
-8. If amendment needed: follow the amendment workflow in [roadmap-generation.instructions.md](./roadmap-generation.instructions.md)
+8. If amendment needed: follow the amendment workflow in the `managing-roadmaps` skill
 9. Repeat until all nodes at all levels are `done`
 
 ### Git Integration
@@ -100,7 +100,7 @@ For the detailed operational manual (failure handling, subagent dispatch, status
 - `milestone/<campaign>` branch from `dev` — single integration branch
 - `task/<name>` branches from milestone — one per leaf task, flat hierarchy
 - Breadth-first merge order: all depth-d tasks merge before depth d+1 begins
-- See [git-workflow-milestone.instructions.md](./git-workflow-milestone.instructions.md) for details
+- See the `managing-roadmaps` skill for branch flow and the `writing-history` skill for the rebase-then-`--no-ff` integration contract
 
 ### Deliverables
 
