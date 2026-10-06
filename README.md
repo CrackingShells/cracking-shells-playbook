@@ -69,6 +69,13 @@ unzip <skill-name>.skill -d .claude/skills/
 
 Restart Claude Code for the new skill to load. To build a `.skill` from source, or to rebuild the `dirtree-rdm` binary for an unsupported platform, see [CONTRIBUTING.md](CONTRIBUTING.md#building-a-skill-locally).
 
+## Sister repositories
+
+Skills that are not about how the org builds software live in their own repositories:
+
+- [Plumage](https://github.com/CrackingShells/Plumage): the form of the work, such as prose voice, design canons, figures, coined terms and document formats.
+- [Pinion](https://github.com/CrackingShells/Pinion): the mechanics of agents, such as plugin packaging and waits on long-running processes.
+
 ## Repository layout
 
 | Path | Contents |
