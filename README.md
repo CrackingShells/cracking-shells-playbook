@@ -1,284 +1,96 @@
 # Cracking Shells Playbook
 
+[![Release skills](https://github.com/CrackingShells/cracking-shells-playbook/actions/workflows/release.yml/badge.svg)](https://github.com/CrackingShells/cracking-shells-playbook/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-**The comprehensive instruction set for LLM coding agents working within the Cracking Shells organization.**
+How the Cracking Shells organization builds software and runs projects, packaged as agent skills that Claude Code, Codex and Agent Plugins 1.0 clients can install.
 
-This playbook provides standardized guidelines, workflows, and best practices that ensure consistency, quality, and efficiency across all repositories in the organization. It serves as the authoritative reference for AI coding agents to understand organizational standards and deliver high-quality contributions.
+Each skill teaches an agent one part of the work: planning a campaign as a roadmap, writing the reports stakeholders review, keeping a clean commit history, and announcing releases. The skills are written for agents first. A maintainer reads them to know what the agent was told.
 
-## Table of Contents
+## Skills
 
-- [Overview](#overview)
-- [Installation](#installation)
-- [Quick Start for LLM Agents](#quick-start-for-llm-agents)
-- [Instruction Categories](#instruction-categories)
-- [Instruction File Organization](#instruction-file-organization)
-- [How to Use This Playbook](#how-to-use-this-playbook)
-- [Contributing](#contributing)
+| Skill | What it does | Agent plugin |
+|:------|:-------------|:------------:|
+| [`managing-roadmaps`](skills/managing-roadmaps/SKILL.md) | Plans a campaign as a directory-tree roadmap under `__roadmap__/`, then executes and amends it. Ships the `dirtree-rdm` CLI that validates every roadmap file. | ✅ |
+| [`writing-reports`](skills/writing-reports/SKILL.md) | Writes stakeholder-reviewable reports under `__reports__/`: architecture, test definition, knowledge transfer, findings, observation, notice and open question. | ✅ |
+| [`writing-history`](skills/writing-history/SKILL.md) | Derives a project's commit vocabulary from its history, authors commits against it, sets up versioning, and integrates branches by rebase then `merge --no-ff`. | ✅ |
+| [`writing-release`](skills/writing-release/SKILL.md) | Writes pull request bodies and Discord announcements for the fork → `dev` → `main` release model used across the org. | ✅ |
+| [`spawning-agent-plugins`](skills/spawning-agent-plugins/SKILL.md) | Turns a repository's skills, MCP server or hooks into installable plugins for Claude Code, Codex and Agent Plugins 1.0 clients. | ✅ |
+| [`writing-prose`](skills/writing-prose/SKILL.md) | Drafts and revises prose the user signs in their own voice, with register control against LLM-default rhetoric. | — |
+| [`writing-design-canons`](skills/writing-design-canons/SKILL.md) | Writes design canons: identity, token vocabulary, production guidelines and consumption guide for a visual system. | — |
+| [`importing-design-figures`](skills/importing-design-figures/SKILL.md) | Renders a figure or table from a Claude Design project into a print-quality image placed in a local document. | — |
+
+Skills marked ✅ are also listed as agent plugins in the [`CrackingShells/Nest`](https://github.com/CrackingShells/Nest) marketplace. Every skill is published as a `.skill` file with each of its releases.
+
+### How the skills fit together
+
+```mermaid
+graph LR
+    A["Analyse<br/><i>writing-reports</i>"] --> R["Plan<br/><i>managing-roadmaps</i>"]
+    R --> E["Execute, one commit per step<br/><i>writing-history</i>"]
+    E --> I["Integrate branches<br/><i>writing-history</i>"]
+    I --> P["Release<br/><i>writing-release</i>"]
+    P --> K["Knowledge transfer<br/><i>writing-reports</i>"]
+```
+
+An architecture or test-definition report comes first. Once it is approved, its decisions become a roadmap. Each roadmap step lands as one commit, and branches merge level by level. A knowledge-transfer report closes the cycle. The skills hand off to one another, so install `managing-roadmaps`, `writing-reports` and `writing-history` together to get the whole loop.
 
 ## Installation
 
-This playbook publishes skills in two ways:
+### As agent plugins (Claude Code, Codex)
 
-- **`.skill` files** — zip archives that Claude Code extracts into its skills directory. Each release publishes one `.skill` file per skill as a GitHub Release asset. All skills in this repo are available this way (Options A–C below).
-- **Agent plugins** — five skills are also packaged as installable plugins, conformant with Claude Code, Codex, and Agent Plugins 1.0, and listed in the `CrackingShells/Nest` marketplace (Option D below): `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins`. The other skills in this repo are not (yet) plugins and remain `.skill`-only.
+Add the org marketplace once, then install any plugin marked ✅ above.
 
-### Option A — Download from GitHub Releases (recommended)
-
-1. Go to the [Releases page](../../releases) and download `<skill-name>.skill` for the skill you want.
-2. Install it into Claude Code:
-
-   **User-level install** (skill available in every project):
-   ```bash
-   mkdir -p ~/.claude/skills
-   unzip <skill-name>.skill -d ~/.claude/skills/
-   ```
-
-   **Project-level install** (skill available only in the current repo):
-   ```bash
-   mkdir -p .claude/skills
-   unzip <skill-name>.skill -d .claude/skills/
-   ```
-
-3. Restart Claude Code (or reload the window) for the new skill to appear.
-
-   > **Claude Desktop**: `.skill` file installation via the Claude Desktop UI is not currently documented for this file format. Use the Claude Code CLI paths above, or check the [Claude Desktop settings](https://claude.ai) for any skill management options available in your version.
-
-### Option B — Clone and build locally
-
-Use this option if you want to modify a skill before installing, or if you need to build from the latest commit rather than a release.
-
-1. Clone the repository and install dev dependencies:
-   ```bash
-   git clone https://github.com/CrackingShells/cracking-shells-playbook.git
-   cd cracking-shells-playbook
-   make dev-setup
-   ```
-
-2. Package the skill you want:
-   ```bash
-   uv run tools/package_skill.py skills/<skill-name> dist/
-   ```
-
-3. Install the output `.skill` file using the same unzip steps from Option A:
-   ```bash
-   unzip dist/<skill-name>.skill -d ~/.claude/skills/
-   ```
-
-### Option C — Build Rust from source (managing-roadmaps only)
-
-The `managing-roadmaps` skill ships a pre-compiled Rust CLI (`dirtree-rdm`). Use this option only if no pre-compiled binary matches your platform (e.g., Linux arm64 without a matching release asset).
-
-1. Install Rust via [rustup](https://rustup.rs) if not already present.
-2. Build the binary for your local platform:
-   ```bash
-   cd skills/managing-roadmaps/scripts/dirtree-rdm
-   bash build.sh local
-   ```
-   This detects your OS and architecture automatically and writes the binary to `bin/`.
-3. Copy the binary to the expected name (e.g., `dirtree-rdm-darwin-arm64`) if the packager does not pick it up automatically.
-4. Return to the repo root and follow Option B to package and install:
-   ```bash
-   cd ../../../..
-   uv run tools/package_skill.py skills/managing-roadmaps dist/
-   unzip dist/managing-roadmaps.skill -d ~/.claude/skills/
-   ```
-
-### Option D — Install as an agent plugin (Claude Code, Codex)
-
-Five of this repo's skills — `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins` — are listed by git source in the `CrackingShells/Nest` marketplace, which is the single marketplace for every CrackingShells-org plugin. This repository does not ship a marketplace of its own.
-
-1. Add the marketplace once:
-   ```bash
-   claude plugin marketplace add CrackingShells/Nest
-   ```
-2. Install any of the five plugins from it:
-   ```bash
-   claude plugin install <plugin-name>@cracking-shells
-   ```
-   e.g. `claude plugin install writing-history@cracking-shells`.
-
-Marketplace entries carry no pinned version — Claude Code resolves the source's current commit, and each plugin's own `plugin.json` version (bumped on every release of that skill) is what both Claude Code and Codex read to decide whether to reinstall. The same versioned release also still publishes that skill's `.skill` file, so Options A–C above continue to work unchanged for every skill, plugin or not.
-
----
-
-## Overview
-
-The Cracking Shells Playbook is a living document system that defines:
-
-- **Development workflows** for Git, testing, and code changes
-- **Documentation standards** for technical writing and visual diagrams
-- **Reporting guidelines** for analysis, implementation, and knowledge transfer
-- **Work ethics** promoting thoroughness, persistence, and quality
-- **Organizational conventions** ensuring consistency across projects
-
-### Philosophy
-
-This playbook embodies the organization's commitment to:
-
-- **Quality over speed**: Thorough analysis and implementation
-- **Documentation-driven development**: Clear, comprehensive documentation
-- **Test-driven validation**: Robust testing at all stages
-- **Systematic problem-solving**: Root cause analysis over shortcuts
-- **Knowledge preservation**: Comprehensive reporting and knowledge transfer
-
-## Quick Start for LLM Agents
-
-### First-Time Setup
-
-1. **Read this README** to understand the playbook structure
-2. **Review [Work Ethics](./instructions/work-ethics.instructions.md)** for core principles
-3. **Study [Git Workflow](./instructions/git-workflow.md)** for commit and branching standards
-4. **Understand [Reporting Guidelines](./instructions/reporting.instructions.md)** for documentation requirements
-
-### Standard Workflow
-
-```mermaid
-graph TD
-    A[Receive Task] --> B[Review Relevant Instructions]
-    B --> C[Create Analysis Report with Mermaid Diagrams]
-    C --> D[Get User Approval]
-    D --> E[Implement with Tests]
-    E --> F[Create Knowledge Transfer Report]
-
-    style C fill:#fff3e0
-    style F fill:#fff3e0
+```bash
+claude plugin marketplace add CrackingShells/Nest
+claude plugin install writing-history@cracking-shells
 ```
 
-### Essential Instructions by Task Type
+For Codex:
 
-| Task Type | Required Reading |
-|-----------|-----------------|
-| **New Feature** | [Code Change Phases](./instructions/code-change-phases.instructions.md), [Testing](./instructions/testing.instructions.md), [Reporting](./instructions/reporting.instructions.md) |
-| **Bug Fix** | [Work Ethics](./instructions/work-ethics.instructions.md), [Testing](./instructions/testing.instructions.md), [Git Workflow](./instructions/git-workflow.md) |
-| **Documentation** | [Documentation](./instructions/documentation.instructions.md), [Style Guide](./instructions/documentation-style-guide.instructions.md), [Resources](./instructions/documentation-resources.instructions.md) |
-| **Refactoring** | [Code Change Phases](./instructions/code-change-phases.instructions.md), [Testing](./instructions/testing.instructions.md) |
-| **Testing** | [Testing](./instructions/testing.instructions.md), [Reporting](./instructions/reporting.instructions.md) |
-
-## Instruction Categories
-
-The playbook is organized into specialized instruction files covering different aspects of development:
-
-```mermaid
-graph TD
-    Playbook[Cracking Shells Playbook]
-    
-    Playbook --> Workflow[Workflow & Process]
-    Playbook --> Docs[Documentation]
-    Playbook --> Quality[Quality & Testing]
-    Playbook --> Ethics[Work Ethics]
-    
-    Workflow --> Git[Git Workflow]
-    Workflow --> Phases[Code Change Phases]
-    Workflow --> Reporting[Reporting Guidelines]
-    Workflow --> Roadmap[Roadmap Generation]
-    
-    Docs --> DocMain[Documentation Overview]
-    Docs --> Structure[Structure Standards]
-    Docs --> Style[Style Guide]
-    Docs --> API[API Documentation]
-    Docs --> Resources[Resources & Diagrams]
-    Docs --> MkDocs[MkDocs Setup]
-    Docs --> Tutorials[Tutorial Writing]
-    Docs --> README[README Standards]
-    
-    Quality --> Testing[Testing Guidelines]
-    Quality --> Analytic[Analytic Behavior]
-    Quality --> Docstrings[Python Docstrings]
-    
-    Ethics --> WorkEthics[Work Ethics Guidelines]
-    
-    style Playbook fill:#e1f5ff
-    style Workflow fill:#fff4e1
-    style Docs fill:#e8f5e9
-    style Quality fill:#f3e5f5
-    style Ethics fill:#fce4ec
+```bash
+codex plugin marketplace add CrackingShells/Nest
+codex plugin add writing-history@cracking-shells
 ```
 
-## Instruction File Organization
+Plugins update whenever the skill releases a new version. See the [Nest README](https://github.com/CrackingShells/Nest#readme) if you previously registered another marketplace named `cracking-shells`.
 
-### 📋 Workflow & Process
-- **[git-workflow.md](./instructions/git-workflow.md)** - Git commit standards, branching strategy, and version control
-- **[code-change-phases.instructions.md](./instructions/code-change-phases.instructions.md)** - Structured approach to implementing changes
-- **[reporting.instructions.md](./instructions/reporting.instructions.md)** - Report creation, organization, and iteration
-- **[roadmap-generation.instructions.md](./instructions/roadmap-generation.instructions.md)** - Product roadmap and planning standards
+### As `.skill` files
 
-### 📚 Documentation
-- **[documentation.instructions.md](./instructions/documentation.instructions.md)** - Master documentation guidelines and overview
-- **[documentation-structure.instructions.md](./instructions/documentation-structure.instructions.md)** - Directory organization and file naming
-- **[documentation-style-guide.instructions.md](./instructions/documentation-style-guide.instructions.md)** - Writing tone, language, and content standards
-- **[documentation-api.instructions.md](./instructions/documentation-api.instructions.md)** - API documentation with mkdocstrings
-- **[documentation-resources.instructions.md](./instructions/documentation-resources.instructions.md)** - **Mermaid diagrams (PRIMARY)**, images, and assets
-- **[documentation-mkdocs-setup.instructions.md](./instructions/documentation-mkdocs-setup.instructions.md)** - MkDocs configuration and setup
-- **[documentation-tutorials.instructions.md](./instructions/documentation-tutorials.instructions.md)** - Tutorial and guide writing
-- **[readme.instructions.md](./instructions/readme.instructions.md)** - README file standards
+Every skill, plugin or not, is published as `<skill-name>.skill` on the [Releases page](../../releases). A `.skill` file is a zip archive of the skill directory.
 
-### ✅ Quality & Testing
-- **[testing.instructions.md](./instructions/testing.instructions.md)** - Testing strategy, coverage, and best practices
-- **[analytic-behavior.instructions.md](./instructions/analytic-behavior.instructions.md)** - Analytical thinking and problem-solving
-- **[python_docstrings.instructions.md](./instructions/python_docstrings.instructions.md)** - Python docstring standards
+```bash
+# Available in every project
+unzip <skill-name>.skill -d ~/.claude/skills/
 
-### 💪 Work Ethics
-- **[work-ethics.instructions.md](./instructions/work-ethics.instructions.md)** - Core principles of thoroughness, persistence, and quality
+# Available in the current repository only
+unzip <skill-name>.skill -d .claude/skills/
+```
 
-## How to Use This Playbook
+Restart Claude Code for the new skill to load. To build a `.skill` from source, or to rebuild the `dirtree-rdm` binary for an unsupported platform, see [CONTRIBUTING.md](CONTRIBUTING.md#building-a-skill-locally).
 
-### For LLM Coding Agents
+## Sister repositories
 
-#### 1. Identify Relevant Instructions
-- Check the task type mapping in [Essential Instructions by Task Type](#essential-instructions-by-task-type)
-- Review the `applyTo` field in instruction file frontmatter
-- Read the relevant instruction files completely
+Skills that are not about how the org builds software live in their own repositories:
 
-#### 2. Follow the Standard Workflow
-All development follows: **Analysis → Test Definition → User Approval → Implementation → Knowledge Transfer**
+- [Plumage](https://github.com/CrackingShells/Plumage): the form of the work, such as prose voice, design canons, figures, coined terms and document formats.
+- [Pinion](https://github.com/CrackingShells/Pinion): the mechanics of agents, such as plugin packaging and waits on long-running processes.
 
-**Key Principles**:
-- Create reports for analysis, test definitions, and knowledge transfer
-- Iterate on reports with user feedback before implementation
-- Define tests before implementing
-- Use Mermaid diagrams to visualize architecture, workflows, and data flows
+## Repository layout
 
-#### 3. Maintain Quality Standards
-From [Work Ethics](./instructions/work-ethics.instructions.md):
-- Root cause analysis over shortcuts
-- Systematic debugging with evidence-based validation
-- Research-first approach before implementation
-- Commit discipline with clear, focused commits
-
-See [Reporting Guidelines](./instructions/reporting.instructions.md) and [Documentation Resources](./instructions/documentation-resources.instructions.md) for detailed standards.
-
-### For Human Developers
-
-This playbook serves as an onboarding guide, reference documentation, and quality checklist for understanding organizational standards and working effectively with AI coding agents.
+| Path | Contents |
+|:-----|:---------|
+| `skills/<name>/` | The source of each skill. This is the only place a skill is edited. |
+| `plugins/<name>/` | Plugin trees generated from `skills/`. Committed because Nest installs them by git source. Never edited by hand. |
+| `instructions/` | Legacy instruction files that are not yet converted into skills (documentation standards, Python docstrings, the code-change workflow). They will be converted or retired. |
+| `__reports__/` | Design and verification reports from past campaigns on this repository. |
+| `__roadmap__/` | The roadmaps those campaigns executed, kept as the specification each change was built against. |
+| `tools/` | Packaging, plugin assembly and version-stamping scripts used by the pre-commit hook and the release pipeline. |
 
 ## Contributing
 
-### Updating Instructions
-
-1. Identify which instruction files need updates
-2. Ensure changes align with existing standards
-3. Update cross-references in related instruction files
-4. Test against existing repositories
-5. Document rationale for changes
-
-### Quality Standards
-
-All playbook updates must:
-- ✅ Follow the organization's own standards (dogfooding)
-- ✅ Include clear examples and use cases
-- ✅ Use Mermaid diagrams where appropriate
-- ✅ Maintain backward compatibility when possible
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, the pre-commit hook, how plugin trees are regenerated, and how commits drive per-skill releases. Questions and suggestions go to the [issue tracker](https://github.com/CrackingShells/cracking-shells-playbook/issues).
 
 ## License
 
-This playbook is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Maintained by**: Cracking Shells Organization
-**Last Updated**: 2025-11-07
-**Version**: 1.0.0
-
-**For questions or suggestions**, please open an issue in this repository.
-
+AGPL-3.0. See [LICENSE](LICENSE).

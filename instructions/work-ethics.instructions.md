@@ -7,7 +7,7 @@ description: 'Instructions promoting perseverance, thoroughness, and high work e
 
 ## 1. Commit Discipline and Focused Git Practices
 
-Refer to [Git Workflow Instructions](./git-workflow.md) for detailed commit message standards.
+Use the `writing-history` skill for commit message standards.
 
 - **Enforced Practice**: Every commit addressed a single logical change with clear rationale
 - **Quality Impact**: Enabled precise rollback capabilities and clear development history
@@ -19,7 +19,6 @@ Refer to [Git Workflow Instructions](./git-workflow.md) for detailed commit mess
 - **Enforced Practice**: Systematic investigation of every issue until fundamental cause identified
 - **Quality Impact**: Eliminated recurring problems and built robust, long-term solutions
 - **Agent Optimization**: Deep analysis creates comprehensive context for future problem-solving
-- **Evidence**: _ErrorHolder investigation traced through 3 layers (unittest → wobble → hatch) before implementing proper solution
 - **Recommendation**: Always prefer understanding over workarounds - builds cumulative knowledge
 
 ## 3. Systematic Debugging and Problem-Solving Persistence
@@ -29,7 +28,7 @@ Refer to [Git Workflow Instructions](./git-workflow.md) for detailed commit mess
 - **Agent Optimization**: Methodical approaches create reusable debugging patterns
 - **Evidence**: Threading deadlock resolution through 5 iterations of queue balance analysis
 - **Recommendation**: Document debugging steps to build organizational debugging knowledge
-- **Workflow**: Use dedicated debugging branches for thorough investigation - see [debugging workflow in git-workflow.md](./git-workflow.md#special-case-debugging-workflow)
+- **Workflow**: Use dedicated debugging branches for thorough investigation - see [git-workflow-debugging.instructions.md](./git-workflow-debugging.instructions.md)
 
 ## 4. Research-First Approach and Evidence-Based Validation
 
