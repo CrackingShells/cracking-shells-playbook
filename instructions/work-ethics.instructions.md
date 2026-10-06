@@ -19,7 +19,6 @@ Use the `writing-history` skill for commit message standards.
 - **Enforced Practice**: Systematic investigation of every issue until fundamental cause identified
 - **Quality Impact**: Eliminated recurring problems and built robust, long-term solutions
 - **Agent Optimization**: Deep analysis creates comprehensive context for future problem-solving
-- **Evidence**: _ErrorHolder investigation traced through 3 layers (unittest → wobble → hatch) before implementing proper solution
 - **Recommendation**: Always prefer understanding over workarounds - builds cumulative knowledge
 
 ## 3. Systematic Debugging and Problem-Solving Persistence
