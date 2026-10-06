@@ -44,6 +44,17 @@ Unlike `dist/`, **`plugins/` is committed.** These trees are installed by git so
 
 **Releases are meant to run in CI, not locally.** The release job checks out a fresh clone and never sets `core.hooksPath`, so the pre-commit hook cannot fire there. Running a release locally is a different story: the hook *will* fire on the release commit, and separately, `@semantic-release/git` commits with a plain `git commit -m` — no pathspec — which sweeps in everything already staged, not just this release's files. Do not run a release from a working copy that has other staged or hook-triggering changes sitting around.
 
+## Building a skill locally
+
+To package a skill from source, for example to try a change before it is released:
+
+```bash
+uv run tools/package_skill.py skills/<skill-name> dist/
+unzip dist/<skill-name>.skill -d ~/.claude/skills/
+```
+
+`managing-roadmaps` bundles pre-compiled `dirtree-rdm` binaries. If none matches your platform, install Rust with [rustup](https://rustup.rs), run `make build-rust-local` (see below), then package the skill as above. `build.sh` writes the binary to `scripts/dirtree-rdm/bin/` under the name the dispatch wrapper expects.
+
 ## Rust binary rebuild
 
 The `managing-roadmaps` skill ships a pre-compiled Rust CLI (`dirtree-rdm`). The hook skips Rust recompilation. To rebuild the binary for your local architecture after changing Rust source:
