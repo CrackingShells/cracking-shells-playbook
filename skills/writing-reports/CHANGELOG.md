@@ -1,3 +1,10 @@
+## writing-reports [1.1.3](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.2...writing-reports@1.1.3) (2026-10-06)
+
+
+### Bug Fixes
+
+* **writing-reports:** save test definitions under the round-versioned name ([fa2b6fa](https://github.com/CrackingShells/cracking-shells-playbook/commit/fa2b6fa5fee5c28e3722fe484d0bb4f1d4e42978))
+
 ## writing-reports [1.1.2](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.1...writing-reports@1.1.2) (2026-06-16)
 
 
