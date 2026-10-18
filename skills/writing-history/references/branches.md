@@ -8,7 +8,8 @@ This document is the prescriptive contract for landing a finished branch (or wor
 2. [Rationale](#rationale)
 3. [Prohibitions](#prohibitions)
 4. [Worktrees](#worktrees)
-5. [Parallel Sibling Work](#parallel-sibling-work)
+5. [Debugging Branches](#debugging-branches)
+6. [Parallel Sibling Work](#parallel-sibling-work)
 
 ---
 
@@ -76,6 +77,25 @@ When worktrees are used for parallel work, the same integration contract above s
 - **Init/cleanup lifecycle.** A worktree is created for the duration of a unit of work (`git worktree add <path> <branch>`) and removed once that branch has been integrated and is no longer needed (`git worktree remove <path>`), analogous to how a branch itself is deleted once merged. Leaving stale worktrees around after integration is the worktree-equivalent of leaving stale merged branches around — harmless but untidy, and worth cleaning up.
 
 **Worktrees are optional, not mandated.** Some workflows deliberately avoid them — for example, a workflow where agents take turns working against a branch rather than editing it in parallel doesn't need worktree isolation, because there's no simultaneous parallel state to keep from colliding. Read this section as "here's how, if you're reaching for worktrees," not "you must reach for worktrees."
+
+---
+
+## Debugging Branches
+
+**This section is conditional: if a bug hunt is likely to take several attempts**, here's a pattern that keeps the attempts out of the parent's history. It is not a requirement.
+
+Fork a throwaway branch from wherever the bug shows up, named `debugging/<issue>` (e.g. `debugging/memory-leak-in-profiler`), and commit on it freely: every hypothesis, every diagnostic print, every attempted fix. A committed attempt can be diffed, reverted and compared against the next one; an uncommitted one is lost the moment it is overwritten.
+
+Once the cause is understood, carry the fix back to the original branch in one of two ways:
+
+- **One clean commit** (simple fixes). Check out the original branch and author a single commit containing only the fix, with the root cause and the solution in its body.
+- **A short sequence of clean commits** (complex fixes). Same, but split by logical step (an extraction, the fix itself, its test).
+
+Either way, every commit that reaches the original branch follows [`commit-authoring.md`](commit-authoring.md) and the project's derived vocabulary. Then delete the debugging branch (`git branch -D debugging/<issue>`).
+
+**How this fits the Integration Contract.** A debugging branch is never integrated: it is neither rebased nor merged, so neither `--no-ff` nor the fast-forward prohibition applies to it. What lands is new commits authored on the original branch, and that branch then integrates with its own parent under the contract above. Do not merge, squash-merge or cherry-pick the debugging branch itself; its commits are scratch notes, not history.
+
+**Commit messages on the debugging branch are exempt from the derived vocabulary.** A prefix such as `debug: test hypothesis X` is fine there precisely because none of those commits survives. Never let a `debug:` commit reach a shared branch.
 
 ---
 
