@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - name: Confirm every declared plugin has a complete root
-        run: uv run skills/spawning-agent-plugins/scripts/check_plugin.py --root . --spec plugin.spec.json
+        run: uv run tools/check_plugin.py --root . --spec plugin.spec.json
       - name: Re-assemble every plugin and check for drift
         run: |
           if [ -d plugins ]; then

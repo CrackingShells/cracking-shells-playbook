@@ -32,7 +32,7 @@ If you stage any `.rs` or `Cargo.toml` file under `skills/managing-roadmaps/scri
 
 ## Plugin distribution (`plugins/`)
 
-Five skills — `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports`, `spawning-agent-plugins` — are also distributed as installable agent plugins, in addition to their `.skill` files. Each has a plugin root at `plugins/<name>/`: a Claude Code manifest (`.claude-plugin/plugin.json`), an Agent Plugins 1.0 / Codex manifest (`plugin.json`), and an assembled copy of the skill (`skills/<name>/`).
+Four skills — `managing-roadmaps`, `writing-history`, `writing-release`, `writing-reports` — are also distributed as installable agent plugins, in addition to their `.skill` files. Each has a plugin root at `plugins/<name>/`: a Claude Code manifest (`.claude-plugin/plugin.json`), an Agent Plugins 1.0 / Codex manifest (`plugin.json`), and an assembled copy of the skill (`skills/<name>/`).
 
 Unlike `dist/`, **`plugins/` is committed.** These trees are installed by git source (a marketplace entry pointing at this repo and a path inside it), so the assembled output has to exist in the repository at the resolved ref — it cannot be gitignored build output the way `.skill` files are. That makes `plugins/<name>/` generated content that lives in git beside the source it's generated from, which is a drift risk `dist/` never had. Three things keep it honest:
 
