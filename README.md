@@ -15,9 +15,6 @@ Each skill teaches an agent one part of the work: planning a campaign as a roadm
 | [`writing-reports`](skills/writing-reports/SKILL.md) | Writes stakeholder-reviewable reports under `__reports__/`: architecture, test definition, knowledge transfer, findings, observation, notice and open question. | ✅ |
 | [`writing-history`](skills/writing-history/SKILL.md) | Derives a project's commit vocabulary from its history, authors commits against it, sets up versioning, and integrates branches by rebase then `merge --no-ff`. | ✅ |
 | [`writing-release`](skills/writing-release/SKILL.md) | Writes pull request bodies and Discord announcements for the fork → `dev` → `main` release model used across the org. | ✅ |
-| [`writing-prose`](skills/writing-prose/SKILL.md) | Drafts and revises prose the user signs in their own voice, with register control against LLM-default rhetoric. | — |
-| [`writing-design-canons`](skills/writing-design-canons/SKILL.md) | Writes design canons: identity, token vocabulary, production guidelines and consumption guide for a visual system. | — |
-| [`importing-design-figures`](skills/importing-design-figures/SKILL.md) | Renders a figure or table from a Claude Design project into a print-quality image placed in a local document. | — |
 
 Skills marked ✅ are also listed as agent plugins in the [`CrackingShells/Nest`](https://github.com/CrackingShells/Nest) marketplace. Every skill is published as a `.skill` file with each of its releases.
 
