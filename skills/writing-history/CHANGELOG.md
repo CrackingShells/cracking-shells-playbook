@@ -1,3 +1,10 @@
+# writing-history [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.0.0...writing-history@1.1.0) (2026-10-18)
+
+
+### Features
+
+* **writing-history:** add the debugging-branch pattern to branches.md ([2d86c99](https://github.com/CrackingShells/cracking-shells-playbook/commit/2d86c99014dd4c32bae1adee983b00f2a8d2b2e5)), closes [#2](https://github.com/CrackingShells/cracking-shells-playbook/issues/2)
+
 # writing-history 1.0.0 (2026-07-20)
 
 

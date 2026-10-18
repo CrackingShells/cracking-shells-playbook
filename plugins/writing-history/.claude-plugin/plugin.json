@@ -1,7 +1,7 @@
 {
   "name": "writing-history",
   "displayName": "Writing History",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Guides the git-discipline lifecycle for commit history: vocabulary, versioning, commits, and branch integration.",
   "author": {
     "name": "Eliott Jacopin",
