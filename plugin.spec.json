@@ -1,6 +1,6 @@
 {
   "name": "cracking-shells-playbook",
-  "description": "Five playbook skills, packaged as five installable plugins from one repository.",
+  "description": "Four playbook skills, packaged as four installable plugins from one repository.",
   "author": {
     "name": "Eliott Jacopin",
     "email": "eliott.jacopin@riken.jp"
@@ -52,16 +52,6 @@
       "skills": "./skills/",
       "keywords": ["reports", "documentation", "agents"],
       "codex": { "category": "Productivity" }
-    },
-    {
-      "name": "spawning-agent-plugins",
-      "dir": "plugins/spawning-agent-plugins",
-      "displayName": "Spawning Agent Plugins",
-      "description": "Turns a repository into an installable plugin for Claude Code, Codex, and Agent Plugins 1.0 clients.",
-      "version_from": "package.json:skills/spawning-agent-plugins/package.json",
-      "skills": "./skills/",
-      "keywords": ["plugin", "generator", "agents"],
-      "codex": { "category": "Developer Tools" }
     }
   ]
 }

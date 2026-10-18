@@ -10,7 +10,7 @@ fi
 changed=$(git diff --cached --name-only | grep '^skills/' | cut -d/ -f2 | sort -u)
 
 for skill in $changed; do
-  if [ -d "skills/$skill" ]; then
+  if [ -f "skills/$skill/SKILL.md" ]; then
     uv run tools/package_skill.py "skills/$skill" dist/
     echo "[hook] Built dist/$skill.skill"
   fi
