@@ -105,14 +105,13 @@
           "description": "The release job depends on the gates",
           "type": "contains_any",
           "value": [
+            "needs: [",
             "needs:",
             "gated on",
             "after the tests",
             "after the gates",
-            "needs",
-            "after them",
-            "after the gates pass",
-            "only after"
+            "depends on the gates",
+            "only after the gates"
           ]
         },
         {
@@ -196,9 +195,10 @@
           "description": "Names when a channel would be justified",
           "type": "contains_any",
           "value": [
-            "trigger",
+            "adoption trigger",
             "when to add",
-            "justif"
+            "justif",
+            "evidence"
           ]
         },
         {
@@ -237,10 +237,10 @@
           "value": [
             "Direct lane",
             "direct lane",
+            "Direct-lane",
             "push it directly",
             "straight to main",
-            "directly to main",
-            "Direct"
+            "directly to main"
           ]
         },
         {
