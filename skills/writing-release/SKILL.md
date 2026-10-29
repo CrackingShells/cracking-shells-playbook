@@ -1,96 +1,29 @@
 ---
 name: writing-release
-description: >
-  Write GitHub pull request bodies and Discord release announcement messages
-  for software projects that follow a fork-based contribution workflow and
-  publish releases with Discord announcements. Use this skill whenever the
-  user wants to draft, write, or generate: (1) a PR message for a dev-branch
-  contribution from a fork into the upstream repo's dev branch, (2) a PR
-  message merging the upstream dev branch into its main branch for a versioned
-  release, or (3) a Discord announcement for a dev pre-release or a stable
-  release. Also triggers for phrases like "write the PR", "draft the release
-  notes", "Discord announcement for the new version", "PR description for the
-  merge", "write my PR body", or any request involving release communication
-  for a project with this branching model.
+description: Operational manual for how work reaches `main` and turns into a release in any repository. Covers choosing an integration lane (reviewed PR, self-merge PR, or direct push), writing pull-request titles and bodies that become merge commits, setting up CI-driven releases with tooling derived from what the repo contains, deciding whether a prerelease channel is warranted, and recovering from missing or failed releases. Use when opening, titling or landing a pull request to main; deciding whether a change needs a PR; setting up releases or a CI release job; choosing release tooling; investigating "why didn't it release" or "the release job failed"; adding a prerelease, dev or rc channel; or asked to "cut a release".
 ---
 
 # Writing Release
 
-This skill produces four document types used in projects that follow a
-fork-based, semver-versioned workflow with Discord release announcements.
+## Primary Directives
 
-## Quick reference — which document do you need?
+**One channel, and the lightest lane that still gates what the change risks.** `main` is the only place releases come from, because every extra channel is a second integration to keep in sync. A change reaches `main` by a reviewed PR, a self-merge PR or a direct push, chosen by what merging would release and what it could break. A heavier lane than needed costs latency; a lighter one costs a release nobody reviewed.
 
-| Situation | Document type | Reference file |
-|---|---|---|
-| Merging **your fork's `dev`** into **upstream's `dev`** | **PR Type A** — feature/fix contribution | `references/pr-fork-to-dev.md` |
-| Merging **upstream `dev`** into **upstream `main`** | **PR Type B** — versioned release | `references/pr-dev-to-main.md` |
-| Announcing a **dev pre-release** on Discord | **Discord dev** announcement | `references/discord-dev-release.md` |
-| Announcing a **stable release** on Discord | **Discord main** announcement | `references/discord-main-release.md` |
+**A release is a consequence of merging, not a ceremony.** CI cuts it after a change lands: no release PRs, no local release commands, no hand-made tags. One path is easier to sustain, audit and recover than several. Asked to "cut a release", land a release-type commit through the right lane; do not tag by hand.
 
-Read the appropriate reference file before writing. They contain annotated
-real examples and fill-in templates.
+**Tooling is derived from what the repo contains, never assumed.** Language, layout, existing config and conventions choose the release tool. Prefer the main language's toolchain and the leanest setup that works, so CI needs nothing extra to maintain.
 
----
+**This skill composes with `writing-history`.** Commit vocabulary and messages, version-bump semantics, branch-to-parent integration and worktrees belong to the `writing-history` skill. This manual says what happens to that work on its way to `main` and after; it never restates it.
 
-## Workflow
+## Navigation
 
-1. **Identify the document type** from the table above. Ask the user if
-   it's unclear — the key question is always: what is the base branch?
-   - Base = upstream `dev` → PR Type A
-   - Base = upstream `main` → PR Type B
-   - Discord message for a `-devN` version → Discord dev
-   - Discord message for a stable version → Discord main
+Read the routed reference before acting; the table says where a rule lives, not what it says.
 
-2. **Gather what you need.** Before writing, confirm you have:
-   - The **version string** (e.g. `v1.3.0`, `v1.3.0-dev.2`) — preserve the
-     exact format the user provides
-   - The **list of changes** — commits, feature names, bug descriptions.
-     The user may paste a git log, bullet points, or describe them verbally.
-   - For PR Type B and stable Discord: the constituent **dev PR numbers /
-     dev release links** so you can cross-reference them
-   - For Discord: the **pip/npm install command** if it changed, and the
-     **package name** on the registry
-
-3. **Read the reference file** for the document type, then write the output.
-
-4. **Always output both a title and a body together** as a single ready-to-
-   copy block. The title goes first, clearly labelled:
-   ```
-   **Title:** [vX.Y.Z-devN] Short description of changes
-
-   **Body:**
-   ## Summary
-   …
-   ```
-   This saves the user a copy-paste step.
-
-5. **Review before presenting:**
-   - Does the title match the version string exactly?
-   - Are all mentioned features actually in the change list provided?
-   - Is the tone right? (technical for PRs, friendly+accessible for Discord)
-   - No invented changes — if something seems missing, ask rather than guess.
-
----
-
-## Shared conventions across all documents
-
-- **Version strings:** Preserve the exact format the user provides.
-  Common patterns: `v1.0.0`, `v1.0.0-dev.1`, `v1.0.0.dev2`.
-
-- **Emoji in Discord messages:** The project uses custom Discord emoji.
-  The reference file has examples from the Hatch project — substitute your
-  own project's custom emoji codes where relevant, or use standard Unicode
-  emoji as a fallback.
-
-- **Code blocks in PRs:** Use triple-backtick fenced blocks with a language
-  tag when showing CLI examples (`bash`) or config snippets.
-
-- **Headers:** PRs use `##` for top-level sections, `###` for subsections.
-  Discord messages use `##` or `###` — see reference files for specifics.
-
-- **Cross-references in Type B PRs:** When a section summarises a dev PR,
-  append its number in parentheses, e.g. `**Feature name** (#42)`.
-
-- **Never invent changes.** Only describe what the user has told you.
-  If something seems missing, ask rather than guess.
+| Situation | Reference |
+|:--|:--|
+| Deciding whether a change needs a PR, choosing a lane, mapping lanes in a repo, understanding the lifecycle and its invariants, or asked to "cut a release" | [`references/lifecycle.md`](references/lifecycle.md) |
+| Opening, titling, writing or landing a PR; a self-merge was blocked; what to do after merging | [`references/pull-requests.md`](references/pull-requests.md) |
+| Setting up releases in a repo: what a pipeline needs, choosing tooling from the repo's contents, repository settings, the contributing-guide section | [`references/setting-up.md`](references/setting-up.md) |
+| Writing or changing the CI release job: triggers, concurrency, permissions and tokens, branch protection, the bump commit, monorepos, re-runs | [`references/ci-release-job.md`](references/ci-release-job.md) |
+| Asked for a prerelease, dev or rc channel, or a long-lived development branch | [`references/channels.md`](references/channels.md) |
+| No release appeared, the release job failed, a bump push was rejected, the first release or tags are missing, history was rewritten on `main`, or local `main` is stale | [`references/recovery.md`](references/recovery.md) |
