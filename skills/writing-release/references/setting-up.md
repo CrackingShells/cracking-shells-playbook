@@ -131,7 +131,7 @@ before=$(git rev-parse HEAD)
 <bump command>
 [ "$(git rev-parse HEAD)" = "$before" ] && exit 0   # nothing to release
 TAG=$(git describe --tags --abbrev=0)
-git push origin HEAD "$TAG"                         # --follow-tags skips lightweight tags
+git push origin HEAD:main "$TAG"                    # explicit branch: CI may be on a detached HEAD; --follow-tags skips lightweight tags
 gh release create "$TAG" --notes-file <notes file>
 ```
 
