@@ -25,7 +25,7 @@ graph TD
     process[Process: Lifecycle, Pull Requests, Dispatcher]:::done
     tooling[Tooling: Setting Up and Channels]:::done
     ci_and_recovery[CI Release Job and Recovery]:::done
-    refine[Refine Content]:::inprogress
+    refine[Refine Content]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -39,7 +39,7 @@ graph TD
 | `process.md` | 📄 Leaf Task | ✅ Done |
 | `tooling.md` | 📄 Leaf Task | ✅ Done |
 | `ci_and_recovery.md` | 📄 Leaf Task | ✅ Done |
-| `refine/` | 📁 Directory | 🔄 In Progress |
+| `refine/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

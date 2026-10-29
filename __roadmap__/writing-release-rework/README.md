@@ -80,7 +80,7 @@ Ship `writing-release@2.0.0` as a stand-alone, best-practice-compliant release-c
 ```mermaid
 graph TD
     chores[Coordinator Chores]:::done
-    author[Author the Manual]:::inprogress
+    author[Author the Manual]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -92,7 +92,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `chores.md` | 📄 Leaf Task | ✅ Done |
-| `author/` | 📁 Directory | 🔄 In Progress |
+| `author/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

@@ -20,7 +20,7 @@ Leave no meta-discourse, project-specific name or single-data-point advice in an
 ```mermaid
 graph TD
     standalone[Stand-Alone Pass]:::done
-    review[Review and Close]:::inprogress
+    review[Review and Close]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -32,7 +32,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `standalone.md` | 📄 Leaf Task | ✅ Done |
-| `review/` | 📁 Directory | 🔄 In Progress |
+| `review/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

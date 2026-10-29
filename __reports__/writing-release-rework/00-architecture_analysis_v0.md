@@ -59,7 +59,7 @@ This report is **source material for the campaign only**. Nothing below may be q
   - pull `main` after merging.
 - **CI in one `ci.yml`:**
   - jobs run gates → commits (`cog check` over the range, plus a title check) → release (push to `main` only, never cancelled);
-  - `release-plz update` makes the bump commit and pushes it;
+  - `release-plz update` writes the version, lock-file and changelog edits locally (it does not commit); the CI job commits and pushes them (corrected after the docs check: the release-plz docs describe `update` as local updates without committing);
   - `release-plz release` creates the tags and GitHub Releases;
   - no registry publish.
 - **Lessons:**

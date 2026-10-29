@@ -50,4 +50,69 @@ Method: read SKILL.md, the six references, `writing-history` SKILL.md and its fo
 
 ## Evals
 
-Filled by the coordinator from the eval run.
+Two independent runs, each by a fresh agent that read only the prompt, followed the skill's routing, wrote its answer, and only then graded every assertion literally with a script.
+
+| Run | Skill state | Assertions | Substance vs expected_output |
+|:--|:--|:--|:--|
+| 1 | after both content passes, before V2 fixes | 19 / 21 (both failures in eval 2, assertion at fault) | 5 PASS |
+| 2 | after the V2 fix round | 21 / 21, one spurious pass (eval 2 `gated-release-job` matched an unrelated "needs") | 4 PASS, 1 PARTIAL (eval 2 answer omitted the gating; the skill states it) |
+
+Assertion changes, both adjudicated as assertion faults, not content faults:
+- after run 1, `ci-on-main` and `gated-release-job` were widened to accept equivalent phrasings;
+- after run 2, `gated-release-job`, `direct-lane` and `adoption-triggers` were tightened so that only the specific claim passes.
+
+Gaps both runs hit were fed back into the content:
+- the navigation row for setup now routes to the CI job wiring;
+- `setting-up.md` has a per-tool fill-in table, a psr-versus-commitizen tie-break and the single-unit bump message;
+- `pull-requests.md` explains how to cross-reference sub-branches merged without PRs.
+
+The tightened assertions were not re-run against the final content.
+
+## V1 fact review
+
+V1 checked factual and behavioural claims against official docs, `--help` output and scratch-repository experiments. It worked in three rounds.
+
+| Round | Scope | Result |
+|:--|:--|:--|
+| 1 | `setting-up.md`, `channels.md`, `ci-release-job.md`, `recovery.md`, and the git/gh lines of `pull-requests.md` | 16 findings, 4 major: rc promotion needs a bump commit; the stable-pointer workaround; classic protection does not waive checks; a title-edit run cancelling gates. All fixed before the author branches merged. |
+| 2 | the same, after merging | F1–F16 all resolved |
+| 3 | the new CI fill-in table plus new recipes | 11 findings, 4 major: `--follow-tags` skips lightweight tags; cocogitto action inputs; an unguarded `gh release create`; checker install missing from the skeleton. All fixed in round 3. |
+
+Author-reported doc sources are kept in the author hand-back reports. The shipped files cite none, per C5.
+
+## Adjudications (coordinator)
+
+| Finding | Ruling |
+|:--|:--|
+| V2 F02, F04, F05, F06, F12 | Lanes re-pinned in the contract (C3), keeping their intent: a change under a released path is never Direct; Self-merge needs gating CI and merge rights, otherwise Reviewed; any refusal falls back to the maintainer; Direct order is `pull --ff-only`, integrate, push; a refused Direct push becomes a PR. |
+| V2 F01 | PR titles need a non-release type the checker accepts; `merge(<scope>)` is only the example. The merge type is provisioned at adoption, and in `writing-history` → `convention-setup.md`. |
+| V2 F06 (`branches.md` → `origin/<parent>`) | Not applied. `branches.md` is outside this campaign, already fetches first, and covers local-only repos; with `pull --ff-only` first, local `<parent>` equals origin. V2 accepted this. |
+| V2 F15 (two CONTRIBUTING templates differ in shape) | Left as is: `lifecycle.md` owns the lanes table and `setting-up.md` owns the rest of the section skeleton. Minor. |
+| Best-practices flags (statements about what docs say) | Rewritten by the stand-alone pass as time-neutral guidance. V2 F18 then restored the one operational fact this dropped (the classic bypass list skips PRs only). |
+| Coordinator spot-check | The guarded release tail pushed `HEAD`; changed to `HEAD:main` for detached CI checkouts. |
+
+## Content passes
+
+- **Best practices:** a findings table covering every applicable rule on the official page. The edits were wording, structure and terminology only. Headings and the lane table were byte-identical afterwards. Three documentation-state statements were flagged and handed to the stand-alone pass.
+- **Stand-alone:** no repository names or meta-discourse were found. Fourteen "what the docs say" passages were rewritten as time-neutral guidance. Step 2 (the writing-history handoff and the plugin spec) needed no change, so it has no commit.
+- **V2 confirmation:** of the 24 findings, 17 were RESOLVED and 7 PARTIAL, none OPEN, plus 6 new minors. All PARTIALs and new minors were addressed in round 3, except F15 (see Adjudications).
+
+## Closing gates (all PASS)
+
+- `uv run tools/check_plugin.py --root . --spec plugin.spec.json` reports the structure consistent. After `assemble_plugin.py` for writing-release and writing-history, `git status --porcelain plugins/` is empty.
+- `uv run tools/package_skill.py skills/writing-release dist/` succeeds, and `quick_validate.py` passes for both skills.
+- Every relative link and anchor in `skills/writing-release/**` resolves, and every relative link in `skills/writing-history/**` resolves.
+- Residue over the shipped files is empty: no repository names, Discord, meta-discourse markers, or absolute "every change goes through a PR" wording.
+- Line caps hold: SKILL.md is 31 lines with a description under 1024 characters, and the references run 103 to 280 lines, all under 350.
+- Release analysis over `main..HEAD`:
+  - exactly one `BREAKING CHANGE` (`feat(writing-release)!: turn the skill into the release-cycle manual`), so writing-release goes to 2.0.0;
+  - `feat` and `fix` commits on `skills/writing-history`, so it gets a minor release;
+  - no release-type commit on the other skills;
+  - `CHANGELOG.md` and `package.json` untouched;
+  - every non-merge subject matches the convention.
+
+## Known blemishes
+
+- `0a44686 test(writing-release): accept equivalent phrasings…` also carries a hook-regenerated `plugins/writing-release/` copy. Rewriting that unpushed commit was refused by the session's permissions, so it stands; the closing `chore(plugins)` commit regenerated the tree again from the final source.
+- `writing-history` → `convention-setup.md` still contains the pre-existing phrase "not-our-project derivation path", which is outside this campaign's scope.
+- The `GH013` ruleset error text and two release-please facts (`pull-requests: write`, the approval hold) were not re-verified against docs in round 3. They are worded as "typically" or attributed to V1.
