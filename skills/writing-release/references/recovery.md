@@ -50,6 +50,8 @@ Placeholders: `<unit>` is a released unit (or the whole repository when it has o
 
 | Cause | Fix |
 |:--|:--|
+| No release job exists | Nothing to repair: set the pipeline up ([setting-up.md](setting-up.md#capabilities-a-release-pipeline-needs)). |
+| The job ran and found nothing for a config reason (for example its branch setting does not match `main`) | The release config is machinery: fix it in a Reviewed PR ([lifecycle.md](lifecycle.md#integration-lanes)), then start a manual run. |
 | Skip marker | Start a fresh run on the current tip: `gh workflow run <workflow-file> --ref main`. Skip markers apply only to `push` and `pull_request` runs, so a manual run is not affected. Then remove the marker's source. |
 | A gate failed on `main` | Fix forward through the normal lanes; the release job runs on the next push (or a manual run) and releases everything since the last tag. Do not skip or weaken the gate. |
 | Cancelled run | The workflow cancels runs on `main`, which it should not: [ci-release-job.md](ci-release-job.md#triggers-and-concurrency). Fix the concurrency expression, then start a manual run. |
@@ -66,7 +68,7 @@ Placeholders: `<unit>` is a released unit (or the whole repository when it has o
 | Message shape | Meaning |
 |:--|:--|
 | `! [rejected] … (fetch first)` or `non-fast-forward` | Race: another push reached `main` after the job checked out. |
-| `GH006: Protected branch update failed`, followed by a reason (a required PR or a required status check) | Protection: the pushing identity may not bypass. |
+| Typically `GH006: Protected branch update failed` (classic branch protection) or `GH013: Repository rule violations found` (rulesets), followed by a reason (a required PR or a required status check) | Protection: the pushing identity may not bypass. |
 
 For a race, compare the run's commit with the tip: `gh run view <run-id> --json headSha` against `git log origin/main --oneline -3`. Then see what the failed run left behind:
 
@@ -87,7 +89,7 @@ gh release list --limit 5                    # a Release with no bump commit?
 
 ### A Direct-lane push was rejected
 
-**Symptom.** A `git push` of a Direct-lane change to `main` fails with `GH006: Protected branch update failed`.
+**Symptom.** A `git push` of a Direct-lane change to `main` fails with a protection message: typically `GH006: Protected branch update failed` (classic protection) or `GH013: Repository rule violations found` (rulesets).
 
 **Confirm.** `main` is protected, and CONTRIBUTING's lanes table says whether this change class is Direct with a bypass ([lifecycle.md](lifecycle.md#choosing-a-lane)).
 
@@ -95,6 +97,7 @@ gh release list --limit 5                    # a Release with no bump commit?
 
 ```bash
 git switch -c <topic>              # the commit now lives on a branch
+git fetch origin
 git branch -f main origin/main     # local main matches the remote again
 git push -u origin <topic>
 ```
