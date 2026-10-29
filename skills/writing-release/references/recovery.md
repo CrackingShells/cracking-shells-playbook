@@ -6,6 +6,7 @@ What to do when a release does not happen, fails halfway, or leaves `main` in a 
 
 - [Nothing Was Released](#nothing-was-released)
 - [The Bump Push Was Rejected](#the-bump-push-was-rejected)
+  - [A Direct-lane push was rejected](#a-direct-lane-push-was-rejected)
 - [First Release and Missing Tags](#first-release-and-missing-tags)
 - [Re-running a Release](#re-running-a-release)
 - [History Rewritten on main](#history-rewritten-on-main)
@@ -16,27 +17,34 @@ Placeholders: `<unit>` is a released unit (or the whole repository when it has o
 
 ## Nothing Was Released
 
-**Symptom.** A change merged, CI finished (or never started), and `main` has no bump commit, tag or Release for it.
+**Symptom.** A change merged, CI finished (or never started), and `main` has no tag or Release for it (nor a bump commit, if the tool commits version files).
 
 **Confirm**, in this order; the first match is the cause:
 
-1. **No run started.** `gh run list --branch main --commit <merge-sha>` is empty. Look for a skip marker in the pushed head commit's message, which includes the merge commit's body, i.e. the PR body:
+1. **There is no release job.** `gh workflow list` and `git ls-tree -r --name-only origin/main .github/workflows` show no workflow with a release step on `main` (it may sit on an unmerged branch). Nothing can release: go to [setting-up.md](setting-up.md#capabilities-a-release-pipeline-needs).
+2. **No run started.** `gh run list --branch main --commit <merge-sha>` is empty. Look for a skip marker in the pushed head commit's message, which includes the merge commit's body, i.e. the PR body (marker list: [ci-release-job.md](ci-release-job.md#the-bump-commit)):
 
    ```bash
-   git log -1 --format=%B <merge-sha> | grep -iE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|skip-checks'
+   git log -1 --format=%B <merge-sha> | grep -inE 'skip|no ci'
    ```
 
    Other reasons: Actions disabled, or a trigger filter that excludes the push ([ci-release-job.md](ci-release-job.md#triggers-and-concurrency)).
-2. **The run did not reach `release`.** `gh run view <run-id>` shows `gates` or `commits` failed (the release job is skipped on purpose), or the run was cancelled.
-3. **No release-type commit on a released path since the last tag.**
+3. **The run did not reach `release`.** `gh run view <run-id>` shows `gates` or `commits` failed (the release job is skipped on purpose), or the run was cancelled.
+4. **The release job ran and found nothing.** Read its log: the tool states why (for example its configured release branch does not match `main`, or no release-type commit since its last tag). That statement outranks the next two steps' guesses.
+5. **No release-type commit on a released path since the last tag.** Find the last tag (prerelease-aware sort: [ci-release-job.md](ci-release-job.md#hardening)):
 
    ```bash
    LAST=$(git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname | head -1)
+   ```
+
+   If `$LAST` is empty there is no tag: this is a first release, so go to [First Release and Missing Tags](#first-release-and-missing-tags) and do not run the log below (its range would be `..origin/main`). Otherwise:
+
+   ```bash
    git log "$LAST"..origin/main --format='%h %s' -- <released path>
    ```
 
-   Empty output, or only non-release types (docs, chore, test), means nothing is due, by design ([lifecycle.md](lifecycle.md#integration-lanes); what releases: `writing-history` → `references/semver-changelog.md`). Commits that touch only reports, roadmaps or docs outside a unit never release.
-4. **The tool found nothing because it lost its baseline.** The last tag is not an ancestor of `main`: `git merge-base --is-ancestor "$LAST" origin/main || echo orphaned`. Go to [History Rewritten on main](#history-rewritten-on-main). A shallow checkout hides tags from the tool too: [First Release and Missing Tags](#first-release-and-missing-tags).
+   Empty output, or only non-release types (docs, chore, test), means nothing is due, by design (what releases: `writing-history` → `references/semver-changelog.md`). Whether a commit touching a given path counts depends on whether the tool scopes releases by path: [lifecycle.md](lifecycle.md#mapping-lanes-in-a-repository).
+6. **The tool lost its baseline.** The last tag is not an ancestor of `main`: `git merge-base --is-ancestor "$LAST" origin/main || echo orphaned`. Go to [History Rewritten on main](#history-rewritten-on-main). A shallow checkout hides tags from the tool too: [First Release and Missing Tags](#first-release-and-missing-tags).
 
 **Fix.**
 
@@ -51,7 +59,7 @@ Placeholders: `<unit>` is a released unit (or the whole repository when it has o
 
 ## The Bump Push Was Rejected
 
-**Symptom.** The release job fails at the step that pushes the bump commit.
+**Symptom.** The release job fails at the step that pushes the bump commit (only tools that commit version files push one; a tag-only tool has no such step).
 
 **Confirm.** Read the failing step's log:
 
@@ -73,9 +81,27 @@ gh release list --limit 5                    # a Release with no bump commit?
 - **Race, no new tag or Release.** Nothing was published. Do not re-run the failed run (it replays the old commit): start a fresh run on `main` (`gh workflow run <workflow-file> --ref main`), or let the next push's run do it. It releases the accumulated commits together.
 - **Race, a tag or Release exists.** Check whether the tag's commit is reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`). Most tools tag the bump commit itself, so a tag whose commit is not on `main` means the push that carried it never landed: the maintainer deletes the tag and its Release (`gh release delete <tag> --cleanup-tag`), then a fresh run releases the same version cleanly. A tag that is reachable from `main` without a bump commit can only come from a tool that tags another commit; ask the maintainer how that tool continues. Never publish the same version twice.
 - **Race, a registry already holds the version.** A registry refuses a version it has, so the fresh run fails at publish: [Re-running a Release](#re-running-a-release) covers registry-first publishes.
-- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on a ruleset's bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). With required status checks, a ruleset bypass actor (or an admin with "Do not allow bypassing" off) is needed, because the bump commit has no checks; do not assume the classic bypass-PR list waives them. Verify on a scratch repository.
+- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on a ruleset's bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). With required status checks, a ruleset bypass actor (or an admin with "Do not allow bypassing" off) is needed, because the bump commit has no checks. The classic "bypass required pull requests" list lets actors skip the PR requirement only; do not assume it waives checks. Test the setup with the [scratch recipe](ci-release-job.md#checking-protection-on-a-scratch-repository).
 
 **Prevention.** Concurrency serialises runs but cannot stop a person's push, so a race is possible whenever someone lands while a release is running; the design absorbs it ([ci-release-job.md](ci-release-job.md#idempotent-re-runs)). Settle protection before the first release: [setting-up.md](setting-up.md#adoption-checklist).
+
+### A Direct-lane push was rejected
+
+**Symptom.** A `git push` of a Direct-lane change to `main` fails with `GH006: Protected branch update failed`.
+
+**Confirm.** `main` is protected, and CONTRIBUTING's lanes table says whether this change class is Direct with a bypass ([lifecycle.md](lifecycle.md#choosing-a-lane)).
+
+**Fix.** Open a PR: the change releases nothing, so the Self-merge mechanics apply ([pull-requests.md](pull-requests.md#opening-a-pull-request)). Do not use `--admin`, a bypass or a force push unless CONTRIBUTING names this change class as Direct with a bypass. Move the commit without losing it:
+
+```bash
+git switch -c <topic>              # the commit now lives on a branch
+git branch -f main origin/main     # local main matches the remote again
+git push -u origin <topic>
+```
+
+If the host also requires an approval the agent cannot give, hand the green PR to the maintainer ([pull-requests.md](pull-requests.md#self-merge-and-its-fallback)).
+
+**Prevention.** State the protection and the bypass (or its absence) in CONTRIBUTING's lanes table, so the lane is chosen correctly the first time.
 
 ## First Release and Missing Tags
 
@@ -116,22 +142,22 @@ git push origin <unit>@<current-version>
 |:--|:--|
 | Transient failure, `main` unmoved since the run's commit | `gh run rerun <run-id> --failed` |
 | `main` has moved | A fresh run on the tip: `gh workflow run <workflow-file> --ref main`. A re-run replays the original commit and ref, so it would rebuild from stale history and its bump push would be rejected. |
-| Re-run budget spent or the run is older than 30 days | A fresh run, for the same reason: re-runs are limited in number and age. |
+| Re-run limit reached | A fresh run, for the same reason: the platform limits re-runs by count and age (e.g. 30 days; confirm the current limits). |
 | A registry already accepted the version, but the tag or Release is missing | Not a plain re-run: the registry will refuse the same version. Tag the published commit, create the Release for it by hand (maintainer), and fix the ordering that let the publish go first. |
 
 **Verify afterwards**, every time:
 
 ```bash
 git fetch --tags origin && git log origin/main --first-parent --oneline -5
-git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname | head -3
+git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname | head -3   # prerelease-aware: ci-release-job.md#hardening
 gh release list --limit 3
 ```
 
-- Exactly one bump commit per version, authored by the bot, with `[skip ci]`.
+- If the tool commits version files: exactly one bump commit per version, authored by the bot, with `[skip ci]`. A tag-only tool has none; the tag and Release are the whole record.
 - One tag per version, reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`).
 - A Release for that tag, with notes and assets.
 - The registry shows the version, if the repository publishes.
-- No second run started by the bump commit.
+- No second run started by the bump commit (if there is one).
 
 ## History Rewritten on main
 
@@ -162,7 +188,7 @@ done
 
 **Symptom.** A Direct-lane `git push` is rejected as non-fast-forward; a topic branch cut from local `main` conflicts in version files or the changelog; a PR shows changes to bot-managed files you never made.
 
-**Cause.** The bump commit lands after the merge, a minute or more later, made by CI. Local `main` does not have it until you pull. The same applies to every other maintainer's landing.
+**Cause.** If the tool commits version files, the bump commit lands after the merge, a minute or more later, made by CI. Local `main` does not have it until you pull. The same applies to every other maintainer's landing.
 
 **Confirm.**
 
@@ -186,14 +212,14 @@ Watch the first release-type merge end to end, once, before trusting the job. Co
 
 - [ ] **The run starts.** A run appears for the merge commit's SHA (`gh run list --branch main --commit <sha>`). None: [Nothing Was Released](#nothing-was-released).
 - [ ] **The graph is right.** `changes`, `gates` and `commits` pass; `release` is not skipped.
-- [ ] **The bump commit lands.** On `origin/main`, subject `chore(release): … [skip ci]`, authored by the bot. `git show --stat <bump-sha>` lists only version fields, lock files and the changelog.
+- [ ] **The bump commit lands** (if the tool commits version files; a tag-only tool skips this item and the next). On `origin/main`, subject `chore(release): … [skip ci]`, authored by the bot. `git show --stat <bump-sha>` lists only version fields, lock files and the changelog.
 - [ ] **It starts nothing.** No run exists for the bump commit's SHA.
 - [ ] **The tag exists** in the expected format, is reachable from `main`, and sits on the commit the tool is expected to tag. `git ls-remote --tags origin '<tag-glob>'`.
 - [ ] **The Release exists**, with notes that list the commits of the merged branch (not only the merge commit) and the expected assets.
-- [ ] **The changelog entry matches.** Versions in the manifest and lock files equal the tag.
+- [ ] **The changelog entry matches.** Where versions are committed, the manifest and lock files equal the tag.
 - [ ] **Registry** (if the repository publishes): the version is there once.
-- [ ] **Pull `main`** and check the local tree has the bump commit ([Local main Is Stale](#local-main-is-stale)).
-- [ ] **Land a Direct-lane change** (a doc fix). The commit-range check must run, nothing may release, and with protection on, the maintainer's push must be accepted.
+- [ ] **Pull `main`** and check the local tree has the bump commit, if there is one ([Local main Is Stale](#local-main-is-stale)).
+- [ ] **Land a Direct-lane change** (a doc fix). The commit-range check must run, nothing may release, and with protection on, the push is accepted only where CONTRIBUTING names that change class as Direct with a bypass; otherwise it is refused and becomes a PR ([A Direct-lane push was rejected](#a-direct-lane-push-was-rejected)).
 - [ ] **Learn the half-failure behaviour** while nothing is at stake: read the tool's documentation for what it does when the push step fails, so the "tag or Release exists?" question in [The Bump Push Was Rejected](#the-bump-push-was-rejected) is not new during an incident.
 
 If any item fails, fix it before the next release-type merge; a failed first run is cheaper than a wrong tag on a real release.
