@@ -13,7 +13,7 @@ A pull request (PR) in this manual is a future merge commit: its title becomes t
 
 ## Opening a Pull Request
 
-Open a PR only in the Reviewed PR and Self-merge PR lanes ([lifecycle.md](lifecycle.md#integration-lanes)); a Direct-lane change has no PR.
+Open a PR only in the Reviewed PR and Self-merge PR lanes ([lifecycle.md](lifecycle.md#integration-lanes)); a Direct-lane change has no PR, unless `main` refuses the push, in which case it goes through a PR.
 
 Before opening:
 
@@ -31,17 +31,20 @@ Revise later with `gh pr edit <pr> --title "$(cat <scratch>/pr-title.txt)" --bod
 
 ## Title
 
-The merge subject starts with the title, so the title is `merge(<scope>): <what lands and why>`. The host may append ` (#<n>)` to it; the repository's title check and commit-range check must accept that suffix (most do).
+The merge subject starts with the title, so the title needs a **non-release type that the repository's commit checker accepts**. A release type (`fix`, `feat`) would give the merge commit its own changelog entry or version bump on top of the commits it wraps.
 
-- **Vocabulary is the repository's own.** The `merge` type, the scope names and the length limit come from the repository's commit convention, derived as `writing-history` → `references/commit-authoring.md` describes ("Deriving the Vocabulary"). If the repository's vocabulary names merge commits differently, use its name.
+- **Use the repository's merge-commit type** if it has one, for example `merge(<scope>): <what lands and why>`.
+- **If it has none**, add one when adopting the release cycle ([setting-up.md](setting-up.md#adoption-checklist)), or agree with the maintainer to use `chore(<scope>)`.
+- **Vocabulary, scopes and limits are the repository's own**, derived as `writing-history` → `references/commit-authoring.md` describes ("Deriving the Vocabulary").
 - **Scope names the unit landing**, not the mechanism: `<unit>` or `<topic>`.
 - **Say why, not only what.** The subject is what a reader scanning `git log --merges` sees.
 - **Leave out version numbers.** The release job assigns the version; a version in the title is a guess that can be wrong.
+- **Length**: the commit checker's limit minus the host's ` (#<n>)` suffix, about 8 characters. The host may append the suffix, and both the title check and the commit-range check must accept it (most do). A title that passes at PR time can fail after the merge if it is too long.
 
 | Weak | Better |
 |:--|:--|
-| `Update auth` | `merge(<unit>): refresh tokens before expiry so long sessions stay signed in` |
-| `merge(<unit>): changes` | `merge(<unit>): add the <provider> login provider behind the shared interface` |
+| `Update auth` | `merge(<unit>): refresh tokens before they expire` |
+| `merge(<unit>): changes` | `merge(<unit>): add <provider> login behind one interface` |
 
 CI checks the title against the commit vocabulary, and again when it is edited ([ci-release-job.md](ci-release-job.md#triggers-and-concurrency)).
 
@@ -71,26 +74,28 @@ Guidance:
 - **Plain labels, no `#` headings**, so the body reads the same in `git log` and on the PR page.
 - **Verification is evidence**, not "tested": the check that ran and what it showed. A reviewer cannot approve what the body does not show.
 - **A breaking change is declared in the commits' own footers** (`writing-history` → `references/commit-authoring.md`, "Body and Footer Guidance"); the body repeats it so the reviewer sees it, with the migration path.
+- **Footer-shaped lines are parsed.** Release tools and the host read lines such as `BREAKING CHANGE:`, version-override trailers, issue-closing keywords and skip markers. Write them in the body only on purpose, and never "BREAKING CHANGE: none".
 - **The trailer goes last, after a blank line**, so it parses as a trailer. Use it for agent-authored PRs, with the attribution line the session gives you.
 
 ## Landing
 
-Follow the steps in order. A new push makes earlier results stale, so return to step 2. A check that fails in step 3 is fixed first, then start again from step 1.
+Follow the steps in order. A new push makes earlier results stale, and can dismiss an approval, so return to step 2. A check that fails in step 3 is fixed first, then start again from step 1.
 
 1. **Rebase onto the current `main`.**
    ```bash
+   LAST=$(git rev-parse origin/<type>/<topic>)    # before the fetch
    git fetch origin
    git rebase origin/main        # add --rebase-merges if the branch holds merge commits
-   git push --force-with-lease=<type>/<topic>:<last-pushed-sha>
+   git push --force-with-lease=<type>/<topic>:"$LAST"
    ```
-   - Name the SHA you last pushed (`git rev-parse origin/<type>/<topic>` *before* the fetch): the fetch refreshes the remote-tracking ref, so a bare `--force-with-lease` compares against what you just fetched and protects nothing. `--force-with-lease --force-if-includes` is an alternative.
+   - Read `LAST` before the fetch: the fetch refreshes the remote-tracking ref, so a bare `--force-with-lease` compares against what you just fetched and protects nothing. `--force-with-lease --force-if-includes` is an alternative.
    - Resolve conflicts commit by commit and re-verify afterwards; `writing-history` → `references/branches.md` owns that contract.
    - Force-pushing is acceptable here because the topic branch is yours alone; never force-push `main` or a branch others build on.
 2. **Wait for green on the rebased head.** `gh pr checks <pr> --watch`. A green run on an older head says nothing about the one you will merge.
 3. **Check before merging:**
    - [ ] Every required check is green on the current head.
    - [ ] Title and body still describe what the branch now contains, because they become the merge message.
-   - [ ] Reviewed PR lane: the maintainer has approved (`gh pr view <pr> --json reviewDecision`). An empty `reviewDecision` means the base branch has no review rule, not that the PR is approved; read `--json reviews,latestReviews` for the maintainer's approval. Green CI alone is not approval.
+   - [ ] Reviewed PR lane: the maintainer has approved. Approval is an approving GitHub review (`gh pr view <pr> --json reviewDecision,reviews,latestReviews`; an empty `reviewDecision` means the base branch has no review rule, not that the PR is approved), or the maintainer's explicit instruction in the session naming this PR. In a solo-maintainer repository the author cannot approve their own PR, so the instruction is the usual form. If a rebase changed the head after approval, confirm it again. Green CI alone is not approval.
    - [ ] No review thread is left unresolved.
 4. **Merge with a merge commit.**
    ```bash
@@ -102,17 +107,17 @@ In the Reviewed PR lane, the merge follows the maintainer's approval: the mainta
 
 ## Self-Merge and Its Fallback
 
-In the Self-merge PR lane the agent rebases, waits for green, merges with a merge commit and reports the PR link ([Landing](#landing)).
+In the Self-merge PR lane the agent rebases, waits for green, merges with a merge commit and reports the PR link ([Landing](#landing)). The lane needs gating CI and a host that lets the agent merge without an approving review; where either is missing, the repository treats the change as a Reviewed PR ([lifecycle.md](lifecycle.md#mapping-lanes-in-a-repository)).
 
-If the harness or a permission classifier blocks the merge, **stop**. Do not retry it, and do not route around it: no other merge command or API call, no `--admin`, no direct push to `main`, no change to settings or branch protection. The lane is a delegation from the maintainer, and a block means that delegation does not cover this case right now. Working around it turns a control into an obstacle and spends trust the lane depends on.
+If **anything** refuses the merge (the agent's permissions or runtime, or the host: required reviews, branch policy), **stop**. Do not retry it, and do not route around it: no other merge command or API call, no `--admin`, no direct push to `main`, no change to settings or branch protection. The lane is a delegation from the maintainer, and a refusal means that delegation does not cover this case right now. Working around it turns a control into an obstacle and spends trust the lane depends on.
 
 Hand the PR over instead, in one message:
 
 - the PR link, with CI green on the current head;
-- what was blocked and the error as reported;
+- what refused the merge and the error as reported;
 - what the maintainer needs to do: merge with a merge commit.
 
-A blocked self-merge costs one maintainer click; a worked-around block costs the lane.
+A refused self-merge costs one maintainer click; a worked-around refusal costs the lane.
 
 ## After the Merge
 
