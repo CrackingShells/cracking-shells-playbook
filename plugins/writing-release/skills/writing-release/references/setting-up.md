@@ -10,6 +10,7 @@ How a repository adopts the release lifecycle: which capabilities the pipeline n
   - [By repository contents](#by-repository-contents)
   - [What each tool covers](#what-each-tool-covers)
   - [Units and tags](#units-and-tags)
+  - [Filling the CI skeleton](#filling-the-ci-skeleton)
 - [Repository Settings](#repository-settings)
 - [The CONTRIBUTING Section](#the-contributing-section)
 - [Adoption Checklist](#adoption-checklist)
@@ -47,8 +48,8 @@ Commit vocabulary and the commit-to-bump mapping are not decided here: `writing-
 | Repository contents | Candidates, best fit first | Notes |
 |:--|:--|:--|
 | One JS/TS package, or a workspace with a single version | `semantic-release` | Needs only Node, which the repository already has. |
-| JS/TS workspace with independently versioned packages | `multi-semantic-release` (wraps `semantic-release` per package) | Community wrapper, not part of `semantic-release`; check its maintenance status before adopting, and weigh sustainability. |
-| One Python package | `python-semantic-release`; `commitizen` | `python-semantic-release` also creates the GitHub Release; `commitizen` leaves push and GitHub Release to CI steps. |
+| JS/TS workspace with independently versioned packages | `multi-semantic-release` (wraps `semantic-release` per package) | Community wrapper, not part of `semantic-release`; maintained with limited resources; check its recent activity before adopting, and weigh sustainability. |
+| One Python package | `python-semantic-release`; `commitizen` | Pick by which second tool you would rather avoid: `python-semantic-release` creates the GitHub Release itself but needs a separate checker; `commitizen` also checks commits (`cz check`), so it covers the range and title checks, but needs a guarded `gh release create` step ([Filling the CI skeleton](#filling-the-ci-skeleton)). |
 | Python project managed with `uv` | `commitizen` (`uv` version provider); `python-semantic-release` (`uv` integration) | `commitizen`'s `uv` provider updates the lock file with the version; `python-semantic-release` does it in its build command. |
 | Several Python packages in one repository | `python-semantic-release` (monorepo commit parser, one config per package); `commitizen` (one config per component) | Both need per-package config and a run per package. |
 | Rust crate | `release-plz`; `cocogitto` as bumper | `release-plz` is native to Cargo. |
@@ -77,10 +78,10 @@ Traps behind the table:
 
 - **Release PRs.** `release-please` works through a release PR it keeps open, so do not plan on a PR-free mode. A `release-as` setting stays in force until it is removed or raised after its PR merges. `release-plz` has a `release-pr` command, but `update` plus `release` run without one: `update` edits versions and changelogs without committing, `release` tags and creates the GitHub Release and "does not modify Cargo.toml files or push new commits", so the CI job commits and pushes between them ([ci-release-job.md](ci-release-job.md#the-bump-commit)).
 - **Default publishing.** `semantic-release`'s npm plugin and `release-plz` publish by default. A repository that does not publish must turn that off (`npmPublish: false` or disabling the plugin; `publish = false`, or `git_only = true` for crates that never reach the registry so versions come from tags).
-- **Default bump-commit messages differ from the convention.** `python-semantic-release` defaults to `{version}` plus a generated line, and `commitizen` to `bump: version <old> → <new>`. Set `commit_message` or `bump_message` to `chore(release): <unit>@<version> [skip ci]` (`@semantic-release/git` takes a `message` option). `cocogitto` has no message key: its bump commit is `chore(version): <version>`, `[skip ci]` is added only by `cog bump --skip-ci` (`skip_ci` only changes that string), and `disable_bump_commit = true` leaves the commit to the CI job. The bump commit and its message are owned by [ci-release-job.md](ci-release-job.md#the-bump-commit).
+- **Default bump-commit messages differ from the convention.** `python-semantic-release` defaults to `{version}` plus a generated line, and `commitizen` to `bump: version <old> → <new>`. Set `commit_message` or `bump_message` to `chore(release): <unit>@<version> [skip ci]` (`@semantic-release/git` takes a `message` option); a single-unit repository drops the unit: `chore(release): <version> [skip ci]`. `cocogitto` has no message key: its bump commit is `chore(version): <version>`, `[skip ci]` is added only by `cog bump --skip-ci` (`skip_ci` only changes that string), and `disable_bump_commit = true` leaves the commit to the CI job. The bump commit and its message are owned by [ci-release-job.md](ci-release-job.md#the-bump-commit).
 - **Merge commits and message checks.** `cocogitto` flags merge commits as non-conventional unless `ignore_merge_commits = true`. With the PR title as the merge subject ([Repository Settings](#repository-settings)) the merge commit usually conforms; check the range once before enforcing.
 - **`semantic-release` outside CI** runs as a dry run, which is one reason releases are cut only by CI.
-- **`commitizen` with no bump-eligible commits** exits with code 21 (`NO_INCREMENT`); the CI job must treat that as "nothing to release" (`cz --no-raise 21 bump`; the flag goes before the subcommand).
+- **`commitizen` with no bump-eligible commits** signals "nothing to bump" with a distinct exit code, which a CI job must treat as "nothing to release". Allow it with `--no-raise <code>`, placed before the subcommand, after checking the code for your version.
 
 ### Units and tags
 
@@ -97,6 +98,46 @@ Traps behind the table:
 Pick one tag shape per repository and set it explicitly rather than inheriting the default: `v<version>` for a single unit, `<unit>@<version>` for several. Every tool above can produce either shape. Tags are read back to find the last release, so changing the shape later strands the old tags.
 
 Prerelease behaviour of each tool is in [channels.md](channels.md#prereleases-per-tool); a repository on the single-channel default never needs it.
+
+### Filling the CI skeleton
+
+[ci-release-job.md](ci-release-job.md#job-graph) leaves the tool-dependent steps as placeholders; fill them from the rows below. Versions are placeholders (`<x.y.z>`): pin exact ones. Run each command in the tool's non-publishing mode before the first real run. Message checkers must be configured with the repository's own vocabulary (`writing-history`); a release tool without a checker pairs with one.
+
+| Tool | `<check commits …>` over `<base>..<head>` | `<check "$TITLE">` |
+|:--|:--|:--|
+| `semantic-release` | none: use `commitlint` | none: use `commitlint` |
+| `multi-semantic-release` | none: use `commitlint` | none: use `commitlint` |
+| `python-semantic-release` | none: use `commitlint` or `cz check` | none: use `commitlint` or `cz check` |
+| `commitizen` | `cz check --rev-range <base>..<head>` | `cz check --message "$TITLE"` |
+| `release-plz` | none: use `cog check` or `commitlint` | none: use `cog verify` or `commitlint` |
+| `release-please` | none: use `commitlint` or `cz check` | none: use `commitlint` or `cz check` |
+| `cocogitto` | `cog check <base>..<head>` (not `--from-latest-tag`, which re-checks merged history on a PR); it rejects a `merge` type unless `commit_types` allows it ([Adoption Checklist](#adoption-checklist) step 4) | `cog verify "$TITLE"` |
+| companion: `commitlint` | `npx commitlint --from <base> --to <head>` | `printf '%s' "$TITLE" \| npx commitlint` |
+
+| Tool | `<release command>` | `<TOKEN_VARIABLE_THE_TOOL_READS>` | `<install …>`, pinned |
+|:--|:--|:--|:--|
+| `semantic-release` | `npx semantic-release`; the bump commit, tag, GitHub Release and publish follow the configured plugins | `GITHUB_TOKEN` (`GH_TOKEN` also works); `NPM_TOKEN` to publish to npm | Exact versions in `package.json` plus the lock file, installed with `npm clean-install` |
+| `multi-semantic-release` | `npx multi-semantic-release` | as `semantic-release` | as `semantic-release` |
+| `python-semantic-release` | `semantic-release version` (commits, tags, pushes, creates the GitHub Release); `semantic-release publish` only attaches artifacts to it; a PyPI upload is a separate step | `GH_TOKEN` (the default `remote.token`) | `python3 -m pip install python-semantic-release==<x.y.z>`, or its GitHub Action pinned by SHA (`github_token` input) |
+| `commitizen` | `cz --no-raise <nothing-to-bump code> bump --yes`, then the guarded tail below, with notes from `cz changelog --dry-run <version>` | `GH_TOKEN` for `gh`; the push uses the checkout credentials | `python3 -m pip install commitizen==<x.y.z>` |
+| `release-plz` | `release-plz update`; the job commits and pushes; then `release-plz release` (tag, GitHub Release, registry publish unless disabled) Pass `--git-token "$GH_TOKEN"` explicitly: the CLI's own variable is `GIT_TOKEN`, and only the action is documented to read `GITHUB_TOKEN`; check `release-plz release --help` for the pinned version. `CARGO_REGISTRY_TOKEN` to publish | `cargo install --locked release-plz --version <x.y.z>`, or `release-plz/action` pinned by SHA (its documented commands are `release` and `release-pr`) |
+| `release-please` | `release-please release-pr --token … --repo-url <owner>/<repo>`; after its PR merges, `release-please github-release` with the same options | `GITHUB_TOKEN`, passed as `--token`; the job needs `pull-requests: write`, and a PR opened with `GITHUB_TOKEN` does not run its checks without approval | `npm install -g release-please@<x.y.z>` (outside the default pipeline) |
+| `cocogitto` | `cog bump --auto --skip-ci` (the marker comes only with `--skip-ci`), then the guarded tail below, with notes from `cog changelog --at <version>` | `GH_TOKEN` for `gh`; the push uses the checkout credentials | `cargo install cocogitto --locked --version <x.y.z>`; or `cocogitto/cocogitto-action` pinned by SHA with `install-only: true` (its inputs are `command`, `args`, `install-only`, `git-user`, `git-user-email`; it cannot pin a `cog` version beyond its own SHA) |
+
+Tools that neither push nor create the Release (`commitizen`, `cocogitto`) need a guarded tail. The `release` job runs on every push to `main`, and a bump with nothing to release exits 0 and creates no tag, so an unguarded `gh release create` would fail or misfire:
+
+```bash
+before=$(git rev-parse HEAD)
+<bump command>
+[ "$(git rev-parse HEAD)" = "$before" ] && exit 0   # nothing to release
+TAG=$(git describe --tags --abbrev=0)
+git push origin HEAD:main "$TAG"                    # explicit branch: CI may be on a detached HEAD; --follow-tags skips lightweight tags
+gh release create "$TAG" --notes-file <notes file>
+```
+
+Both tools make lightweight tags by default, which `git push --follow-tags` does not push, so the tag is pushed by name; `cz bump --annotated-tag` makes an annotated one. Without a bump commit (`disable_bump_commit`), test `git describe --exact-match --tags HEAD` instead of comparing `HEAD`.
+
+Whichever tool pushes, the bump commit carries `[skip ci]` and the same token acts for checkout, push and Release ([ci-release-job.md](ci-release-job.md#choosing-the-token)).
 
 ## Repository Settings
 
@@ -160,16 +201,16 @@ and the PR body is the merge body. Pull `main` after every merge.
 
 ## Adoption Checklist
 
-In order; each step ends with something checkable.
+In order; each step ends with something checkable. Steps 4 to 6 are file changes and ride in one pull request; step 8 holds the actions that cannot.
 
-1. [ ] **Audit.** Record existing release config, workflows, tags, commit convention and the current repository settings (the read-back command above). No commit convention at all: run `writing-history` → `references/convention-setup.md` first.
+1. [ ] **Audit.** Record existing release config, workflows, tags, commit convention and the current repository settings (the read-back command above). No commit convention at all: run `writing-history` → `references/convention-setup.md` first. Then settle the vocabulary the release depends on: a non-release type for merge-commit subjects (for example `merge`) that the commit checker accepts, and a scope for the bump commit (`release`). PR titles become merge subjects ([pull-requests.md](pull-requests.md#title)), and a release type there would add changelog entries or bumps. If the vocabulary cannot take a new type, agree a `chore(<scope>)` fallback with the maintainer.
 2. [ ] **Map units and released paths** (decision procedure, steps 2 and 3).
 3. [ ] **Propose tooling** to the maintainer: contents found, tool, tag shape, CI gap-fillers, registry decision. Wait for approval.
-4. [ ] **Write the tool config** with the tag shape and bump-commit message set explicitly, and preview it with the tool's non-publishing mode, which prints the next version and tags nothing: `semantic-release --dry-run`, `semantic-release version --print` (`python-semantic-release`), `cz bump --dry-run`, `release-plz release --dry-run`, `cog bump --dry-run --auto`.
-5. [ ] **Handle existing history.** A repository with history but no tags needs a baseline tag so the tool does not treat every commit as unreleased ([recovery.md](recovery.md#first-release-and-missing-tags)).
-6. [ ] **Add the release job** ([ci-release-job.md](ci-release-job.md)), including permissions and any branch-protection bypass.
-7. [ ] **Apply the repository settings** above and read them back.
-8. [ ] **Write the CONTRIBUTING section.**
-9. [ ] **Land steps 4 to 8 as a reviewed PR** ([lifecycle.md](lifecycle.md#choosing-a-lane)): they change CI, release machinery and repository settings. Expect the job's first run to need attention ([recovery.md](recovery.md#first-run-of-a-new-release-job)).
+4. [ ] **Write the tool config and the commit-checker config.** Set the tag shape and bump-commit message explicitly, and make the checker accept the merge type and the `release` scope from step 1 (a `type-enum` or `commit_types` entry, for example). Then preview the tool with the tool's non-publishing mode, which prints the next version and tags nothing: `semantic-release --dry-run`, `semantic-release version --print` (`python-semantic-release`), `cz bump --dry-run`, `release-plz release --dry-run`, `cog bump --dry-run --auto`.
+5. [ ] **Add the release job** ([ci-release-job.md](ci-release-job.md)), filling its placeholders from [Filling the CI skeleton](#filling-the-ci-skeleton), including permissions and any branch-protection bypass.
+6. [ ] **Write the CONTRIBUTING section.**
+7. [ ] **Open one reviewed PR with steps 4 to 6** ([lifecycle.md](lifecycle.md#choosing-a-lane)): they change CI and release machinery. The repository has no CI to gate this first PR yet, so the maintainer reviews it by hand, config preview output included. Do not merge it yet.
+8. [ ] **Do the maintainer-approved actions outside the PR, before it merges**, asking for each: (a) push a baseline tag when the repository has history but no tags, so the tool does not treat every commit as unreleased ([recovery.md](recovery.md#first-release-and-missing-tags)); (b) apply the [repository settings](#repository-settings) and read them back. Both change state the PR cannot carry.
+9. [ ] **The maintainer merges the PR.** Expect the job's first run to need attention ([recovery.md](recovery.md#first-run-of-a-new-release-job)).
 10. [ ] **Treat the first release-type merge as the real test.** Until a merge that releases something has produced the bump commit, the tag, the GitHub Release and, if configured, the registry upload, the pipeline is unproven. Watch that run to the end; if it fails, go to [recovery.md](recovery.md).
 11. [ ] **Report** to the maintainer what was verified and what was not.

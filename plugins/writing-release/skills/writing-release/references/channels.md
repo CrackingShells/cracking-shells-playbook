@@ -22,6 +22,8 @@ Why one channel is the right default:
 - **Nothing to promote.** No promotion step means no promotion failures, no "which commit was blessed" question and one tag line per unit.
 - **Recovery is plain.** A bad release is fixed forward by the next merge, or reverted by a merge; both use the normal path.
 
+What one channel gives up: a release per release-type merge, and no batching. Five small fixes make five releases, and a merge's release cannot be held back. Batch by landing related work on a campaign branch and merging it once, or use the lagged pattern below.
+
 A consumer who wants unreleased work installs from a commit or a topic branch. That is not a reason for a channel.
 
 ## When to Add a Channel
@@ -33,6 +35,7 @@ Add a channel only on observed evidence, and only with the maintainer's approval
 | Regressions reach many users before a fix | Issue reports arrive faster than a fix can ship; several releases in a row each needed a follow-up | A soak period lets early adopters find the regression first |
 | Downstream consumers pin versions and ask for a soak | Consumers say they pin to tested versions, or request a candidate to validate against | They get something to test without taking untested stable releases |
 | Repeated hotfix churn after releases | A pattern of `fix` releases within days of a `feat` release | Time-delayed promotion absorbs the churn before stable |
+| Maintaining an older major line (backports) | Users stay on a major version and need fixes after a newer major ships | A maintenance branch per supported line, released from that branch (the tool must support it; `semantic-release` does). A different case from a dev channel: the line takes backported fixes only, never new work |
 
 Not a reason for a channel:
 
@@ -85,7 +88,7 @@ How each tool in [the matrix](setting-up.md#choosing-tooling-from-contents) expr
 
 Whatever the tool, the tag shape must keep prereleases distinguishable from stable tags (`<unit>@<version>-rc.<n>`; `commitizen` needs `version_scheme = "semver2"` for that spelling), so the "last release" lookup that decides the next version can tell them apart. See the tag-format table in [setting-up.md](setting-up.md#choosing-tooling-from-contents).
 
-Sorting caveat: `git tag --sort=-version:refname` ranks `1.0.0-rc.2` above `1.0.0`. Any job that picks the latest release by sorting tags must use `git -c versionsort.suffix=- tag --list '<pattern>' --sort=-version:refname`.
+Sorting caveat: a plain version sort ranks `1.0.0-rc.2` above `1.0.0`; any job that picks the latest release by sorting tags must rank prereleases below their stable version ([ci-release-job.md](ci-release-job.md#hardening) has the command).
 
 ## The Cost of a Long-Lived Development Branch
 

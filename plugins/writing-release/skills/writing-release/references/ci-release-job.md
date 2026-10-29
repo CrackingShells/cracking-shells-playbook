@@ -9,6 +9,7 @@ Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, the
 - [Permissions, Tokens, and Branch Protection](#permissions-tokens-and-branch-protection)
   - [Choosing the token](#choosing-the-token)
   - [Protection versus the lanes](#protection-versus-the-lanes)
+  - [Checking Protection on a Scratch Repository](#checking-protection-on-a-scratch-repository)
 - [The Bump Commit](#the-bump-commit)
 - [Hardening](#hardening)
 - [Monorepos](#monorepos)
@@ -33,7 +34,7 @@ Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, the
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
   ```
 
-- **A queued run can be replaced.** By default a group runs one run and holds at most one waiting; a newer waiting run replaces an older waiting one. That is safe for the release (the tool releases everything since the last tag), but the replaced push's commit-range check never runs. PR-time checks already covered every PR commit, so the gap is Direct-lane pushes; keep those few and small. If losing a push run on `main` matters, `concurrency.queue: max` keeps up to 100 waiting runs, but it cannot be combined with `cancel-in-progress: true`: split the workflow (or the job) by event so the PR side keeps cancelling and the `main` side queues.
+- **A queued run can be replaced.** By default a group runs one run and holds at most one waiting; a newer waiting run replaces an older waiting one. That is safe for the release (the tool releases everything since the last tag), but the replaced push's commit-range check never runs. PR-time checks already covered every PR commit, so the gap is Direct-lane pushes; keep those few and small. The platform caps waiting runs; if losing a push run on `main` matters, an option such as `concurrency.queue: max` (e.g. up to 100 waiting; confirm the current cap) keeps more, but it cannot be combined with `cancel-in-progress: true`: split the workflow (or the job) by event so the PR side keeps cancelling and the `main` side queues.
 - **Do not put path filters on the workflow triggers.** A workflow skipped by `paths`, `paths-ignore` or a skip marker leaves its checks "Pending", which blocks any PR that requires them, and the commit-range check must run on every push to `main` whatever it touched. Filter at job level instead: a `changes` job decides which gates are worth running, and a job skipped by `if` reports success.
 
 ## Job Graph
@@ -100,6 +101,7 @@ jobs:
       - uses: actions/checkout@<full-sha> # <tag>
         with:
           fetch-depth: 0
+      - run: <install the commit checker at a pinned version>
       - run: |
           git config user.name  "<bot name>"
           git config user.email "<bot email>"
@@ -153,10 +155,14 @@ jobs:
   title:
     runs-on: <runner>
     steps:
+      - uses: actions/checkout@<full-sha> # <tag>
+      - run: <install the commit checker at a pinned version>
       - env:
           TITLE: ${{ github.event.pull_request.title }}
         run: <check "$TITLE">
 ```
+
+The checkers need their tool and the repository's config (for example a project file or a lint config), hence the checkout and the install in both. Pin the install: running a tool through a package runner without a pinned version fetches whatever is newest.
 
 Why the `release` condition is spelled out:
 
@@ -169,7 +175,7 @@ Why the `release` condition is spelled out:
 
 Two behaviours decide this section:
 
-1. **`GITHUB_TOKEN` events start no new run.** A push, tag, Release or label made with it creates no workflow run, except `workflow_dispatch` and `repository_dispatch`. (A PR opened or updated with it does start `pull_request` runs, but held for approval.) This prevents recursive runs.
+1. **`GITHUB_TOKEN` events start no new run.** A push, tag, Release or label made with it creates no workflow run, except `workflow_dispatch` and `repository_dispatch`. (A PR opened or updated with it may start `pull_request` runs only after a maintainer approves them; confirm the current rule.) This prevents recursive runs.
 2. **A GitHub App installation token's events do start runs.** That is also why the [bump commit](#the-bump-commit) needs `[skip ci]` once an app token pushes it.
 
 Setting `permissions:` is a whitelist: once any key is set, every unlisted permission is `none`. List what the tool needs (`contents: write` for the bump commit, tag and Release; add `issues: write` and `pull-requests: write` only if the tool comments on them). An explicit block also makes the workflow independent of the repository's default token permissions.
@@ -186,35 +192,47 @@ Use the same token for the checkout and for the release tool, so the bump push a
 
 ### Protection versus the lanes
 
-Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to Direct-lane pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Verify the combination on a scratch repository before relying on it.
+In this manual "protected" means `main` requires PRs or status checks. A rule that only blocks force pushes or deletion does not make the Direct lane fall back to a PR.
+
+Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to Direct-lane pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Check the combination with [the scratch recipe](#checking-protection-on-a-scratch-repository) before relying on it.
 
 | `main` is | Direct lane | Bump push | Tradeoff |
 |:--|:--|:--|:--|
 | Unprotected | Works | Works with `GITHUB_TOKEN` | Leanest. The lanes are convention; CI is the backstop (the commit-range check and gates run after the landing, and CI still releases a Direct-lane push that turns out to be release-type). |
-| Protected, with a bypass list holding maintainers and the release app, bypass mode "always" | Works for maintainers | Works with the app token | Server-side enforcement of PR requirements, at the price of one app to create, install and keep. |
-| Protected, no bypass | Impossible | Rejected | Only workable with tooling that pushes nothing to `main`. Choose it deliberately: [setting-up.md](setting-up.md#choosing-tooling-from-contents). |
+| Protected, with a bypass list holding maintainers and the release app, bypass mode "always" | Works only where CONTRIBUTING names the change class as Direct with a bypass; otherwise the push becomes a PR | Works with the app token | Server-side enforcement of PR requirements, at the price of one app to create, install and keep. |
+| Protected, no bypass | Falls back to a PR: a refused push is never forced or bypassed ([recovery.md](recovery.md#a-direct-lane-push-was-rejected)) | Rejected | The bump push is only workable with tag-only tooling, which pushes nothing to `main`. Choose it deliberately: [setting-up.md](setting-up.md#choosing-tooling-from-contents). |
 
 How bypassing works:
 
 - **Rulesets:** bypass actors can be roles (repository admin, maintain or write), teams and GitHub Apps. "Always" allows direct pushes. "For pull requests only" lets the actor bypass only through a PR, which serves neither the bump push nor the Direct lane.
-- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. Do not assume the "allow specified actors to bypass required pull requests" list waives required status checks, and do not assume "Restrict who can push" does either: use a ruleset bypass actor when checks are required, and verify on a scratch repository.
+- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. The "allow specified actors to bypass required pull requests" list lets those actors skip the PR requirement; do not assume it waives required status checks, and do not assume "Restrict who can push" does either. Use a ruleset bypass actor when checks are required.
 - **Rulesets and branch protection rules stack**, and the most restrictive result applies: a forgotten classic rule can still block a ruleset's bypass.
-- **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and bypass lists take roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected; verify on a scratch repository.
+- **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and bypass lists take roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected.
 - **Force pushes** are blocked on protected branches by default; a ruleset's non-fast-forward rule blocks them without any other restriction. Even a repository that keeps `main` open should block them ([recovery.md](recovery.md#history-rewritten-on-main)).
 - **Required checks and skips:** a PR whose head commit carries a skip marker cannot merge while checks are required, so never put one in a topic commit or a PR body (the body becomes the merge commit message).
 - **Merge settings** (merge commits only, linear history off) belong to [setting-up.md](setting-up.md#repository-settings): "Require linear history" forbids the merge commits this manual depends on.
+
+### Checking Protection on a Scratch Repository
+
+A short test settles what a protection setup accepts, before the first real release:
+
+1. Create a throwaway repository with the same ruleset or protection rule, and install the release app on it (if an app pushes).
+2. Push a commit that has no completed checks straight to `main`: once as the app or bot identity (the bump push), once as a maintainer (the Direct lane).
+3. Record accept or refuse for each, and delete the repository.
+
+If creating a repository is not possible, the first release-type merge is the check: [recovery.md](recovery.md#first-run-of-a-new-release-job).
 
 Secrets: the app key is read only by the release job, which never runs on PR events, so PR runs never see it. PRs from forks get a read-only token and no secrets regardless, so gates must not need either.
 
 ## The Bump Commit
 
-The release job commits `chore(release): … [skip ci]` to `main`, then tags it and creates the Release (the order is the tool's).
+If the tool commits version files, the release job commits `chore(release): … [skip ci]` to `main`, then tags it and creates the Release (the order is the tool's). A tag-only tool (the version lives only in the tag) makes no bump commit: the job tags and creates the Release, pushes nothing to `main`, and branch protection cannot refuse it. A tag ruleset can still refuse tag creation, so give the release identity the right to create tags. Every check below that mentions the bump commit then reads "the tag and the Release exist".
 
 - **What it changes:** the version fields of each released unit, lock files that embed them, and the changelog. These are bot-managed; people do not edit them by hand, which also keeps merge conflicts in them rare.
 - **Why `[skip ci]`:** a push-triggered run on the bump commit would only find nothing to release, and with an app token it would run on every release. The marker (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, or a `skip-checks: true` trailer) skips the `push` and `pull_request` runs that commit would start, and nothing else: it does not stop `workflow_dispatch`, `pull_request_target`, or runs started by other commits. Keep it even under `GITHUB_TOKEN`, where it is redundant, so a later switch to an app token cannot start a loop.
 - **Who sees it:** the next push's `before` is the bump commit, so the next range check does not re-check it. It is checked by whatever walks history from the last tag, so its message must pass the same commit checker: `chore` is a non-release type, which is also what stops it releasing itself. Make sure the checker's vocabulary allows the `release` scope (vocabulary: `writing-history` → `references/commit-authoring.md`).
 - **Where it lands:** after the merge, a minute or more later. Anyone who branches from a stale `main` misses it: [recovery.md](recovery.md#local-main-is-stale).
-- **A skip marker is per commit.** It does not carry over to later commits, and it must never reach a topic commit or a PR body. Do not rely on a marker to control a tag-triggered workflow for the tag the bot pushes; publish from the release job, and verify any other arrangement on a scratch repository.
+- **A skip marker is per commit.** It does not carry over to later commits, and it must never reach a topic commit or a PR body. Do not rely on a marker to control a tag-triggered workflow for the tag the bot pushes; publish from the release job.
 
 ## Hardening
 
@@ -223,6 +241,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 | Pin every action to a full commit SHA, with the tag as a trailing comment (`uses: <owner>/<action>@<full-sha> # v<x.y.z>`), and pin the release tool and its plugins through a lock file or exact versions | A tag or a floating major tag (`@v4`) can be moved or deleted, so a broken or compromised release of an action reaches you on the next run. A SHA cannot move. Verify the SHA belongs to the action's repository, not a fork. Let a dependency-update bot raise the pins. |
 | Give the runner a git `user.name` **and** `user.email` before any tool that reads them | Commit checkers that create temporary commits and release tools that commit or tag fail without an identity, and a runner does not come with one you can assume. Do it in every job that runs such a tool, not only the release job. |
 | Never cancel on `main` | See [Triggers and Concurrency](#triggers-and-concurrency). |
+| Find the last tag with a prerelease-aware sort: `git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname \| head -1` | Plain version sort ranks `1.0.0-rc.2` above `1.0.0`, so scripts that pick "the latest tag" pick the wrong baseline. The setting makes a suffixed version sort below its release. |
 | Pass untrusted values through `env`, never into the script text | `${{ github.event.pull_request.title }}` inside `run:` is a script-injection vector; an intermediate environment variable is not. |
 | Avoid `pull_request_target` for gates | It runs in the base repository's context with a write token and secrets; running PR code there is the classic compromise. |
 | Release only from `main` | The job's `if` names the ref. A manual dispatch from another branch must not release. |
@@ -233,7 +252,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 
 A repository with several units (packages, skills, crates) that release independently keeps one workflow and one release job. The tool works out which units have release-type commits.
 
-- **Per-unit path filters** only choose which gates and builds run. Compare against the unit's last tag, not `before..after`: a skipped or failed earlier run would otherwise lose that unit's changes forever. The last tag of a unit is `git -c versionsort.suffix=- tag --list '<unit>@*' --sort=-version:refname | head -1`, falling back to the first commit when there is none. The `versionsort.suffix=-` setting makes `1.0.0` sort above `1.0.0-rc.2`; plain version sort does not.
+- **Per-unit path filters** only choose which gates and builds run. Compare against the unit's last tag, not `before..after`: a skipped or failed earlier run would otherwise lose that unit's changes forever. The last tag of a unit is found with the prerelease-aware sort in [Hardening](#hardening) (`<tag-glob>` = `<unit>@*`), falling back to the first commit when there is none.
 - **Per-unit tag lines** `<unit>@<version>` keep units independent. The `@` delimiter keeps one unit's name from matching another's prefix. A tool must be configured with the same tag format for every unit, or it will not find the baseline ([recovery.md](recovery.md#first-release-and-missing-tags)).
 - **Build once, then release.** Per-unit or per-platform builds run in their own jobs and hand artifacts to the release job as workflow artifacts. The release job must not rebuild with different inputs.
 - **Drift jobs** regenerate committed generated files (assembled plugin trees, schema outputs, lock files) and fail on a diff:
