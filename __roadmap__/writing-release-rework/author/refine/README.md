@@ -20,7 +20,7 @@ Make the manual best-practice compliant and stand-alone, without changing a rule
 ## Status
 ```mermaid
 graph TD
-    best_practices[Best-Practices Pass]:::planned
+    best_practices[Best-Practices Pass]:::inprogress
     standalone[Stand-Alone Pass]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -32,7 +32,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `best_practices.md` | 📄 Leaf Task | ⬜ Planned |
+| `best_practices.md` | 📄 Leaf Task | 🔄 In Progress |
 | `standalone/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log

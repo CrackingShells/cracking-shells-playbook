@@ -22,10 +22,10 @@ Produce a complete, contract-conformant `skills/writing-release/` from three par
 ## Status
 ```mermaid
 graph TD
-    process[Process: Lifecycle, Pull Requests, Dispatcher]:::inprogress
-    tooling[Tooling: Setting Up and Channels]:::inprogress
-    ci_and_recovery[CI Release Job and Recovery]:::inprogress
-    refine[Refine Content]:::planned
+    process[Process: Lifecycle, Pull Requests, Dispatcher]:::done
+    tooling[Tooling: Setting Up and Channels]:::done
+    ci_and_recovery[CI Release Job and Recovery]:::done
+    refine[Refine Content]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -36,10 +36,10 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `process.md` | 📄 Leaf Task | 🔄 In Progress |
-| `tooling.md` | 📄 Leaf Task | 🔄 In Progress |
-| `ci_and_recovery.md` | 📄 Leaf Task | 🔄 In Progress |
-| `refine/` | 📁 Directory | ⬜ Planned |
+| `process.md` | 📄 Leaf Task | ✅ Done |
+| `tooling.md` | 📄 Leaf Task | ✅ Done |
+| `ci_and_recovery.md` | 📄 Leaf Task | ✅ Done |
+| `refine/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
