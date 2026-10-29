@@ -19,7 +19,7 @@ Leave no meta-discourse, project-specific name or single-data-point advice in an
 ## Status
 ```mermaid
 graph TD
-    standalone[Stand-Alone Pass]:::planned
+    standalone[Stand-Alone Pass]:::inprogress
     review[Review and Close]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -31,7 +31,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `standalone.md` | 📄 Leaf Task | ⬜ Planned |
+| `standalone.md` | 📄 Leaf Task | 🔄 In Progress |
 | `review/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
