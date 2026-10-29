@@ -71,9 +71,9 @@ Commit-message checkers are the companion to any row: `commitlint`, `commitizen`
 
 Traps behind the table:
 
-- **Release PRs.** `release-please` works through a release PR it keeps open; there is no PR-free mode in its documentation. `release-plz` has a `release-pr` command, but `update` plus `release` run without one: `update` edits versions and changelogs without committing, `release` tags and creates the GitHub Release and "does not modify Cargo.toml files or push new commits", so the CI job commits and pushes between them ([ci-release-job.md](ci-release-job.md#the-bump-commit)).
+- **Release PRs.** `release-please` works through a release PR it keeps open; there is no PR-free mode in its documentation, and a `release-as` setting stays in force until it is removed or raised after its PR merges. `release-plz` has a `release-pr` command, but `update` plus `release` run without one: `update` edits versions and changelogs without committing, `release` tags and creates the GitHub Release and "does not modify Cargo.toml files or push new commits", so the CI job commits and pushes between them ([ci-release-job.md](ci-release-job.md#the-bump-commit)).
 - **Default publishing.** `semantic-release`'s npm plugin and `release-plz` publish by default. A repository that does not publish must turn that off (`npmPublish: false` or disabling the plugin; `publish = false`, or `git_only = true` for crates that never reach the registry so versions come from tags).
-- **Default bump-commit messages differ from the convention.** `python-semantic-release` defaults to `{version}` plus a generated line, and `commitizen` to `bump: version <old> → <new>`. Set `commit_message` or `bump_message` to `chore(release): <unit>@<version> [skip ci]` (`@semantic-release/git` takes a `message` option, `cocogitto` a `skip_ci` string). The bump commit and its message are owned by [ci-release-job.md](ci-release-job.md#the-bump-commit).
+- **Default bump-commit messages differ from the convention.** `python-semantic-release` defaults to `{version}` plus a generated line, and `commitizen` to `bump: version <old> → <new>`. Set `commit_message` or `bump_message` to `chore(release): <unit>@<version> [skip ci]` (`@semantic-release/git` takes a `message` option). `cocogitto` has no message key: its bump commit is `chore(version): <version>`, `[skip ci]` is added only by `cog bump --skip-ci` (`skip_ci` only changes that string), and `disable_bump_commit = true` leaves the commit to the CI job. The bump commit and its message are owned by [ci-release-job.md](ci-release-job.md#the-bump-commit).
 - **Merge commits and message checks.** `cocogitto` flags merge commits as non-conventional unless `ignore_merge_commits = true`. With the PR title as the merge subject ([Repository Settings](#repository-settings)) the merge commit usually conforms; check the range once before enforcing.
 - **`semantic-release` outside CI** runs as a dry run, which is one reason releases are cut only by CI.
 - **`commitizen` with no bump-eligible commits** exits with code 21 (`NO_INCREMENT`); the CI job must treat that as "nothing to release" (`cz --no-raise 21 bump`; the flag goes before the subcommand).
@@ -85,10 +85,10 @@ Traps behind the table:
 | `semantic-release` | One version per run | `v<version>` by default; `tagFormat` sets it |
 | `multi-semantic-release` | One version per workspace package; commits are filtered to the package folder; a package whose local dependency changed gets a dependency-driven release (patch by default) | `<name>@<version>` |
 | `python-semantic-release` | One config and run per package; `conventional-monorepo` parser filters commits with `path_filters` and `scope_prefix` | `v{version}` by default; `tag_format` sets it, per package |
-| `commitizen` | One config per component, run per component; `ignored_tag_formats` hides the other components' tags | `$version` by default (no `v`); `tag_format` sets it; PEP 440 version spelling by default |
+| `commitizen` | One config per component, run per component; `ignored_tag_formats` hides the other components' tags | `$version` by default (no `v`); `tag_format` sets it; PEP 440 version spelling by default, `version_scheme = "semver2"` for hyphenated prereleases |
 | `release-plz` | Cargo workspace; `version_group` shares a version; tags and GitHub Releases can be switched off per package, for example to keep one workspace tag | Package name plus version in a workspace, version alone for a single package; `git_tag_name` sets it |
 | `release-please` | Manifest mode with a `packages` map | `<component>-v<version>` by default; `include-component-in-tag` removes the component |
-| `cocogitto` | `[packages]` with a path each; `cog bump --auto` tags every changed package and adds a global tag; `public_api = false` keeps a package from moving the global version | `tag_prefix` sets a prefix such as `v` |
+| `cocogitto` | `[packages]` with a path each; `cog bump --auto` tags every changed package and adds a global tag; `public_api = false` keeps a package from moving the global version | `tag_prefix` sets a prefix such as `v`; for one tag line per unit set `generate_mono_repository_global_tag = false` and `monorepo_version_separator = "@"` |
 
 Pick one tag shape per repository and set it explicitly rather than inheriting the default: `v<version>` for a single unit, `<unit>@<version>` for several. Every tool above can produce either shape. Tags are read back to find the last release, so changing the shape later strands the old tags.
 
@@ -120,7 +120,7 @@ gh api -X PATCH repos/<owner>/<repo> \
 gh api repos/<owner>/<repo> --jq '{allow_merge_commit, allow_squash_merge, allow_rebase_merge, merge_commit_title, merge_commit_message, delete_branch_on_merge}'
 ```
 
-Why these values: with squash and rebase merging off, every merge is a merge commit whose subject is the PR title and whose body is the PR body, so the text written in [pull-requests.md](pull-requests.md) is what the release tool and the changelog read. Deleting the branch on merge keeps topic branches from piling up.
+Why these values: with squash and rebase merging off, every merge is a merge commit whose subject starts with the PR title (GitHub may append ` (#<number>)`; `gh pr merge --subject` overrides it) and whose body is the PR body, so the text written in [pull-requests.md](pull-requests.md) is what the release tool and the changelog read. Deleting the branch on merge keeps topic branches from piling up.
 
 Branch protection, required checks, the bump push and token choice interact with the direct lane and are decided in [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection). Do not configure protection from this file.
 
