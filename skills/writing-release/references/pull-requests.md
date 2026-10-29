@@ -24,10 +24,10 @@ Before opening:
 
 ```bash
 gh pr create --base main --head <type>/<topic> \
-  --title "$(cat <scratch>/pr-title.txt)" --body-file <scratch>/pr-body.md
+  --title "$(cat <draft-dir>/pr-title.txt)" --body-file <draft-dir>/pr-body.md
 ```
 
-Revise later with `gh pr edit <pr> --title "$(cat <scratch>/pr-title.txt)" --body-file <scratch>/pr-body.md`. Editing the title re-runs the title check.
+Revise later with `gh pr edit <pr> --title "$(cat <draft-dir>/pr-title.txt)" --body-file <draft-dir>/pr-body.md`. Editing the title re-runs the title check.
 
 ## Title
 
@@ -57,7 +57,7 @@ The body becomes the merge body. Lead with the reason, then what lands, then the
 
 What lands:
 - <change, one sentence; name new commands, fields or interfaces in code font>
-- <change> (#<n>)   <- cross-reference constituent PRs or leaf work when this landing aggregates them
+- <change> (#<n>)   <- cross-reference constituent PRs, or the sub-branches merged into this branch, when the landing aggregates them
 - <breaking change and its migration path, if any>
 
 Verification:
@@ -72,6 +72,7 @@ Co-Authored-By: <agent name and version> <noreply@example.com>
 Guidance:
 
 - **Plain labels, no `#` headings**, so the body reads the same in `git log` and on the PR page.
+- **Cross-reference constituent work by PR number where PRs exist.** Where sub-branches were merged into the integration branch without PRs of their own, list their merge commits instead: `git log --merges --format='%h %s' origin/main..HEAD`.
 - **Verification is evidence**, not "tested": the check that ran and what it showed. A reviewer cannot approve what the body does not show.
 - **A breaking change is declared in the commits' own footers** (`writing-history` → `references/commit-authoring.md`, "Body and Footer Guidance"); the body repeats it so the reviewer sees it, with the migration path.
 - **Footer-shaped lines are parsed.** Release tools and the host read lines such as `BREAKING CHANGE:`, version-override trailers, issue-closing keywords and skip markers. Write them in the body only on purpose, and never "BREAKING CHANGE: none".
@@ -101,7 +102,7 @@ Follow the steps in order. A new push makes earlier results stale, and can dismi
    ```bash
    gh pr merge <pr> --merge
    ```
-   Never `--squash` or `--rebase` ([lifecycle.md](lifecycle.md#invariants) gives the reasons), and never `--admin` to bypass a failing check. If the merge message does not come out as the title and body, the repository merge settings are off ([setting-up.md](setting-up.md#repository-settings)); pass them explicitly with `--subject "$(cat <scratch>/pr-title.txt)" --body-file <scratch>/pr-body.md`.
+   Never `--squash` or `--rebase` ([lifecycle.md](lifecycle.md#invariants) gives the reasons), and never `--admin` to bypass a failing check. If the merge message does not come out as the title and body, the repository merge settings are off ([setting-up.md](setting-up.md#repository-settings)); pass them explicitly with `--subject "$(cat <draft-dir>/pr-title.txt)" --body-file <draft-dir>/pr-body.md`.
 
 In the Reviewed PR lane, the merge follows the maintainer's approval: the maintainer merges, or the agent does once told to.
 
@@ -124,9 +125,9 @@ A refused self-merge costs one maintainer click; a worked-around refusal costs t
 - [ ] **Pull `main`.** `git checkout main && git pull`. The release job may add a bump commit after the merge, so pull again once it finishes.
 - [ ] **Delete the topic branch.** `git branch -d <type>/<topic>`; the remote copy is deleted on merge when the repository is set to do so ([setting-up.md](setting-up.md#repository-settings)), otherwise `git push origin --delete <type>/<topic>`. If it lived in a worktree, `writing-history` → `references/branches.md` covers cleanup.
 - [ ] **Confirm the release when the merge should have released something.** Watch the job (`gh run list --branch main --limit 3`), then check what exists, not what the job printed:
-   - the bump commit on `main`;
+   - the bump commit on `main`, if the tool commits version files;
    - the tag (`git fetch --tags && git -c versionsort.suffix=- tag --list --sort=-version:refname | head -3`);
    - the GitHub Release (`gh release view <tag>`): its notes list what the release contains.
 
-   A job can print success for a step that failed later, so the tag and the Release are the evidence.
+   A job can print success for a step that failed later, so the tag and the Release are the evidence. For a tool that only tags, with no bump commit, they are all that will exist.
 - [ ] **If nothing was released**, check whether the merged commits included a release-type commit; if none did, that is correct. Otherwise, or if the job failed, go to [recovery.md](recovery.md#nothing-was-released).

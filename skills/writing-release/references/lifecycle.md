@@ -8,6 +8,7 @@ How a change travels from a topic branch to `main`, and how a release follows fr
 - [Choosing a Lane](#choosing-a-lane)
 - [Mapping Lanes in a Repository](#mapping-lanes-in-a-repository)
 - [The Lifecycle](#the-lifecycle)
+  - [Asked to "cut a release"](#asked-to-cut-a-release)
 - [Invariants](#invariants)
 - [Where Each Piece Lives](#where-each-piece-lives)
 
@@ -32,7 +33,7 @@ Terms the lanes rely on; the first two are defined per repository in [Mapping La
 
 A roadmap campaign or multi-leaf feature branch is a branch that integrates several sub-branches of one planned piece of work.
 
-The Direct lane runs as a push only where `main` is unprotected, or where CONTRIBUTING names that change class as Direct with a bypass; anywhere else a refused Direct-lane push becomes a PR. [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection) owns that tradeoff. Branch-to-parent integration for a branched Direct-lane change belongs to `writing-history` → `references/branches.md`, not to this manual.
+The Direct lane runs as a push only where `main` is unprotected (it requires no PRs or status checks; a rule that only blocks force pushes does not count; see [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)), or where CONTRIBUTING names that change class as Direct with a bypass; anywhere else a refused Direct-lane push becomes a PR. That file owns the tradeoff. Branch-to-parent integration for a branched Direct-lane change belongs to `writing-history` → `references/branches.md`, not to this manual.
 
 ## Choosing a Lane
 
@@ -68,7 +69,7 @@ The lane table is generic; each repository states which paths and commits it mea
 2. **Docs next.** Where there is no machinery, or it is silent, read CONTRIBUTING and the README for what ships.
 3. **Interview last.** Ask the maintainer which paths ship, which commit types release, and which files are persisted contracts others pin. Write the answers down so the next agent derives them instead of asking again.
 
-Record the result in CONTRIBUTING as an "Integration lanes" section ([setting-up.md](setting-up.md#the-contributing-section) covers the rest of that section). A repository whose host requires approvals, or which has no gating CI, records Self-merge as Reviewed PR in its table until a gate exists. Template:
+Record the result in CONTRIBUTING as an "Integration lanes" section ([setting-up.md](setting-up.md#the-contributing-section) covers the rest of that section). A repository whose host requires approvals, or which has no gating CI, records Self-merge as Reviewed PR in its table until a gate exists. Before relying on Self-merge, read back the branch protection and rulesets (`gh api repos/<owner>/<repo>/rules/branches/main`, `gh api repos/<owner>/<repo>/branches/main/protection`, and the read-back in [setting-up.md](setting-up.md#repository-settings)); if they cannot be read, assume Reviewed PR. Template:
 
 ```markdown
 ## Integration lanes
@@ -78,7 +79,7 @@ Release-type commits: `<type>` (<bump>), `<type>` (<bump>), any `BREAKING CHANGE
 
 | Lane | This repository |
 |:--|:--|
-| Reviewed PR | Multi-part landings; `BREAKING CHANGE`; `<ci-workflow-path>`, `<release-config-path>`, repository settings; persisted contracts at `<schema-or-interface-path>`; doubt |
+| Reviewed PR | A campaign or multi-leaf feature branch landing; `BREAKING CHANGE`; `<ci-workflow-path>`, `<release-config-path>`, repository settings; persisted contracts at `<schema-or-interface-path>`; doubt |
 | Self-merge PR | A release-type commit, or any change under a released path, that is self-contained: one `<unit>`, no machinery, no persisted contract, undone by one revert. Needs gating CI and a host that lets the agent merge without an approving review; otherwise record this row as Reviewed PR |
 | Direct | Releases nothing, touches no released path: `<non-shipped-dir>`, `<docs-dir>` outside released paths, typo and link fixes outside released paths, regenerated artifacts outside released paths. `git pull --ff-only`, integrate, push; if `main` refuses the push, open a PR instead |
 ```
@@ -126,7 +127,7 @@ Releases happen on `main` only; adding a second channel is a deliberate decision
 
 ### Asked to "cut a release"
 
-A release is a consequence of merging, so there is no command to run. First list what is unreleased: `git log <last-release-tag>..origin/main --format=%s`. Then:
+A release is a consequence of merging, so there is no command to run. First list what is unreleased: `git fetch origin --tags && git log <last-release-tag>..origin/main --format=%s`. In a repository with several units, add `-- <unit-path>` and use that unit's last tag, once per unit. Then:
 
 - [ ] **(a) Release-type commits are on `main` but nothing was released:** the job missed or failed them. Go to [recovery.md](recovery.md#nothing-was-released) and [recovery.md](recovery.md#re-running-a-release).
 - [ ] **(b) No release-type commit is pending:** there is nothing to release. Say so; do not tag by hand. A release follows once a release-type change lands through its lane.
