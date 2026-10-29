@@ -73,7 +73,7 @@ gh release list --limit 5                    # a Release with no bump commit?
 - **Race, no new tag or Release.** Nothing was published. Do not re-run the failed run (it replays the old commit): start a fresh run on `main` (`gh workflow run <workflow-file> --ref main`), or let the next push's run do it. It releases the accumulated commits together.
 - **Race, a tag or Release exists.** Check whether the tag's commit is reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`). Most tools tag the bump commit itself, so a tag whose commit is not on `main` means the push that carried it never landed: the maintainer deletes the tag and its Release (`gh release delete <tag> --cleanup-tag`), then a fresh run releases the same version cleanly. A tag that is reachable from `main` without a bump commit can only come from a tool that tags another commit; ask the maintainer how that tool continues. Never publish the same version twice.
 - **Race, a registry already holds the version.** A registry refuses a version it has, so the fresh run fails at publish: [Re-running a Release](#re-running-a-release) covers registry-first publishes.
-- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on a ruleset's bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). With required status checks, a ruleset bypass actor (or an admin with "Do not allow bypassing" off) is needed, because the bump commit has no checks; the classic bypass-PR list is not documented as waiving them. Verify on a scratch repository.
+- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on a ruleset's bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). With required status checks, a ruleset bypass actor (or an admin with "Do not allow bypassing" off) is needed, because the bump commit has no checks; do not assume the classic bypass-PR list waives them. Verify on a scratch repository.
 
 **Prevention.** Concurrency serialises runs but cannot stop a person's push, so a race is possible whenever someone lands while a release is running; the design absorbs it ([ci-release-job.md](ci-release-job.md#idempotent-re-runs)). Settle protection before the first release: [setting-up.md](setting-up.md#adoption-checklist).
 
@@ -137,7 +137,7 @@ gh release list --limit 3
 
 **Symptom.** `main` was force-pushed or rewritten (a rebase of `main`, a filter, a reset). Afterwards: range checks fail on an unknown `before` commit; tags are not on `main`; the tool proposes an old version again, or releases everything; changelogs repeat entries.
 
-**Why it breaks.** A push's `before..after` range assumes `before` is an ancestor of `after`. Release tools find "the last release" by walking from the tip to a tag, so a tag on a commit no longer in history is a lost baseline. At least one tool also keeps release-channel records in git notes, which are lost the same way, and its documented repair is to recreate the tags (and notes) on the new commits.
+**Why it breaks.** A push's `before..after` range assumes `before` is an ancestor of `after`. Release tools find "the last release" by walking from the tip to a tag, so a tag on a commit no longer in history is a lost baseline. At least one tool also keeps release-channel records in git notes, which are lost the same way, and the repair is to recreate the tags (and notes) on the new commits.
 
 **Do not force-push `main`.** It is blocked on protected branches by default; if `main` is unprotected, block it with a ruleset anyway ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). The topic-branch rule (`--force-with-lease` after a rebase) does not extend to `main`: `writing-history` → `references/branches.md`.
 
@@ -188,7 +188,7 @@ Watch the first release-type merge end to end, once, before trusting the job. Co
 - [ ] **The graph is right.** `changes`, `gates` and `commits` pass; `release` is not skipped.
 - [ ] **The bump commit lands.** On `origin/main`, subject `chore(release): … [skip ci]`, authored by the bot. `git show --stat <bump-sha>` lists only version fields, lock files and the changelog.
 - [ ] **It starts nothing.** No run exists for the bump commit's SHA.
-- [ ] **The tag exists** in the expected format, is reachable from `main`, and sits on the commit the tool is documented to tag. `git ls-remote --tags origin '<tag-glob>'`.
+- [ ] **The tag exists** in the expected format, is reachable from `main`, and sits on the commit the tool is expected to tag. `git ls-remote --tags origin '<tag-glob>'`.
 - [ ] **The Release exists**, with notes that list the commits of the merged branch (not only the merge commit) and the expected assets.
 - [ ] **The changelog entry matches.** Versions in the manifest and lock files equal the tag.
 - [ ] **Registry** (if the repository publishes): the version is there once.

@@ -167,7 +167,7 @@ Why the `release` condition is spelled out:
 
 ## Permissions, Tokens, and Branch Protection
 
-Two documented behaviours decide this section:
+Two behaviours decide this section:
 
 1. **`GITHUB_TOKEN` events start no new run.** A push, tag, Release or label made with it creates no workflow run, except `workflow_dispatch` and `repository_dispatch`. (A PR opened or updated with it does start `pull_request` runs, but held for approval.) This prevents recursive runs.
 2. **A GitHub App installation token's events do start runs.** That is also why the [bump commit](#the-bump-commit) needs `[skip ci]` once an app token pushes it.
@@ -194,12 +194,12 @@ Both the bump push and the Direct lane push to `main` without a PR. Protection t
 | Protected, with a bypass list holding maintainers and the release app, bypass mode "always" | Works for maintainers | Works with the app token | Server-side enforcement of PR requirements, at the price of one app to create, install and keep. |
 | Protected, no bypass | Impossible | Rejected | Only workable with tooling that pushes nothing to `main`. Choose it deliberately: [setting-up.md](setting-up.md#choosing-tooling-from-contents). |
 
-What the documentation says about bypassing:
+How bypassing works:
 
 - **Rulesets:** bypass actors can be roles (repository admin, maintain or write), teams and GitHub Apps. "Always" allows direct pushes. "For pull requests only" lets the actor bypass only through a PR, which serves neither the bump push nor the Direct lane.
-- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. The "allow specified actors to bypass required pull requests" list is documented as skipping the PR requirement only, not required status checks, and "Restrict who can push" waives neither. Do not assume either list waives required checks.
+- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. Do not assume the "allow specified actors to bypass required pull requests" list waives required status checks, and do not assume "Restrict who can push" does either: use a ruleset bypass actor when checks are required, and verify on a scratch repository.
 - **Rulesets and branch protection rules stack**, and the most restrictive result applies: a forgotten classic rule can still block a ruleset's bypass.
-- **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and the bypass-list documentation names roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected.
+- **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and bypass lists take roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected; verify on a scratch repository.
 - **Force pushes** are blocked on protected branches by default; a ruleset's non-fast-forward rule blocks them without any other restriction. Even a repository that keeps `main` open should block them ([recovery.md](recovery.md#history-rewritten-on-main)).
 - **Required checks and skips:** a PR whose head commit carries a skip marker cannot merge while checks are required, so never put one in a topic commit or a PR body (the body becomes the merge commit message).
 - **Merge settings** (merge commits only, linear history off) belong to [setting-up.md](setting-up.md#repository-settings): "Require linear history" forbids the merge commits this manual depends on.
@@ -214,7 +214,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 - **Why `[skip ci]`:** a push-triggered run on the bump commit would only find nothing to release, and with an app token it would run on every release. The marker (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, or a `skip-checks: true` trailer) skips the `push` and `pull_request` runs that commit would start, and nothing else: it does not stop `workflow_dispatch`, `pull_request_target`, or runs started by other commits. Keep it even under `GITHUB_TOKEN`, where it is redundant, so a later switch to an app token cannot start a loop.
 - **Who sees it:** the next push's `before` is the bump commit, so the next range check does not re-check it. It is checked by whatever walks history from the last tag, so its message must pass the same commit checker: `chore` is a non-release type, which is also what stops it releasing itself. Make sure the checker's vocabulary allows the `release` scope (vocabulary: `writing-history` → `references/commit-authoring.md`).
 - **Where it lands:** after the merge, a minute or more later. Anyone who branches from a stale `main` misses it: [recovery.md](recovery.md#local-main-is-stale).
-- **A skip marker is per commit.** It does not carry over to later commits, and it must never reach a topic commit or a PR body. Documentation does not say how a marker interacts with a tag push of that commit, so do not rely on a tag-triggered workflow for releases the bot tags; publish from the release job.
+- **A skip marker is per commit.** It does not carry over to later commits, and it must never reach a topic commit or a PR body. Do not rely on a marker to control a tag-triggered workflow for the tag the bot pushes; publish from the release job, and verify any other arrangement on a scratch repository.
 
 ## Hardening
 
