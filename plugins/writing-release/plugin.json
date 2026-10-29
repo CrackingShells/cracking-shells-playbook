@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "writing-release",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Runs the release cycle: integration lanes into main, pull requests as merge commits, CI-cut releases, tooling by repo contents, channels, and recovery.",
   "author": {
     "name": "Eliott Jacopin",
