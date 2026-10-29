@@ -1,3 +1,16 @@
+# writing-history [1.2.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.1.0...writing-history@1.2.0) (2026-10-29)
+
+
+### Bug Fixes
+
+* **writing-history:** finish handing release tooling to writing-release ([037f944](https://github.com/CrackingShells/cracking-shells-playbook/commit/037f944e9452c598a8adc182e3e1483e82b62f67))
+* **writing-history:** flag release-please as a release-PR tool ([636752e](https://github.com/CrackingShells/cracking-shells-playbook/commit/636752e897f1310c17e581fdddeb8ef53073d690))
+
+
+### Features
+
+* **writing-history:** hand landing on main and release tooling to writing-release ([bf506f0](https://github.com/CrackingShells/cracking-shells-playbook/commit/bf506f0244fd4163b45e224deb0010828f94c13e))
+
 # writing-history [1.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.0.0...writing-history@1.1.0) (2026-10-18)
 
 
