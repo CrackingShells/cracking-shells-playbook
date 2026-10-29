@@ -16,12 +16,13 @@ Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, the
 
 | Trigger | Why |
 |:--|:--|
-| `pull_request` with `types: [opened, synchronize, reopened, edited]` | The gates and the commit checks run on every PR. The default types omit `edited`, and the PR title becomes the merge commit subject ([lifecycle.md](lifecycle.md#invariants)), so a title edit must re-run the title check. |
+| `pull_request` (default types: opened, synchronize, reopened) | The gates and the commit-range check run on every PR and every push to its branch. |
+| `pull_request` with `types: [opened, edited, reopened, synchronize]`, in a separate title-check workflow | The PR title becomes the merge commit subject ([lifecycle.md](lifecycle.md#invariants)), and the default types omit `edited`, so a title edit must re-run the title check. |
 | `push` to `branches: [main]` | Runs after every landing, from any lane: the commit-range check, then the release. |
 | `workflow_dispatch` | Starts a fresh run on the current tip of `main` for recovery ([Idempotent Re-runs](#idempotent-re-runs)). |
 
 - **Topic-branch pushes alone run nothing.** The `push` trigger names only `main`, so the PR is the gate. Open the PR early to get feedback. A PR with a merge conflict gets no `pull_request` run at all, so "no checks appeared" usually means "rebase".
-- **`edited` also fires on body edits and base changes.** Skip the heavy gates for it (`github.event.action != 'edited'`, see [Job Graph](#job-graph)) so a typo fix in the body does not cost a full build.
+- **Keep the title check in its own workflow.** `edited` also fires on body edits and base changes. In the main workflow, an `edited` run would share the PR's concurrency group and cancel an in-flight `synchronize` run on the same commit; skipping the gates in it would instead report them as passed (a job skipped by `if` reports Success), masking a cancelled or failed run. A separate workflow has its own group, so a title or body edit re-runs only the title check and never touches the gates.
 - **Cancel superseded PR runs, never a run on `main`.** A cancelled release run can leave a tag without its Release, or a version without its tag. Group by workflow and ref, and make `cancel-in-progress` an expression:
 
   ```yaml
@@ -30,7 +31,7 @@ Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, the
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
   ```
 
-- **A queued run can be replaced.** Within a group, one run executes and at most one waits; a newer waiting run replaces an older waiting one. That is safe for the release (the tool releases everything since the last tag), but the replaced push's commit-range check never runs. PR-time checks already covered every PR commit, so the gap is Direct-lane pushes; keep those few and small.
+- **A queued run can be replaced.** By default a group runs one run and holds at most one waiting; a newer waiting run replaces an older waiting one. That is safe for the release (the tool releases everything since the last tag), but the replaced push's commit-range check never runs. PR-time checks already covered every PR commit, so the gap is Direct-lane pushes; keep those few and small. If losing a push run on `main` matters, `concurrency.queue: max` keeps up to 100 waiting runs, but it cannot be combined with `cancel-in-progress: true`: split the workflow (or the job) by event so the PR side keeps cancelling and the `main` side queues.
 - **Do not put path filters on the workflow triggers.** A workflow skipped by `paths`, `paths-ignore` or a skip marker leaves its checks "Pending", which blocks any PR that requires them, and the commit-range check must run on every push to `main` whatever it touched. Filter at job level instead: a `changes` job decides which gates are worth running, and a job skipped by `if` reports success.
 
 ## Job Graph
@@ -48,14 +49,13 @@ graph LR
 |:--|:--|:--|
 | `changes` | every event | Lists files changed in the PR or push; outputs whether anything outside the non-released paths (reports, roadmaps, docs outside released units) changed. A manual run has no base, so it outputs `true`. |
 | `gates` | PR and push, when `changes` says so | Lint, tests, build, drift checks ([Monorepos](#monorepos)). Whatever the repo already verifies. |
-| `commits` | every event | Commit-message check over the range (PR: base..head; push: before..after), plus the PR-title check on PRs. Needs a git identity ([Hardening](#hardening)). |
+| `commits` | every event | Commit-message check over the range (PR: base..head; push: before..after). Needs a git identity ([Hardening](#hardening)). |
 | `release` | push or dispatch on `main`, after the others | Cuts the release. Never filtered by path: a direct push that turns out to be release-type must still release. |
 
 ```yaml
 name: ci
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
 
   gates:
     needs: changes
-    if: needs.changes.outputs.gated == 'true' && github.event.action != 'edited'
+    if: needs.changes.outputs.gated == 'true'
     runs-on: <runner>
     steps:
       - uses: actions/checkout@<full-sha> # <tag>
@@ -100,18 +100,14 @@ jobs:
           git config user.name  "<bot name>"
           git config user.email "<bot email>"
       - if: github.event_name == 'pull_request'
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          <check "$TITLE">
-          <check commits ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}>
+        run: <check commits ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}>
       - if: github.event_name == 'push'
         run: <check commits ${{ github.event.before }}..${{ github.sha }}>
 
   release:
     needs: [changes, gates, commits]
     if: >-
-      always()
+      !cancelled()
       && github.ref == 'refs/heads/main'
       && github.event_name != 'pull_request'
       && needs.changes.result == 'success'
@@ -137,10 +133,31 @@ jobs:
         run: <release command>
 ```
 
+The title check is a second, separate workflow, so edits never cancel or re-run the gates:
+
+```yaml
+name: pr-title
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  title:
+    runs-on: <runner>
+    steps:
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: <check "$TITLE">
+```
+
 Why the `release` condition is spelled out:
 
-- A job whose `needs` entry failed or was skipped is skipped itself unless its `if` says otherwise, hence `always()`.
-- `always()` also runs the job after a failure, so the condition re-states every requirement. `gates` may be skipped (nothing gated changed) but not failed; `changes` and `commits` must have succeeded.
+- A job whose `needs` entry failed or was skipped is skipped itself unless its `if` says otherwise, hence a status function (`!cancelled()`).
+- A status function also runs the job after an upstream failure, so the condition re-states every requirement. `!cancelled()` rather than `always()` keeps a cancelled workflow from starting `release`. `gates` may be skipped (nothing gated changed) but not failed; `changes` and `commits` must have succeeded.
 - `fetch-depth: 0` matters: the checkout fetches one commit by default, and range checks and tag-based release tools need history and tags.
 - `contents: read` at workflow level and `contents: write` on the release job alone keeps the write token out of every other job.
 
@@ -158,14 +175,14 @@ Setting `permissions:` is a whitelist: once any key is set, every unlisted permi
 | Situation | Token | Notes |
 |:--|:--|:--|
 | `main` unprotected; nothing downstream reacts to tags or Releases | `GITHUB_TOKEN` with job-level `contents: write` | No secret to manage; the bump push cannot loop. |
-| `main` protected, with a bypass for the release bot | GitHub App token, app on the bypass list | Minted inside the release job (the token is revoked when the job ends, so it cannot be handed to another job). Limit it with the action's per-permission inputs; by default it inherits every permission of the installation. |
-| Downstream workflows must react to tags or Releases | App token, or an explicit `workflow_dispatch` from the release job | `GITHUB_TOKEN` events trigger nothing downstream. Doing the downstream work inside the release job avoids the problem. |
+| `main` protected, with a bypass for the release bot | GitHub App token, app on the bypass list (a ruleset actor if checks are required) | Minted inside the release job (the token is revoked when the job ends, so it cannot be handed to another job). Limit it with the action's per-permission inputs; by default it inherits every permission of the installation. |
+| Downstream workflows must react to tags or Releases | App token, or an explicit `workflow_dispatch` from the release job | `GITHUB_TOKEN` events trigger nothing downstream. A dispatch also needs `actions: write` on the job once `permissions:` is a whitelist. Doing the downstream work inside the release job avoids the problem. |
 
 Use the same token for the checkout and for the release tool, so the bump push and the Release API call act as one identity. A tool that authenticates through its own token variable may need `persist-credentials: false` on the checkout so the default token does not win; check the tool's documentation. A personal access token is the fallback of last resort: it belongs to a person, and a classic one reaches every repository that person can.
 
 ### Protection versus the lanes
 
-Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to direct pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any).
+Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to direct pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Verify the combination on a scratch repository before relying on it.
 
 | `main` is | Direct lane | Bump push | Tradeoff |
 |:--|:--|:--|:--|
@@ -176,7 +193,7 @@ Both the bump push and the Direct lane push to `main` without a PR. Protection t
 What the documentation says about bypassing:
 
 - **Rulesets:** bypass actors can be roles (repository admin, maintain or write), teams and GitHub Apps. "Always" allows direct pushes. "For pull requests only" lets the actor bypass only through a PR, which serves neither the bump push nor the Direct lane.
-- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. "Restrict who can push" does not waive required checks or required PRs.
+- **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. The "allow specified actors to bypass required pull requests" list is documented as skipping the PR requirement only, not required status checks, and "Restrict who can push" waives neither. Do not assume either list waives required checks.
 - **Rulesets and branch protection rules stack**, and the most restrictive result applies: a forgotten classic rule can still block a ruleset's bypass.
 - **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and the bypass-list documentation names roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected.
 - **Force pushes** are blocked on protected branches by default; a ruleset's non-fast-forward rule blocks them without any other restriction. Even a repo that keeps `main` open should block them ([recovery.md](recovery.md#history-rewritten-on-main)).
@@ -212,7 +229,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 
 A repo with several units (packages, skills, crates) that release independently keeps one workflow and one release job. The tool works out which units have release-type commits.
 
-- **Per-unit path filters** only choose which gates and builds run. Compare against the unit's last tag, not `before..after`: a skipped or failed earlier run would otherwise lose that unit's changes forever. The last tag of a unit is `git tag --list '<unit>@*' --sort=-version:refname | head -1`, falling back to the first commit when there is none.
+- **Per-unit path filters** only choose which gates and builds run. Compare against the unit's last tag, not `before..after`: a skipped or failed earlier run would otherwise lose that unit's changes forever. The last tag of a unit is `git -c versionsort.suffix=- tag --list '<unit>@*' --sort=-version:refname | head -1`, falling back to the first commit when there is none. The `versionsort.suffix=-` setting makes `1.0.0` sort above `1.0.0-rc.2`; plain version sort does not.
 - **Per-unit tag lines** `<unit>@<version>` keep units independent. The `@` delimiter keeps one unit's name from matching another's prefix. A tool must be configured with the same tag format for every unit, or it will not find the baseline ([recovery.md](recovery.md#first-release-and-missing-tags)).
 - **Build once, then release.** Per-unit or per-platform builds run in their own jobs and hand artifacts to the release job as workflow artifacts. The release job must not rebuild with different inputs.
 - **Drift jobs** regenerate committed generated files (assembled plugin trees, schema outputs, lock files) and fail on a diff:

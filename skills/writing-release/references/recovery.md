@@ -31,7 +31,7 @@ Placeholders: `<unit>` is a released unit (or the whole repo when it has one), `
 3. **No release-type commit on a released path since the last tag.**
 
    ```bash
-   LAST=$(git tag --list '<tag-glob>' --sort=-version:refname | head -1)
+   LAST=$(git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname | head -1)
    git log "$LAST"..origin/main --format='%h %s' -- <released path>
    ```
 
@@ -65,13 +65,15 @@ For a race, compare the run's commit with the tip: `gh run view <run-id> --json 
 ```bash
 git ls-remote --tags origin '<tag-glob>'     # tags newer than the last good release?
 gh release list --limit 5                    # a Release with no bump commit?
+# and, if the repo publishes: does the registry already hold the new version?
 ```
 
 **Fix.**
 
 - **Race, no new tag or Release.** Nothing was published. Do not re-run the failed run (it replays the old commit): start a fresh run on `main` (`gh workflow run <workflow-file> --ref main`), or let the next push's run do it. It releases the accumulated commits together.
-- **Race, a tag or Release exists.** Check whether the tag's commit is reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`). If it is, only the bump commit is missing: ask the maintainer how the tool should continue (usually a fresh run). If it is not, the tag points at a commit that was never pushed: the maintainer deletes the tag and its Release (`gh release delete <tag> --cleanup-tag`), then a fresh run releases the same version cleanly. Never publish the same version twice.
-- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on the bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). Required status checks need the same bypass, because the bump commit has no checks.
+- **Race, a tag or Release exists.** Check whether the tag's commit is reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`). Most tools tag the bump commit itself, so a tag whose commit is not on `main` means the push that carried it never landed: the maintainer deletes the tag and its Release (`gh release delete <tag> --cleanup-tag`), then a fresh run releases the same version cleanly. A tag that is reachable from `main` without a bump commit can only come from a tool that tags another commit; ask the maintainer how that tool continues. Never publish the same version twice.
+- **Race, a registry already holds the version.** A registry refuses a version it has, so the fresh run fails at publish: [Re-running a Release](#re-running-a-release) covers registry-first publishes.
+- **Protection.** The push identity is not allowed past the rule: give the release job an app token and put the app on a ruleset's bypass list in "always" mode ([ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection)). With required status checks, a ruleset bypass actor (or an admin with "Do not allow bypassing" off) is needed, because the bump commit has no checks; the classic bypass-PR list is not documented as waiving them. Verify on a scratch repository.
 
 **Prevention.** Concurrency serialises runs but cannot stop a person's push, so a race is possible whenever someone lands while a release is running; the design absorbs it ([ci-release-job.md](ci-release-job.md#idempotent-re-runs)). Settle protection before the first release: [setting-up.md](setting-up.md#adoption-checklist).
 
@@ -121,7 +123,7 @@ git push origin <unit>@<current-version>
 
 ```bash
 git fetch --tags origin && git log origin/main --first-parent --oneline -5
-git tag --list '<tag-glob>' --sort=-version:refname | head -3
+git -c versionsort.suffix=- tag --list '<tag-glob>' --sort=-version:refname | head -3
 gh release list --limit 3
 ```
 
@@ -150,7 +152,7 @@ done
 
 **Fix.** Stop other landings first; this is a maintainer-led repair.
 
-1. **Prefer restoring the old tip.** If the previous tip is known (a clone that still has it, or the commit of the last good run in `gh run list --branch main`), the maintainer restores it with one pinned force push: `git push --force-with-lease=main:<bad-tip> origin <old-tip>:main`. Tags and ranges are consistent again, and the rewritten-away work re-lands through the normal lanes.
+1. **Prefer restoring the old tip.** If the previous tip is known (a clone that still has it, or the commit of the last good run in `gh run list --branch main`), the maintainer restores it with one pinned force push: `git push --force-with-lease=main:<bad-tip> origin <old-tip>:main`. A rule that blocks non-fast-forward pushes refuses this too, so the maintainer lifts it (or bypasses it) just for the push and restores it straight after. Tags and ranges are consistent again, and the rewritten-away work re-lands through the normal lanes.
 2. **Otherwise accept the new history and re-anchor.** For each orphaned tag, find the equivalent commit in the new history (same subject or patch: `git log origin/main --grep=<subject>`, `git cherry`), then recreate the tag there (`git tag -f <tag> <new-sha>`, pushed by the maintainer after deleting the remote tag). Check each GitHub Release still points at its tag. Recreate any tool-specific records the tool's documentation names.
 3. **Verify** with a fresh run on `main`: it must report no release, or exactly the version you expect, and publish no version that already exists.
 
