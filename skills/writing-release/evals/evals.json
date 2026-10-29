@@ -1,128 +1,168 @@
 {
-  "skill_name": "hatch-release-writer",
+  "skill_name": "writing-release",
   "evals": [
     {
       "id": 1,
-      "prompt": "Write the PR description for my latest contribution. I'm merging LittleCoinCoin/Hatch:dev into CrackingShells/Hatch:dev for v0.8.3-dev.1. Changes: (1) Added Zed editor MCP host support — reads ~/.config/zed/settings.json, supports command/args/env fields, new ZedAdapter class with validate_filtered() pipeline, new ZedHostStrategy. (2) Fixed a bug where `hatch mcp list` showed stale cache data even after the --refresh flag was passed — root cause was the refresh flag not being forwarded to the cache manager, added regression test. (3) Updated the adding-mcp-hosts skill SKILL.md to include Zed as a worked example.",
-      "expected_output": "A well-structured GitHub PR body with [v0.8.3-dev.1] title, a ## Summary bullet list, and detailed ## Features / ## Bug Fixes / ## Developer Experience sections with technical implementation details, following the Type A PR template.",
+      "prompt": "All leaves of our roadmap campaign `oauth-support` are merged into the integration branch `feat/oauth-support`. The campaign adds an OAuth login provider abstraction, a GitHub provider and a token-refresh fix in the `auth` package. Land it on main. Write the PR title and body you would use, and list the steps to get it merged.",
+      "expected_output": "Classifies this as the Reviewed PR lane (a campaign landing), writes a `merge(auth): ...` title that will become the merge subject, a body that becomes the merge body (why, what lands, verification), and landing steps: rebase onto main, force-with-lease, wait for CI, maintainer approval, merge with a merge commit (not squash), then pull main.",
       "assertions": [
         {
-          "name": "title-includes-version",
-          "description": "Title includes the exact version string [v0.8.3-dev.1]",
-          "type": "contains",
-          "value": "v0.8.3-dev.1"
-        },
-        {
-          "name": "has-summary-section",
-          "description": "Body includes a ## Summary section with bullet points",
-          "type": "contains",
-          "value": "## Summary"
-        },
-        {
-          "name": "has-features-section",
-          "description": "Body includes a ## Features section for Zed support",
-          "type": "contains",
-          "value": "## Features"
-        },
-        {
-          "name": "has-bug-fixes-section",
-          "description": "Body includes a ## Bug Fixes section for the cache bug",
-          "type": "contains",
-          "value": "## Bug Fixes"
-        },
-        {
-          "name": "mentions-validate-filtered",
-          "description": "Technical detail about validate_filtered() pipeline is mentioned",
-          "type": "contains",
-          "value": "validate_filtered"
-        },
-        {
-          "name": "mentions-root-cause",
-          "description": "Bug fix section explains the root cause",
+          "name": "reviewed-lane",
+          "description": "Identifies the change as needing maintainer review because it lands a campaign",
           "type": "contains_any",
-          "value": ["Root cause", "root cause", "**Root"]
+          "value": ["Reviewed PR", "reviewed PR", "maintainer approv", "maintainer review", "approval from the maintainer"]
         },
         {
-          "name": "no-invented-changes",
-          "description": "Does not mention features not in the provided change list (e.g. no OpenCode, no Augment, no Mistral)",
+          "name": "merge-subject-title",
+          "description": "The PR title follows the merge-commit subject shape",
+          "type": "contains_any",
+          "value": ["merge(auth)", "merge(oauth"]
+        },
+        {
+          "name": "rebase-before-merge",
+          "description": "Rebases onto main before merging",
+          "type": "contains_any",
+          "value": ["rebase origin/main", "rebase onto main", "git rebase main", "rebase it onto"]
+        },
+        {
+          "name": "merge-commit-not-squash",
+          "description": "Merges with a merge commit, never a squash",
+          "type": "contains_any",
+          "value": ["gh pr merge --merge", "merge commit"]
+        },
+        {
+          "name": "no-squash-instruction",
+          "description": "Does not instruct a squash merge",
           "type": "not_contains_any",
-          "value": ["OpenCode", "Augment", "Mistral"]
+          "value": ["gh pr merge --squash", "squash and merge"]
+        },
+        {
+          "name": "no-fork-dev-model",
+          "description": "Does not fall back to a fork / dev-branch model",
+          "type": "not_contains_any",
+          "value": ["into dev", "upstream dev", "Discord"]
         }
       ],
       "files": []
     },
     {
       "id": 2,
-      "prompt": "Draft the PR description for merging CrackingShells/Hatch:dev into CrackingShells/Hatch:main for the v0.8.3 stable release. It rolls up two dev PRs: #53 which added Zed editor MCP host support, and #54 which fixed a stale cache bug in `hatch mcp list` and updated the adding-mcp-hosts skill. No breaking changes.",
-      "expected_output": "A Type B (dev→main) PR body with [v0.8.3] in the title, an overview paragraph, feature sections cross-referencing (#53) and (#54), and no Breaking Changes section since there are none.",
+      "prompt": "I have a single Python package managed with uv (pyproject.toml, src/ layout), conventional commits already in use, no release automation yet, and I want versions, a changelog, tags and GitHub Releases cut automatically when work lands on main. PyPI publishing can wait. What release setup should I adopt?",
+      "expected_output": "Derives the tooling from the repo's contents: prefers Python-native tooling (e.g. python-semantic-release or commitizen) so CI needs no Node toolchain, covers the capability checklist (version from commits, changelog, tag, GitHub Release, publishing deferred), and wires a release job in CI gated on the tests, triggered by pushes to main, with a [skip ci] bump commit.",
       "assertions": [
         {
-          "name": "title-includes-version",
-          "description": "Title includes [v0.8.3]",
-          "type": "contains",
-          "value": "v0.8.3"
-        },
-        {
-          "name": "cross-references-pr-53",
-          "description": "References (#53) for the Zed feature",
-          "type": "contains",
-          "value": "#53"
-        },
-        {
-          "name": "cross-references-pr-54",
-          "description": "References (#54) for the bug fix",
-          "type": "contains",
-          "value": "#54"
-        },
-        {
-          "name": "no-breaking-changes-section",
-          "description": "No ## Breaking Changes section since there are none",
-          "type": "not_contains",
-          "value": "## Breaking Changes"
-        },
-        {
-          "name": "has-overview-or-features",
-          "description": "Has an Overview paragraph or Features section",
+          "name": "python-native-tool",
+          "description": "Recommends a Python-native release tool",
           "type": "contains_any",
-          "value": ["## Overview", "## Features", "## Major"]
+          "value": ["python-semantic-release", "commitizen", "cz bump"]
+        },
+        {
+          "name": "ci-on-main",
+          "description": "Releases from CI after landing on main, not locally",
+          "type": "contains_any",
+          "value": ["push to main", "pushes to main", "push to `main`", "on: push", "after the merge"]
+        },
+        {
+          "name": "gated-release-job",
+          "description": "The release job depends on the gates",
+          "type": "contains_any",
+          "value": ["needs:", "gated on", "after the tests", "after the gates"]
+        },
+        {
+          "name": "skip-ci-bump",
+          "description": "Mentions the bot bump commit skipping CI",
+          "type": "contains",
+          "value": "[skip ci]"
+        },
+        {
+          "name": "no-release-pr",
+          "description": "Does not set up a release PR ceremony",
+          "type": "not_contains_any",
+          "value": ["release-please", "release PR workflow"]
         }
       ],
       "files": []
     },
     {
       "id": 3,
-      "prompt": "Write the Discord announcement for v0.8.3-dev.1. Two things landed: Zed editor MCP host support (users can now manage Zed's MCP servers with hatch mcp just like any other host), and a fix for the stale cache issue in hatch mcp list when using --refresh. Cheerful tone.",
-      "expected_output": "A Discord dev announcement message (Sub-type D2 style since it's a subsequent dev) using the dark-bg Hatch custom emoji, ## header, ### subsections for each change, friendly closing, no installation command required since it's brief.",
+      "prompt": "I merged a PR into main an hour ago, CI was green, but no new version, tag or GitHub Release appeared. The PR had two commits: `docs(readme): clarify install steps` and `chore(deps): bump pytest`. What went wrong and what should I do?",
+      "expected_output": "Explains that neither commit is a release-type commit (docs and chore release nothing under the repo's convention), so the release job correctly found nothing to release; says how to confirm (commits since the last tag, the release job log saying nothing to release) and that a release happens when a release-type commit (e.g. fix/feat) lands; does not suggest tagging by hand or running a release locally.",
       "assertions": [
         {
-          "name": "uses-hatch-custom-emoji",
-          "description": "Uses the correct custom Discord emoji (dark-bg variant for dev releases)",
-          "type": "contains",
-          "value": "<:hatch_icon_dark_bg_transparent:1412018750739451974>"
-        },
-        {
-          "name": "mentions-version",
-          "description": "Mentions v0.8.3-dev.1 or v0.8.3-dev in the header",
+          "name": "no-release-type-commit",
+          "description": "Identifies that the commits are not release-type",
           "type": "contains_any",
-          "value": ["v0.8.3-dev.1", "0.8.3-dev", "v0.8.3"]
+          "value": ["release-type", "release nothing", "releases nothing", "do not trigger a release", "don't trigger a release", "no release-type"]
         },
         {
-          "name": "mentions-zed",
-          "description": "Mentions Zed editor support",
-          "type": "contains",
-          "value": "Zed"
-        },
-        {
-          "name": "mentions-cache-fix",
-          "description": "Mentions the cache or --refresh fix",
+          "name": "confirm-since-last-tag",
+          "description": "Says how to confirm against the last tag or the job log",
           "type": "contains_any",
-          "value": ["cache", "refresh", "--refresh"]
+          "value": ["last tag", "since the last release", "nothing to release", "release job log"]
         },
         {
-          "name": "has-friendly-closing",
-          "description": "Has a friendly closing line (hatching emoji or similar)",
+          "name": "no-manual-release",
+          "description": "Does not recommend a manual tag or a local release",
+          "type": "not_contains_any",
+          "value": ["git tag -a", "git push --tags", "run the release locally"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Our library has a handful of internal users. I'd like to add a `dev` branch that publishes `-dev.N` prereleases, so features can bake there before they reach main. Set that up.",
+      "expected_output": "Pushes back: recommends staying on a single channel (main) because a long-lived dev branch doubles integration, drifts and accumulates an unreleased backlog; names the adoption triggers that would justify a channel (many external users, regressions reaching users, downstream pinning) and, if a channel is ever needed, the lagged release-candidate pattern from main rather than a separate dev branch. Unfinished work belongs on topic branches.",
+      "assertions": [
+        {
+          "name": "single-channel",
+          "description": "Recommends keeping one channel",
           "type": "contains_any",
-          "value": ["hatching", "Hatchers", "🐣", "hatch", "<:hatchling"]
+          "value": ["single channel", "one channel", "one release channel", "stay on main"]
+        },
+        {
+          "name": "adoption-triggers",
+          "description": "Names when a channel would be justified",
+          "type": "contains_any",
+          "value": ["trigger", "when to add", "justif"]
+        },
+        {
+          "name": "rc-pattern",
+          "description": "Points to the lagged release-candidate pattern as the escalation",
+          "type": "contains_any",
+          "value": ["release candidate", "release-candidate", "-rc", "rc."]
+        },
+        {
+          "name": "cost-of-dev-branch",
+          "description": "States the cost of a long-lived development branch",
+          "type": "contains_any",
+          "value": ["drift", "double integration", "backlog"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "I just wrote a findings report under __reports__/perf/ and updated two roadmap node statuses. Nothing under src/ changed. Should this go through a pull request before it lands on main?",
+      "expected_output": "Chooses the Direct lane: the change releases nothing and touches neither CI nor release machinery, so it lands with local branch-to-parent integration (if branched) then pull and push to main, with no PR and no maintainer approval; notes a wrong lane is cheap because CI still checks pushes to main.",
+      "assertions": [
+        {
+          "name": "direct-lane",
+          "description": "Chooses the direct lane",
+          "type": "contains_any",
+          "value": ["Direct lane", "direct lane", "push it directly", "straight to main", "directly to main", "Direct"]
+        },
+        {
+          "name": "reason-releases-nothing",
+          "description": "Justifies it by the change releasing nothing",
+          "type": "contains_any",
+          "value": ["releases nothing", "release nothing", "no release", "not a release-type", "nothing to release"]
+        },
+        {
+          "name": "no-pr-required",
+          "description": "Does not demand a reviewed PR",
+          "type": "not_contains_any",
+          "value": ["must open a PR", "needs maintainer approval", "requires a reviewed PR"]
         }
       ],
       "files": []
