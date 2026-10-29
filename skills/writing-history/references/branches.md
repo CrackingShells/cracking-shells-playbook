@@ -45,6 +45,10 @@ This sequence — rebase, resolve, re-verify, `--no-ff` merge — is the whole c
 
 If the project maintains its version number and changelog by hand rather than through release automation, landing a merge is often the moment that update falls due — see [semver-changelog.md](semver-changelog.md) for how commits map to version bumps and changelog entries.
 
+### When the parent is the release branch
+
+Landing on the branch a project releases from (usually `main`) is governed by the `writing-release` skill, whose `references/lifecycle.md` assigns every change an integration lane. In the two pull-request lanes the same four steps happen through the pull request: the child is rebased and force-pushed with `--force-with-lease` (the PR branch is exclusively yours), CI re-verifies, and the merge commit is created when the PR merges, with the PR title and body as its message. In the direct lane, which is for changes that release nothing, this contract applies exactly as written above.
+
 ---
 
 ## Rationale

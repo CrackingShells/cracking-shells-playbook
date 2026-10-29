@@ -66,13 +66,16 @@ Bootstrapping over an already-derivable convention is a mistake: it discards wor
 
 There is no single correct stack — the right choice is a function of the interview answers, not a default. Use the following as illustrative mappings from common contexts to sensible options, not as a menu to pick from blindly; any recommendation must be justified by citing the specific interview answers that motivated it.
 
-| Repo context | Sensible option(s) | Why |
+| Repo context | Commit convention and enforcement | Why |
 |---|---|---|
-| JS/TS package or monorepo | Conventional Commits + `commitlint` + `semantic-release` (or `multi-semantic-release` for independently-versioned units) | Native to the ecosystem; widely known by contributors and agents alike |
-| Python package | Conventional Commits + `commitizen`, `python-semantic-release`, or an equivalent | Mirrors the JS pattern without requiring a Node toolchain |
-| Prose / scientific-writing / documentation repo | A lightweight, project-defined change-class vocabulary (e.g. `add`/`revise`/`fix`/`retract`) + a simple changelog generator, or even a hand-maintained `CHANGELOG.md` with a documented convention | Full semantic-release machinery is often overkill when there's no package to publish; the convention still needs to exist, just not the automation weight |
-| Mixed monorepo (code + docs + data) | Path-scoped, per-unit release orchestration (e.g. `multi-semantic-release`) with a shared commit-type vocabulary that spans material types | Keeps independent units on independent version lifecycles while sharing one vocabulary |
+| JS/TS package or monorepo | Conventional Commits + `commitlint` | Native to the ecosystem; widely known by contributors and agents alike |
+| Python package | Conventional Commits, checked by `commitizen` (`cz check`) or an equivalent | Mirrors the JS pattern without requiring a Node toolchain |
+| Rust crate or workspace | Conventional Commits, checked by a Rust-native checker such as `cocogitto` (`cog verify`/`cog check`) | Keeps enforcement in the repo's own toolchain |
+| Prose / scientific-writing / documentation repo | A lightweight, project-defined change-class vocabulary (e.g. `add`/`revise`/`fix`/`retract`), documented, with a hand-maintained `CHANGELOG.md` if nothing else consumes versions | The convention still needs to exist, just not the automation weight |
+| Mixed monorepo (code + docs + data) | One shared commit-type vocabulary that spans material types, with scopes naming the independently versioned units | Independent units can then be versioned per unit from the same history |
 | No release cadence / internal-only versioning | A documented commit convention alone, with changelog and version bumps deferred until they're actually needed | Avoids standing up machinery nobody consumes |
+
+Choosing the release tool that turns these commits into versions, changelogs, tags and releases, and wiring it into CI, belongs to the `writing-release` skill (`references/setting-up.md`), which derives it from what the repo contains. When bootstrapping both at once, present the commit convention from this table together with the release tooling from that reference as a single proposal.
 
 Whatever is proposed, state explicitly which interview answers led to it. "This repo is JS/TS with no existing tooling and wants an automated changelog for external users, so commitlint + semantic-release fits" is a recommendation; "use semantic-release" alone is not.
 

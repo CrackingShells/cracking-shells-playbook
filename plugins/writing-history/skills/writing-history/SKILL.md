@@ -21,3 +21,4 @@ Read the routed reference before acting — do not proceed from this table alone
 | Project has no commit conventions, changelog, or versioning set up yet | [`references/convention-setup.md`](references/convention-setup.md) |
 | Understand how versions and changelog entries derive from commits | [`references/semver-changelog.md`](references/semver-changelog.md) |
 | Merge, rebase, integrate a branch, work in parallel/worktrees, or debug on a throwaway branch | [`references/branches.md`](references/branches.md) |
+| Land work on the release branch (`main`), set up or choose release tooling, or debug a release | the `writing-release` skill |
