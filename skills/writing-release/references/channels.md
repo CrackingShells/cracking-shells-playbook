@@ -88,7 +88,7 @@ How each tool in [the matrix](setting-up.md#choosing-tooling-from-contents) expr
 
 Whatever the tool, the tag shape must keep prereleases distinguishable from stable tags (`<unit>@<version>-rc.<n>`; `commitizen` needs `version_scheme = "semver2"` for that spelling), so the "last release" lookup that decides the next version can tell them apart. See the tag-format table in [setting-up.md](setting-up.md#choosing-tooling-from-contents).
 
-Sorting caveat: a plain version sort ranks `1.0.0-rc.2` above `1.0.0`; any job that picks the latest release by sorting tags must rank prereleases below their stable version ([ci-release-job.md](ci-release-job.md#monorepos) has the command).
+Sorting caveat: a plain version sort ranks `1.0.0-rc.2` above `1.0.0`; any job that picks the latest release by sorting tags must rank prereleases below their stable version ([ci-release-job.md](ci-release-job.md#hardening) has the command).
 
 ## The Cost of a Long-Lived Development Branch
 
