@@ -32,7 +32,7 @@ Terms the lanes rely on; the first two are defined per repository in [Mapping La
 
 A roadmap campaign or multi-leaf feature branch is a branch that integrates several sub-branches of one planned piece of work.
 
-A Direct-lane push needs `main` unprotected, or protected with a bypass for maintainers and the release bot; [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection) owns that tradeoff. Branch-to-parent integration for a branched Direct-lane change belongs to `writing-history` → `references/branches.md`, not to this manual.
+The Direct lane runs as a push only where `main` is unprotected, or where CONTRIBUTING names that change class as Direct with a bypass; anywhere else a refused Direct-lane push becomes a PR. [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection) owns that tradeoff. Branch-to-parent integration for a branched Direct-lane change belongs to `writing-history` → `references/branches.md`, not to this manual.
 
 ## Choosing a Lane
 
