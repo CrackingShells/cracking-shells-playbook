@@ -2,7 +2,7 @@
   "name": "writing-release",
   "displayName": "Writing Release",
   "version": "1.0.0",
-  "description": "Writes GitHub pull request bodies and Discord release announcements for fork-based release workflows.",
+  "description": "Runs the release cycle: integration lanes into main, pull requests as merge commits, CI-cut releases, tooling by repo contents, channels, and recovery.",
   "author": {
     "name": "Eliott Jacopin",
     "email": "eliott.jacopin@riken.jp"
@@ -12,8 +12,9 @@
   "license": "AGPL-3.0-or-later",
   "keywords": [
     "release",
-    "changelog",
     "pull-request",
+    "ci",
+    "versioning",
     "agents"
   ],
   "skills": "./skills/"
