@@ -83,9 +83,9 @@ Whatever is proposed, state explicitly which interview answers led to it. "This 
 
 Once a stack is chosen (see "Delivering Recommendations" for how it gets approved), stand it up in this order:
 
-1. **Define the vocabulary** — write down the commit-type set (and scope conventions, if any) as the project's own documented convention, sized to the repo's material types (see interview Q1–Q2).
-2. **Add machinery config** — install and configure the chosen tool(s): commitlint config (`type-enum`, `scope-enum` if applicable), release-tool config (`.releaserc.js` or equivalent), and any per-unit manifest needed for path-scoped versioning.
-3. **Wire changelog automation** — connect the release tool's changelog plugin/equivalent, or, for lighter-weight setups, document the manual changelog-update step.
+1. **Define the vocabulary** — write down the commit-type set (and scope conventions, if any) as the project's own documented convention, sized to the repo's material types (see interview Q1–Q2). If merges into the release branch go through pull requests, include a non-release type for merge-commit subjects (e.g. `merge`), so a merged PR adds no changelog entry or bump of its own.
+2. **Add commit-checking config** — install and configure the chosen checker: commitlint config (`type-enum`, `scope-enum` if applicable) or its equivalent.
+3. **Hand release automation to `writing-release`** — the release tool, its changelog, per-unit manifests for path-scoped versioning, and the CI release job are set up per the `writing-release` skill (`references/setting-up.md`), after this vocabulary is approved. For a lighter-weight setup with no release tool, document the manual changelog-update step here instead.
 4. **Decide local-hook vs. CI-only enforcement** — a blocking local hook (e.g. commitlint in a pre-commit hook) gives immediate feedback but can block agent-authored commits with unconventional but valid messages; CI-only enforcement is friendlier to mixed human/agent commit workflows at the cost of delayed feedback. Choose based on interview Q4 (who commits).
 5. **Document in CONTRIBUTING** — write the convention, the bump mapping, and the enforcement model into `CONTRIBUTING.md` (or equivalent) so it becomes the derivable ground truth for future contributors and for [commit-authoring.md](commit-authoring.md)'s "not-our-project" derivation path.
 

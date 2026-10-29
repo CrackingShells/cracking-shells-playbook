@@ -47,7 +47,7 @@ If the project maintains its version number and changelog by hand rather than th
 
 ### When the parent is the release branch
 
-Landing on the branch a project releases from (usually `main`) is governed by the `writing-release` skill, whose `references/lifecycle.md` assigns every change an integration lane. In the two pull-request lanes the same four steps happen through the pull request: the child is rebased and force-pushed with `--force-with-lease` (the PR branch is exclusively yours), CI re-verifies, and the merge commit is created when the PR merges, with the PR title and body as its message. In the direct lane, which is for changes that release nothing, this contract applies exactly as written above.
+Landing on the branch a project releases from (usually `main`) follows the integration lanes of the `writing-release` skill (`references/lifecycle.md`). Its pull-request lanes perform this contract through the pull request; its direct lane uses this contract as written.
 
 ---
 
