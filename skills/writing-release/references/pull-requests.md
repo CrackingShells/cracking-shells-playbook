@@ -31,7 +31,7 @@ Revise later with `gh pr edit <pr> --title "$(cat <scratch>/pr-title.txt)" --bod
 
 ## Title
 
-The title becomes the merge subject: `merge(<scope>): <what lands and why>`.
+The merge subject starts with the title, so the title is `merge(<scope>): <what lands and why>`. The host may append ` (#<n>)` to it; the repo's commit check must accept that suffix (most do).
 
 - **Vocabulary is the repo's own.** The `merge` type, the scope names and the length limit come from the repo's commit convention, derived as `writing-history` describes (`references/commit-authoring.md`, "Deriving the Vocabulary"). If the repo's vocabulary names merge commits differently, use its name.
 - **Scope names the unit landing**, not the mechanism: `<unit>` or `<topic>`.
@@ -79,14 +79,14 @@ Guidance:
    ```bash
    git fetch origin
    git rebase origin/main        # add --rebase-merges if the branch holds merge commits
-   git push --force-with-lease
+   git push --force-with-lease=<type>/<topic>:<last-pushed-sha>
    ```
-   Resolve conflicts commit by commit and re-verify afterwards; `writing-history` (`references/branches.md`) owns that contract. Force-pushing is acceptable here because the topic branch is yours alone; never force-push `main` or a branch others build on.
+   Name the SHA you last pushed (`git rev-parse origin/<type>/<topic>` *before* the fetch): the fetch refreshes the remote-tracking ref, so a bare `--force-with-lease` compares against what you just fetched and protects nothing. `--force-with-lease --force-if-includes` is an alternative. Resolve conflicts commit by commit and re-verify afterwards; `writing-history` (`references/branches.md`) owns that contract. Force-pushing is acceptable here because the topic branch is yours alone; never force-push `main` or a branch others build on.
 2. **Wait for green on the rebased head.** `gh pr checks <pr> --watch`. A green run on an older head says nothing about the one you will merge.
 3. **Check before merging:**
    - [ ] Every required check is green on the current head.
    - [ ] Title and body still describe what the branch now contains, because they become the merge message.
-   - [ ] Reviewed PR lane: the maintainer has approved (`gh pr view <pr> --json reviewDecision`). Green CI alone is not approval.
+   - [ ] Reviewed PR lane: the maintainer has approved (`gh pr view <pr> --json reviewDecision`). An empty `reviewDecision` means the base branch has no review rule, not that the PR is approved; read `--json reviews,latestReviews` for the maintainer's approval. Green CI alone is not approval.
    - [ ] No review thread is left unresolved.
 4. **Merge with a merge commit.**
    ```bash
@@ -116,7 +116,7 @@ A blocked self-merge costs one maintainer click; a worked-around block costs the
 2. **Delete the topic branch.** `git branch -d <type>/<topic>`; the remote copy is deleted on merge when the repo is set to do so ([setting-up.md](setting-up.md#repository-settings)), otherwise `git push origin --delete <type>/<topic>`. If it lived in a worktree, `writing-history` (`references/branches.md`) covers cleanup.
 3. **Confirm the release when the merge should have released something.** Watch the job (`gh run list --branch main --limit 3`), then check what exists, not what the job printed:
    - the bump commit on `main`;
-   - the tag (`git fetch --tags && git tag --list --sort=-v:refname | head -3`);
+   - the tag (`git fetch --tags && git -c versionsort.suffix=- tag --list --sort=-version:refname | head -3`);
    - the GitHub Release (`gh release view <tag>`): its notes list what the release contains.
 
    A job can print success for a step that failed later, so the tag and the Release are the evidence.
