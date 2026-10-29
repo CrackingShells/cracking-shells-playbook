@@ -101,6 +101,7 @@ jobs:
       - uses: actions/checkout@<full-sha> # <tag>
         with:
           fetch-depth: 0
+      - run: <install the commit checker at a pinned version>
       - run: |
           git config user.name  "<bot name>"
           git config user.email "<bot email>"
@@ -154,10 +155,14 @@ jobs:
   title:
     runs-on: <runner>
     steps:
+      - uses: actions/checkout@<full-sha> # <tag>
+      - run: <install the commit checker at a pinned version>
       - env:
           TITLE: ${{ github.event.pull_request.title }}
         run: <check "$TITLE">
 ```
+
+The checkers need their tool and the repository's config (for example a project file or a lint config), hence the checkout and the install in both. Pin the install: running a tool through a package runner without a pinned version fetches whatever is newest.
 
 Why the `release` condition is spelled out:
 
@@ -186,6 +191,8 @@ Setting `permissions:` is a whitelist: once any key is set, every unlisted permi
 Use the same token for the checkout and for the release tool, so the bump push and the Release API call act as one identity. A tool that authenticates through its own token variable may need `persist-credentials: false` on the checkout so the default token does not win; check the tool's documentation. A personal access token is the fallback of last resort: it belongs to a person, and a classic one reaches every repository that person can.
 
 ### Protection versus the lanes
+
+In this manual "protected" means `main` requires PRs or status checks. A rule that only blocks force pushes or deletion does not make the Direct lane fall back to a PR.
 
 Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to Direct-lane pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Check the combination with [the scratch recipe](#checking-protection-on-a-scratch-repository) before relying on it.
 
@@ -219,7 +226,7 @@ Secrets: the app key is read only by the release job, which never runs on PR eve
 
 ## The Bump Commit
 
-If the tool commits version files, the release job commits `chore(release): … [skip ci]` to `main`, then tags it and creates the Release (the order is the tool's). A tag-only tool (the version lives only in the tag) makes no bump commit: the job tags and creates the Release, pushes nothing to `main`, and protection cannot refuse it. Every check below that mentions the bump commit then reads "the tag and the Release exist".
+If the tool commits version files, the release job commits `chore(release): … [skip ci]` to `main`, then tags it and creates the Release (the order is the tool's). A tag-only tool (the version lives only in the tag) makes no bump commit: the job tags and creates the Release, pushes nothing to `main`, and branch protection cannot refuse it. A tag ruleset can still refuse tag creation, so give the release identity the right to create tags. Every check below that mentions the bump commit then reads "the tag and the Release exist".
 
 - **What it changes:** the version fields of each released unit, lock files that embed them, and the changelog. These are bot-managed; people do not edit them by hand, which also keeps merge conflicts in them rare.
 - **Why `[skip ci]`:** a push-triggered run on the bump commit would only find nothing to release, and with an app token it would run on every release. The marker (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, or a `skip-checks: true` trailer) skips the `push` and `pull_request` runs that commit would start, and nothing else: it does not stop `workflow_dispatch`, `pull_request_target`, or runs started by other commits. Keep it even under `GITHUB_TOKEN`, where it is redundant, so a later switch to an app token cannot start a loop.
