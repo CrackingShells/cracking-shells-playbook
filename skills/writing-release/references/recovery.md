@@ -12,7 +12,7 @@ What to do when a release does not happen, fails halfway, or leaves `main` in a 
 - [Local main Is Stale](#local-main-is-stale)
 - [First Run of a New Release Job](#first-run-of-a-new-release-job)
 
-Placeholders: `<unit>` is a released unit (or the whole repo when it has one), `<tag-glob>` its tag pattern (`v*`, `<unit>@*`), `<sha>` a commit.
+Placeholders: `<unit>` is a released unit (or the whole repository when it has one), `<tag-glob>` its tag pattern (`v*`, `<unit>@*`), `<sha>` a commit.
 
 ## Nothing Was Released
 
@@ -65,7 +65,7 @@ For a race, compare the run's commit with the tip: `gh run view <run-id> --json 
 ```bash
 git ls-remote --tags origin '<tag-glob>'     # tags newer than the last good release?
 gh release list --limit 5                    # a Release with no bump commit?
-# and, if the repo publishes: does the registry already hold the new version?
+# and, if the repository publishes: does the registry already hold the new version?
 ```
 
 **Fix.**
@@ -79,7 +79,7 @@ gh release list --limit 5                    # a Release with no bump commit?
 
 ## First Release and Missing Tags
 
-**Symptom.** The first run in a repo proposes a version far from the published one (often `1.0.0`), a changelog listing the repo's whole history, or an error about a missing previous release. The same happens later when the tool "forgets" tags.
+**Symptom.** The first run in a repository proposes a version far from the published one (often `1.0.0`), a changelog listing the repository's whole history, or an error about a missing previous release. The same happens later when the tool "forgets" tags.
 
 **Confirm.**
 
@@ -89,9 +89,9 @@ git describe --tags --abbrev=0 origin/main
 git branch -r --contains <last-release-sha>   # is the last release inside main's history?
 ```
 
-A checkout fetches one commit and no history by default, so a CI job can see no tags in a repo that has them. Fetch the full history (`fetch-depth: 0`), as in the skeleton at [ci-release-job.md](ci-release-job.md#job-graph).
+A checkout fetches one commit and no history by default, so a CI job can see no tags in a repository that has them. Fetch the full history (`fetch-depth: 0`), as in the skeleton at [ci-release-job.md](ci-release-job.md#job-graph).
 
-**How tools treat a repo with no tags.** Tools that anchor on tags treat "no matching tag" as "never released". One such tool starts at `1.0.0` and, when adopted on an existing project, needs the last released commit tagged in its configured format. Another looks the version up in a package registry when the tag is missing, and in its git-only mode treats a package with no matching tag as an initial release. Read the tool's rule before the first run; it differs per tool ([setting-up.md](setting-up.md#choosing-tooling-from-contents)).
+**How tools treat a repository with no tags.** Tools that anchor on tags treat "no matching tag" as "never released". One such tool starts at `1.0.0` and, when adopted on an existing project, needs the last released commit tagged in its configured format. Another looks the version up in a package registry when the tag is missing, and in its git-only mode treats a package with no matching tag as an initial release. Read the tool's rule before the first run; it differs per tool ([setting-up.md](setting-up.md#choosing-tooling-from-contents)).
 
 **Fix: seed a baseline deliberately.** Tag the commit that matches what the world already has, in the tool's exact tag format, and push only that tag:
 
@@ -101,7 +101,7 @@ git push origin <unit>@<current-version>
 ```
 
 - Pick `<sha>` on `main`'s history. Tagging the current tip releases only what lands after adoption; tagging an older commit makes the first changelog list everything since.
-- Take the version from the manifest or the registry, not a guess. A repo that never released chooses its first version on purpose (and sets it in the manifest if the tool reads it there).
+- Take the version from the manifest or the registry, not a guess. A repository that never released chooses its first version on purpose (and sets it in the manifest if the tool reads it there).
 - Seed one tag per unit in a monorepo.
 - A pushed tag is a push: check for workflows triggered by `tags:` first, so it does not publish anything.
 - Confirm with a manual run: it should report no release, or the next version you expect.
@@ -130,7 +130,7 @@ gh release list --limit 3
 - Exactly one bump commit per version, authored by the bot, with `[skip ci]`.
 - One tag per version, reachable from `main` (`git merge-base --is-ancestor <tag> origin/main`).
 - A Release for that tag, with notes and assets.
-- The registry shows the version, if the repo publishes.
+- The registry shows the version, if the repository publishes.
 - No second run started by the bump commit.
 
 ## History Rewritten on main
@@ -182,18 +182,18 @@ git log HEAD..origin/main --format='%h %s'      # includes chore(release) commit
 
 ## First Run of a New Release Job
 
-Watch the first release-type merge end to end, once, before trusting the job. Start from [setting-up.md](setting-up.md#adoption-checklist) (baseline tag seeded, protection and token settled), and pick a small release-type change: a fix in one unit, through the Self-merge or Reviewed lane.
+Watch the first release-type merge end to end, once, before trusting the job. Copy the list below and tick each item against the real run. Start from [setting-up.md](setting-up.md#adoption-checklist) (baseline tag seeded, protection and token settled), and pick a small release-type change: a fix in one unit, through the Self-merge or Reviewed lane.
 
-1. **The run starts.** A run appears for the merge commit's SHA (`gh run list --branch main --commit <sha>`). None: [Nothing Was Released](#nothing-was-released).
-2. **The graph is right.** `changes`, `gates` and `commits` pass; `release` is not skipped.
-3. **The bump commit lands.** On `origin/main`, subject `chore(release): … [skip ci]`, authored by the bot. `git show --stat <bump-sha>` lists only version fields, lock files and the changelog.
-4. **It starts nothing.** No run exists for the bump commit's SHA.
-5. **The tag exists** in the expected format, is reachable from `main`, and sits on the commit the tool is documented to tag. `git ls-remote --tags origin '<tag-glob>'`.
-6. **The Release exists**, with notes that list the commits of the merged branch (not only the merge commit) and the expected assets.
-7. **The changelog entry matches.** Versions in the manifest and lock files equal the tag.
-8. **Registry** (if the repo publishes): the version is there once.
-9. **Pull `main`** and check the local tree has the bump commit ([Local main Is Stale](#local-main-is-stale)).
-10. **Land a Direct-lane change** (a doc fix). The commit-range check must run, nothing may release, and with protection on, the maintainer's push must be accepted.
-11. **Learn the half-failure behaviour** while nothing is at stake: read the tool's documentation for what it does when the push step fails, so the "tag or Release exists?" question in [The Bump Push Was Rejected](#the-bump-push-was-rejected) is not new during an incident.
+- [ ] **The run starts.** A run appears for the merge commit's SHA (`gh run list --branch main --commit <sha>`). None: [Nothing Was Released](#nothing-was-released).
+- [ ] **The graph is right.** `changes`, `gates` and `commits` pass; `release` is not skipped.
+- [ ] **The bump commit lands.** On `origin/main`, subject `chore(release): … [skip ci]`, authored by the bot. `git show --stat <bump-sha>` lists only version fields, lock files and the changelog.
+- [ ] **It starts nothing.** No run exists for the bump commit's SHA.
+- [ ] **The tag exists** in the expected format, is reachable from `main`, and sits on the commit the tool is documented to tag. `git ls-remote --tags origin '<tag-glob>'`.
+- [ ] **The Release exists**, with notes that list the commits of the merged branch (not only the merge commit) and the expected assets.
+- [ ] **The changelog entry matches.** Versions in the manifest and lock files equal the tag.
+- [ ] **Registry** (if the repository publishes): the version is there once.
+- [ ] **Pull `main`** and check the local tree has the bump commit ([Local main Is Stale](#local-main-is-stale)).
+- [ ] **Land a Direct-lane change** (a doc fix). The commit-range check must run, nothing may release, and with protection on, the maintainer's push must be accepted.
+- [ ] **Learn the half-failure behaviour** while nothing is at stake: read the tool's documentation for what it does when the push step fails, so the "tag or Release exists?" question in [The Bump Push Was Rejected](#the-bump-push-was-rejected) is not new during an incident.
 
-If any step fails, fix it before the next release-type merge; a failed first run is cheaper than a wrong tag on a real release.
+If any item fails, fix it before the next release-type merge; a failed first run is cheaper than a wrong tag on a real release.

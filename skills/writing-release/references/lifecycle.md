@@ -15,12 +15,14 @@ How a change travels from a topic branch to `main`, and how a release follows fr
 
 Merging to `main` is what releases: the release job runs on every push to `main` and cuts a release when the new commits warrant one. So the line to draw is not "code versus docs" but **what the change would release**.
 
-A pull request (PR) buys two things: CI runs on the change before it reaches `main`, and a maintainer gets a point to review. Both are worth their latency only when the change risks something. A change that cannot release anything and cannot break how the repo builds, verifies or releases gains nothing from either, so it takes a lighter lane.
+A pull request (PR) buys two things: CI runs on the change before it reaches `main`, and a maintainer gets a point to review. Both are worth their latency only when the change risks something. A change that cannot release anything and cannot break how the repository builds, verifies or releases gains nothing from either, so it takes a lighter lane.
 
-Two terms the lanes rely on, defined per repository in [Mapping Lanes in a Repository](#mapping-lanes-in-a-repository):
+Terms the lanes rely on; the first two are defined per repository in [Mapping Lanes in a Repository](#mapping-lanes-in-a-repository):
 
 - **Released path**: a path whose change ships in a release (source, packaged assets, a published unit's files).
 - **Release-type commit**: a commit whose type the release config maps to a version bump.
+- **Maintainer**: whoever approves Reviewed PRs and changes to release machinery or repository settings.
+- **CONTRIBUTING**: the repository's contributing guide, whatever its file name.
 
 | Lane | When | How | Maintainer approval |
 |:--|:--|:--|:--|
@@ -28,7 +30,7 @@ Two terms the lanes rely on, defined per repository in [Mapping Lanes in a Repos
 | Self-merge PR | Would release something (a release-type commit touching a released path) and is self-contained: a fix, a small feature in one unit, a dependency bump | Topic branch → PR → CI green → the agent rebases, merges with a merge commit, reports the link. If the harness or a permission classifier blocks the merge, the agent does not retry or work around it: it hands the green PR to the maintainer and says why | No (a blocked self-merge falls back to the maintainer) |
 | Direct | Releases nothing and changes nothing about how the repo builds, verifies or releases: reports, roadmap nodes and status, docs outside released units, typo or link fixes, regenerated artifacts | `writing-history` branch-to-parent integration if branched → pull → push to `main` | No |
 
-The direct lane needs `main` unprotected, or protected with a bypass for maintainers and the release bot; [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection) owns that tradeoff. Branch-to-parent integration for a branched direct change belongs to the `writing-history` skill (`references/branches.md`), not to this manual.
+The direct lane needs `main` unprotected, or protected with a bypass for maintainers and the release bot; [ci-release-job.md](ci-release-job.md#permissions-tokens-and-branch-protection) owns that tradeoff. Branch-to-parent integration for a branched direct change belongs to `writing-history` → `references/branches.md`, not to this manual.
 
 ## Choosing a Lane
 
@@ -40,22 +42,22 @@ First match wins:
 
 **Doubt is a Reviewed-PR condition.** When two lanes both seem plausible, take the heavier one.
 
-**A wrong lane is cheap.** CI still releases a direct push that turns out to be release-type, and the commit-range check runs on every push to `main`, so a misjudged change is caught and released by the same machinery that handles every other one. The costs are asymmetric: an over-cautious lane costs only latency, an under-cautious one costs a release nobody reviewed. Hence the tie-break above.
+**A wrong lane is cheap.** CI still releases a Direct-lane push that turns out to be release-type, and the commit-range check runs on every push to `main`, so a misjudged change is caught and released by the same machinery that handles every other one. The costs are asymmetric: an over-cautious lane costs only latency, an under-cautious one costs a release nobody reviewed. Hence the tie-break above.
 
 For the PR lanes, [pull-requests.md](pull-requests.md) covers opening, titling, landing and the self-merge fallback.
 
 ## Mapping Lanes in a Repository
 
-The lane table is generic; each repository states which paths and commits it means. Derive them with the same precedence the `writing-history` skill uses for commit vocabulary (`references/commit-authoring.md`, "Deriving the Vocabulary"):
+The lane table is generic; each repository states which paths and commits it means. Derive them with the precedence `writing-history` uses for commit vocabulary (`writing-history` → `references/commit-authoring.md`, "Deriving the Vocabulary"):
 
 1. **Machinery is ground truth.** Read the release config and the CI release workflow:
    - the release tool's commit-analyzer or type-to-bump mapping gives the release-type commits;
    - per-unit manifests, package directories, the workflow's path filters and the tool's file globs give the released paths;
    - workflow files, the release config and settings-as-code are the machinery whose change forces a Reviewed PR.
-2. **Docs next.** Where there is no machinery, or it is silent, read the contributing guide and README for what ships.
+2. **Docs next.** Where there is no machinery, or it is silent, read CONTRIBUTING and the README for what ships.
 3. **Interview last.** Ask the maintainer which paths ship, which commit types release, and which files are persisted contracts others pin. Write the answers down so the next agent derives them instead of asking again.
 
-Record the result in the repository's contributing guide as an "Integration lanes" section ([setting-up.md](setting-up.md#the-contributing-section) covers the rest of that section). Template:
+Record the result in CONTRIBUTING as an "Integration lanes" section ([setting-up.md](setting-up.md#the-contributing-section) covers the rest of that section). Template:
 
 ```markdown
 ## Integration lanes
@@ -91,16 +93,23 @@ flowchart TD
     K --> L[Pull main]
 ```
 
-Checklist:
+Copy this checklist and tick it off; the notes below it say where a failure sends you back.
 
-1. Branch from an up-to-date `main` as `<type>/<topic>`; author commits per the `writing-history` skill.
-2. Choose the lane ([Choosing a Lane](#choosing-a-lane)).
-3. PR lanes: push and open the PR ([pull-requests.md](pull-requests.md#opening-a-pull-request)). Direct lane: integrate per `writing-history`, pull, push.
-4. CI gates run on the PR: tests, the commit-range check, and the PR-title check, which re-runs when the title is edited.
-5. Rebase onto `origin/main` and `git push --force-with-lease` whenever `main` has moved. The head that merges must be the head CI went green on.
-6. Merge with a merge commit: after maintainer approval (Reviewed PR) or by the agent (Self-merge PR).
-7. The release job runs on the push to `main`. With no release-type commit in range it finds nothing to release, which is correct ([recovery.md](recovery.md#nothing-was-released)). Triggers, job graph and permissions are in [ci-release-job.md](ci-release-job.md).
-8. Pull `main`; the release job may have added a bump commit.
+```
+- [ ] 1. Branch from an up-to-date main as <type>/<topic>; author commits per writing-history
+- [ ] 2. Choose the lane (Choosing a Lane)
+- [ ] 3. PR lanes: push and open the PR. Direct lane: integrate per writing-history, pull, push, then go to 7
+- [ ] 4. CI gates pass on the PR: tests, commit-range check, PR-title check
+- [ ] 5. Rebase onto origin/main and push --force-with-lease; CI green on the new head
+- [ ] 6. Merge commit: after maintainer approval (Reviewed PR) or by the agent (Self-merge PR)
+- [ ] 7. Release job runs on the push to main
+- [ ] 8. Pull main; the release job may have added a bump commit
+```
+
+- **Step 3:** the PR steps are in [pull-requests.md](pull-requests.md#opening-a-pull-request).
+- **Step 4:** the PR-title check re-runs when the title is edited. A failing gate is fixed on the branch, then return to step 5.
+- **Step 5:** rebase and push whenever `main` has moved. The head that merges must be the head CI went green on, so every new push returns you to step 4.
+- **Step 7:** with no release-type commit in range the job finds nothing to release, which is correct ([recovery.md](recovery.md#nothing-was-released)). Triggers, job graph and permissions are in [ci-release-job.md](ci-release-job.md).
 
 Releases happen on `main` only; adding a second channel is a deliberate decision with a cost ([channels.md](channels.md#one-channel-by-default)).
 
@@ -110,14 +119,14 @@ These hold in every lane that has the thing they govern. Each is here with its r
 
 | Invariant | Why |
 |:--|:--|
-| Rebase before merge | CI's verdict then describes what `main` will contain, and the branch's commits read linearly under a single merge commit. Mechanics and rationale for branch-to-parent integration are in the `writing-history` skill (`references/branches.md`). A branch that holds merge commits needs `git rebase --rebase-merges`, or the rebase flattens them. |
+| Rebase before merge | CI's verdict then describes what `main` will contain, and the branch's commits read linearly under a single merge commit. Mechanics and rationale for branch-to-parent integration are in `writing-history` → `references/branches.md`. A branch that holds merge commits needs `git rebase --rebase-merges`, or the rebase flattens them. |
 | Merge commit only; never squash, never rebase-merge | The release tool and the changelog read one commit at a time, so a squash replaces several commits (a `fix` and a `feat`, say) with one, and the bump and the changelog lose entries. A rebase-merge leaves no merge record, which is the one boundary that names the unit of work and lets it be reverted whole. |
-| PR title = merge subject | The merge subject starts with the PR title (the host may append ` (#<n>)`, which the commit check must accept). The merge commit lands on `main` and is read by the same tooling as any commit, so its subject must satisfy the repo's commit vocabulary. CI checks the title for that reason. |
+| PR title = merge subject | The merge subject starts with the PR title (the host may append ` (#<n>)`, which the commit-range check must accept). The merge commit lands on `main` and is read by the same tooling as any commit, so its subject must satisfy the repository's commit vocabulary. CI checks the title for that reason. |
 | PR body = merge body | The reasoning survives in `git log`, not only on a hosting page that can change or vanish. |
 | Pull `main` after merge | The release job may have pushed a bump commit; a stale local `main` makes the next push fail or the next branch start behind ([recovery.md](recovery.md#local-main-is-stale)). |
 | Release only from CI; no release PRs; no local release commands | One release ceremony is easier to sustain than several, and CI alone has the gates, the credentials and a clean checkout. A local release skips the gates, depends on one machine, and can race the job. The bump commit CI makes carries `[skip ci]` so it does not retrigger CI ([ci-release-job.md](ci-release-job.md#the-bump-commit)). |
 
-The first four govern PR lanes; the direct lane uses `writing-history`'s `--no-ff` integration in their place. The last two hold in every lane.
+The first four govern PR lanes; the Direct lane uses `writing-history`'s `--no-ff` integration in their place. The last two hold in every lane.
 
 ## Where Each Piece Lives
 
@@ -125,9 +134,9 @@ Each piece is a role; the file name varies by repository and tooling.
 
 | Piece | Holds | Details |
 |:--|:--|:--|
-| Contributing guide | The "Integration lanes" section, the PR conventions, the commit vocabulary pointer | [setting-up.md](setting-up.md#the-contributing-section) |
+| CONTRIBUTING | The "Integration lanes" section, the PR conventions, the commit vocabulary pointer | [setting-up.md](setting-up.md#the-contributing-section) |
 | CI workflow | Gates, commit-range check, PR-title check, the release job | [ci-release-job.md](ci-release-job.md) |
 | Release config | Type-to-bump mapping, tag format, changelog, channels | [setting-up.md](setting-up.md#choosing-tooling-from-contents), [channels.md](channels.md) |
-| Commit-check config | Allowed types and scopes, enforced by the commit-range and title checks | the `writing-history` skill (`references/convention-setup.md`) |
+| Commit-check config | Allowed types and scopes, enforced by the commit-range and title checks | `writing-history` → `references/convention-setup.md` |
 | Repository settings | Allowed merge methods, merge-message defaults, branch protection, branch deletion on merge | [setting-up.md](setting-up.md#repository-settings) |
 | Version and changelog files | Written by the release job; contributors do not edit them | [ci-release-job.md](ci-release-job.md#the-bump-commit) |
