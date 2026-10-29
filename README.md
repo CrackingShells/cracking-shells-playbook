@@ -14,7 +14,7 @@ Each skill teaches an agent one part of the work: planning a campaign as a roadm
 | [`managing-roadmaps`](skills/managing-roadmaps/SKILL.md) | Plans a campaign as a directory-tree roadmap under `__roadmap__/`, then executes and amends it. Ships the `dirtree-rdm` CLI that validates every roadmap file. | ✅ |
 | [`writing-reports`](skills/writing-reports/SKILL.md) | Writes stakeholder-reviewable reports under `__reports__/`: architecture, test definition, knowledge transfer, findings, observation, notice and open question. | ✅ |
 | [`writing-history`](skills/writing-history/SKILL.md) | Derives a project's commit vocabulary from its history, authors commits against it, sets up versioning, and integrates branches by rebase then `merge --no-ff`. | ✅ |
-| [`writing-release`](skills/writing-release/SKILL.md) | Writes pull request bodies and Discord announcements for the fork → `dev` → `main` release model used across the org. | ✅ |
+| [`writing-release`](skills/writing-release/SKILL.md) | Runs the release cycle: picks the integration lane a change takes into `main`, writes pull requests that become merge commits, lets CI cut releases, chooses release tooling from what a repo contains, and recovers failed releases. | ✅ |
 
 Skills marked ✅ are also listed as agent plugins in the [`CrackingShells/Nest`](https://github.com/CrackingShells/Nest) marketplace. Every skill is published as a `.skill` file with each of its releases.
 
@@ -25,7 +25,7 @@ graph LR
     A["Analyse<br/><i>writing-reports</i>"] --> R["Plan<br/><i>managing-roadmaps</i>"]
     R --> E["Execute, one commit per step<br/><i>writing-history</i>"]
     E --> I["Integrate branches<br/><i>writing-history</i>"]
-    I --> P["Release<br/><i>writing-release</i>"]
+    I --> P["Land on main and release<br/><i>writing-release</i>"]
     P --> K["Knowledge transfer<br/><i>writing-reports</i>"]
 ```
 

@@ -1,6 +1,6 @@
 ---
 name: writing-history
-description: Guides the full git-discipline lifecycle for a project's commit history, for both code and documents. Covers deriving a project-specific commit vocabulary from existing history, setting up commit conventions together with semantic versioning and changelog automation, authoring individual commits against that derived vocabulary, integrating finished branches via rebase-then-merge-with-no-ff, and conditionally cleaning up worktrees once integration is complete. Use when the user asks to set up commit or versioning conventions, derive or apply a commit vocabulary, author or draft a commit message, integrate or merge a branch, rebase work before merging, or clean up a git worktree after a feature lands — including cases mixing code changes with documentation changes.
+description: Guides the full git-discipline lifecycle for a project's commit history, for both code and documents. Covers deriving a project-specific commit vocabulary from existing history, setting up commit conventions and the bump semantics that versioning and changelogs derive from (release tooling and CI releases belong to the `writing-release` skill), authoring individual commits against that derived vocabulary, integrating finished branches via rebase-then-merge-with-no-ff, and conditionally cleaning up worktrees once integration is complete. Use when the user asks to set up commit or versioning conventions, derive or apply a commit vocabulary, author or draft a commit message, integrate or merge a branch, rebase work before merging, or clean up a git worktree after a feature lands — including cases mixing code changes with documentation changes.
 ---
 
 # Writing History
@@ -21,3 +21,4 @@ Read the routed reference before acting — do not proceed from this table alone
 | Project has no commit conventions, changelog, or versioning set up yet | [`references/convention-setup.md`](references/convention-setup.md) |
 | Understand how versions and changelog entries derive from commits | [`references/semver-changelog.md`](references/semver-changelog.md) |
 | Merge, rebase, integrate a branch, work in parallel/worktrees, or debug on a throwaway branch | [`references/branches.md`](references/branches.md) |
+| Land work on the release branch (`main`), set up or choose release tooling, or debug a release | the `writing-release` skill |
