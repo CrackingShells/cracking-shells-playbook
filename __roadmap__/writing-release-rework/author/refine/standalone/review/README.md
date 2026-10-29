@@ -21,7 +21,7 @@ Prove the finished skill is coherent, stand-alone and releasable, and record the
 ## Status
 ```mermaid
 graph TD
-    review_and_evals[Adversarial Review and Evals]:::planned
+    review_and_evals[Adversarial Review and Evals]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -32,7 +32,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `review_and_evals.md` | 📄 Leaf Task | ⬜ Planned |
+| `review_and_evals.md` | 📄 Leaf Task | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
