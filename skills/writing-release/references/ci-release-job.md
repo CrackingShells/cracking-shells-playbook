@@ -1,12 +1,14 @@
 # CI Release Job
 
-Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, then cuts the release only after the gates pass. The examples are GitHub Actions; the pattern (gates, commit checks, one release job that never gets cancelled) carries to other CI systems. Which release tool fills the `<release command>` placeholder is a tooling choice: [setting-up.md](setting-up.md#choosing-tooling-from-contents).
+Tool-agnostic wiring for a CI that gates pull requests and pushes to `main`, then cuts the release only after the gates pass. The examples are GitHub Actions; the pattern (gates, the commit-range check, one release job that never gets cancelled) carries to other CI systems. Which release tool fills the `<release command>` placeholder is a tooling choice: [setting-up.md](setting-up.md#choosing-tooling-from-contents).
 
 ## Contents
 
 - [Triggers and Concurrency](#triggers-and-concurrency)
 - [Job Graph](#job-graph)
 - [Permissions, Tokens, and Branch Protection](#permissions-tokens-and-branch-protection)
+  - [Choosing the token](#choosing-the-token)
+  - [Protection versus the lanes](#protection-versus-the-lanes)
 - [The Bump Commit](#the-bump-commit)
 - [Hardening](#hardening)
 - [Monorepos](#monorepos)
@@ -48,9 +50,11 @@ graph LR
 | Job | Runs on | Does |
 |:--|:--|:--|
 | `changes` | every event | Lists files changed in the PR or push; outputs whether anything outside the non-released paths (reports, roadmaps, docs outside released units) changed. A manual run has no base, so it outputs `true`. |
-| `gates` | PR and push, when `changes` says so | Lint, tests, build, drift checks ([Monorepos](#monorepos)). Whatever the repo already verifies. |
-| `commits` | every event | Commit-message check over the range (PR: base..head; push: before..after). Needs a git identity ([Hardening](#hardening)). |
-| `release` | push or dispatch on `main`, after the others | Cuts the release. Never filtered by path: a direct push that turns out to be release-type must still release. |
+| `gates` | PR and push, when `changes` says so | Lint, tests, build, drift checks ([Monorepos](#monorepos)). Whatever the repository already verifies. |
+| `commits` | every event | Commit-range check (PR: base..head; push: before..after). Needs a git identity ([Hardening](#hardening)). |
+| `release` | push or dispatch on `main`, after the others | Cuts the release. Never filtered by path: a Direct-lane push that turns out to be release-type must still release. |
+
+Fill every `<placeholder>`. Keep the `concurrency` expression, the `release` job's `if` and `fetch-depth: 0` exactly as written: each is load-bearing, and the reasons follow the skeleton.
 
 ```yaml
 name: ci
@@ -182,11 +186,11 @@ Use the same token for the checkout and for the release tool, so the bump push a
 
 ### Protection versus the lanes
 
-Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to direct pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Verify the combination on a scratch repository before relying on it.
+Both the bump push and the Direct lane push to `main` without a PR. Protection that requires PRs or status checks refuses them unless the pusher may bypass. Required status checks apply to Direct-lane pushes too: the commit must already have passed them, and a fresh commit has no completed checks (a `[skip ci]` commit never gets any). So when status checks are required, the pushing identity needs a **ruleset bypass actor** (mode "always"), or must be an admin with "Do not allow bypassing" off. Verify the combination on a scratch repository before relying on it.
 
 | `main` is | Direct lane | Bump push | Tradeoff |
 |:--|:--|:--|:--|
-| Unprotected | Works | Works with `GITHUB_TOKEN` | Leanest. The lanes are convention; CI is the backstop (the commit-range check and gates run after the landing, and CI still releases a direct push that turns out to be release-type). |
+| Unprotected | Works | Works with `GITHUB_TOKEN` | Leanest. The lanes are convention; CI is the backstop (the commit-range check and gates run after the landing, and CI still releases a Direct-lane push that turns out to be release-type). |
 | Protected, with a bypass list holding maintainers and the release app, bypass mode "always" | Works for maintainers | Works with the app token | Server-side enforcement of PR requirements, at the price of one app to create, install and keep. |
 | Protected, no bypass | Impossible | Rejected | Only workable with tooling that pushes nothing to `main`. Choose it deliberately: [setting-up.md](setting-up.md#choosing-tooling-from-contents). |
 
@@ -196,7 +200,7 @@ What the documentation says about bypassing:
 - **Branch protection rules:** restrictions do not apply to repository admins unless "Do not allow bypassing" (include administrators) is on, so turning that on removes the admin's Direct lane. Actors can be added to bypass lists only in organization-owned repositories. The "allow specified actors to bypass required pull requests" list is documented as skipping the PR requirement only, not required status checks, and "Restrict who can push" waives neither. Do not assume either list waives required checks.
 - **Rulesets and branch protection rules stack**, and the most restrictive result applies: a forgotten classic rule can still block a ruleset's bypass.
 - **`GITHUB_TOKEN` and protection:** the built-in token acts as a write-access identity, and the bypass-list documentation names roles, teams and GitHub Apps. Plan on an installed app, not on the built-in token being admitted, whenever `main` is protected.
-- **Force pushes** are blocked on protected branches by default; a ruleset's non-fast-forward rule blocks them without any other restriction. Even a repo that keeps `main` open should block them ([recovery.md](recovery.md#history-rewritten-on-main)).
+- **Force pushes** are blocked on protected branches by default; a ruleset's non-fast-forward rule blocks them without any other restriction. Even a repository that keeps `main` open should block them ([recovery.md](recovery.md#history-rewritten-on-main)).
 - **Required checks and skips:** a PR whose head commit carries a skip marker cannot merge while checks are required, so never put one in a topic commit or a PR body (the body becomes the merge commit message).
 - **Merge settings** (merge commits only, linear history off) belong to [setting-up.md](setting-up.md#repository-settings): "Require linear history" forbids the merge commits this manual depends on.
 
@@ -217,7 +221,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 | Rule | Why |
 |:--|:--|
 | Pin every action to a full commit SHA, with the tag as a trailing comment (`uses: <owner>/<action>@<full-sha> # v<x.y.z>`), and pin the release tool and its plugins through a lock file or exact versions | A tag or a floating major tag (`@v4`) can be moved or deleted, so a broken or compromised release of an action reaches you on the next run. A SHA cannot move. Verify the SHA belongs to the action's repository, not a fork. Let a dependency-update bot raise the pins. |
-| Give the runner a git `user.name` **and** `user.email` before any tool that reads them | Commit-message verifiers that create temporary commits and release tools that commit or tag fail without an identity, and a runner does not come with one you can assume. Do it in every job that runs such a tool, not only the release job. |
+| Give the runner a git `user.name` **and** `user.email` before any tool that reads them | Commit checkers that create temporary commits and release tools that commit or tag fail without an identity, and a runner does not come with one you can assume. Do it in every job that runs such a tool, not only the release job. |
 | Never cancel on `main` | See [Triggers and Concurrency](#triggers-and-concurrency). |
 | Pass untrusted values through `env`, never into the script text | `${{ github.event.pull_request.title }}` inside `run:` is a script-injection vector; an intermediate environment variable is not. |
 | Avoid `pull_request_target` for gates | It runs in the base repository's context with a write token and secrets; running PR code there is the classic compromise. |
@@ -227,7 +231,7 @@ The release job commits `chore(release): … [skip ci]` to `main`, then tags it 
 
 ## Monorepos
 
-A repo with several units (packages, skills, crates) that release independently keeps one workflow and one release job. The tool works out which units have release-type commits.
+A repository with several units (packages, skills, crates) that release independently keeps one workflow and one release job. The tool works out which units have release-type commits.
 
 - **Per-unit path filters** only choose which gates and builds run. Compare against the unit's last tag, not `before..after`: a skipped or failed earlier run would otherwise lose that unit's changes forever. The last tag of a unit is `git -c versionsort.suffix=- tag --list '<unit>@*' --sort=-version:refname | head -1`, falling back to the first commit when there is none. The `versionsort.suffix=-` setting makes `1.0.0` sort above `1.0.0-rc.2`; plain version sort does not.
 - **Per-unit tag lines** `<unit>@<version>` keep units independent. The `@` delimiter keeps one unit's name from matching another's prefix. A tool must be configured with the same tag format for every unit, or it will not find the baseline ([recovery.md](recovery.md#first-release-and-missing-tags)).

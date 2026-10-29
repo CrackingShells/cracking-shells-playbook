@@ -6,6 +6,10 @@ How a repository adopts the release lifecycle: which capabilities the pipeline n
 
 - [Capabilities a Release Pipeline Needs](#capabilities-a-release-pipeline-needs)
 - [Choosing Tooling from Contents](#choosing-tooling-from-contents)
+  - [Decision procedure](#decision-procedure)
+  - [By repository contents](#by-repository-contents)
+  - [What each tool covers](#what-each-tool-covers)
+  - [Units and tags](#units-and-tags)
 - [Repository Settings](#repository-settings)
 - [The CONTRIBUTING Section](#the-contributing-section)
 - [Adoption Checklist](#adoption-checklist)
