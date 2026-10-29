@@ -10,37 +10,61 @@
           "name": "reviewed-lane",
           "description": "Identifies the change as needing maintainer review because it lands a campaign",
           "type": "contains_any",
-          "value": ["Reviewed PR", "reviewed PR", "maintainer approv", "maintainer review", "approval from the maintainer"]
+          "value": [
+            "Reviewed PR",
+            "reviewed PR",
+            "maintainer approv",
+            "maintainer review",
+            "approval from the maintainer"
+          ]
         },
         {
           "name": "merge-subject-title",
           "description": "The PR title follows the merge-commit subject shape",
           "type": "contains_any",
-          "value": ["merge(auth)", "merge(oauth"]
+          "value": [
+            "merge(auth)",
+            "merge(oauth"
+          ]
         },
         {
           "name": "rebase-before-merge",
           "description": "Rebases onto main before merging",
           "type": "contains_any",
-          "value": ["rebase origin/main", "rebase onto main", "git rebase main", "rebase it onto"]
+          "value": [
+            "rebase origin/main",
+            "rebase onto main",
+            "git rebase main",
+            "rebase it onto"
+          ]
         },
         {
           "name": "merge-commit-not-squash",
           "description": "Merges with a merge commit, never a squash",
           "type": "contains_any",
-          "value": ["gh pr merge --merge", "merge commit"]
+          "value": [
+            "gh pr merge --merge",
+            "merge commit"
+          ]
         },
         {
           "name": "no-squash-instruction",
           "description": "Does not instruct a squash merge",
           "type": "not_contains_any",
-          "value": ["gh pr merge --squash", "squash and merge"]
+          "value": [
+            "gh pr merge --squash",
+            "squash and merge"
+          ]
         },
         {
           "name": "no-fork-dev-model",
           "description": "Does not fall back to a fork / dev-branch model",
           "type": "not_contains_any",
-          "value": ["into dev", "upstream dev", "Discord"]
+          "value": [
+            "into dev",
+            "upstream dev",
+            "Discord"
+          ]
         }
       ],
       "files": []
@@ -54,19 +78,42 @@
           "name": "python-native-tool",
           "description": "Recommends a Python-native release tool",
           "type": "contains_any",
-          "value": ["python-semantic-release", "commitizen", "cz bump"]
+          "value": [
+            "python-semantic-release",
+            "commitizen",
+            "cz bump"
+          ]
         },
         {
           "name": "ci-on-main",
           "description": "Releases from CI after landing on main, not locally",
           "type": "contains_any",
-          "value": ["push to main", "pushes to main", "push to `main`", "on: push", "after the merge"]
+          "value": [
+            "push to main",
+            "pushes to main",
+            "push to `main`",
+            "on: push",
+            "after the merge",
+            "merge to `main`",
+            "merge to main",
+            "`push` to `main`",
+            "branches: [main]"
+          ]
         },
         {
           "name": "gated-release-job",
           "description": "The release job depends on the gates",
           "type": "contains_any",
-          "value": ["needs:", "gated on", "after the tests", "after the gates"]
+          "value": [
+            "needs:",
+            "gated on",
+            "after the tests",
+            "after the gates",
+            "needs",
+            "after them",
+            "after the gates pass",
+            "only after"
+          ]
         },
         {
           "name": "skip-ci-bump",
@@ -78,7 +125,10 @@
           "name": "no-release-pr",
           "description": "Does not set up a release PR ceremony",
           "type": "not_contains_any",
-          "value": ["release-please", "release PR workflow"]
+          "value": [
+            "release-please",
+            "release PR workflow"
+          ]
         }
       ],
       "files": []
@@ -92,19 +142,35 @@
           "name": "no-release-type-commit",
           "description": "Identifies that the commits are not release-type",
           "type": "contains_any",
-          "value": ["release-type", "release nothing", "releases nothing", "do not trigger a release", "don't trigger a release", "no release-type"]
+          "value": [
+            "release-type",
+            "release nothing",
+            "releases nothing",
+            "do not trigger a release",
+            "don't trigger a release",
+            "no release-type"
+          ]
         },
         {
           "name": "confirm-since-last-tag",
           "description": "Says how to confirm against the last tag or the job log",
           "type": "contains_any",
-          "value": ["last tag", "since the last release", "nothing to release", "release job log"]
+          "value": [
+            "last tag",
+            "since the last release",
+            "nothing to release",
+            "release job log"
+          ]
         },
         {
           "name": "no-manual-release",
           "description": "Does not recommend a manual tag or a local release",
           "type": "not_contains_any",
-          "value": ["git tag -a", "git push --tags", "run the release locally"]
+          "value": [
+            "git tag -a",
+            "git push --tags",
+            "run the release locally"
+          ]
         }
       ],
       "files": []
@@ -118,25 +184,43 @@
           "name": "single-channel",
           "description": "Recommends keeping one channel",
           "type": "contains_any",
-          "value": ["single channel", "one channel", "one release channel", "stay on main"]
+          "value": [
+            "single channel",
+            "one channel",
+            "one release channel",
+            "stay on main"
+          ]
         },
         {
           "name": "adoption-triggers",
           "description": "Names when a channel would be justified",
           "type": "contains_any",
-          "value": ["trigger", "when to add", "justif"]
+          "value": [
+            "trigger",
+            "when to add",
+            "justif"
+          ]
         },
         {
           "name": "rc-pattern",
           "description": "Points to the lagged release-candidate pattern as the escalation",
           "type": "contains_any",
-          "value": ["release candidate", "release-candidate", "-rc", "rc."]
+          "value": [
+            "release candidate",
+            "release-candidate",
+            "-rc",
+            "rc."
+          ]
         },
         {
           "name": "cost-of-dev-branch",
           "description": "States the cost of a long-lived development branch",
           "type": "contains_any",
-          "value": ["drift", "double integration", "backlog"]
+          "value": [
+            "drift",
+            "double integration",
+            "backlog"
+          ]
         }
       ],
       "files": []
@@ -150,19 +234,36 @@
           "name": "direct-lane",
           "description": "Chooses the direct lane",
           "type": "contains_any",
-          "value": ["Direct lane", "direct lane", "push it directly", "straight to main", "directly to main", "Direct"]
+          "value": [
+            "Direct lane",
+            "direct lane",
+            "push it directly",
+            "straight to main",
+            "directly to main",
+            "Direct"
+          ]
         },
         {
           "name": "reason-releases-nothing",
           "description": "Justifies it by the change releasing nothing",
           "type": "contains_any",
-          "value": ["releases nothing", "release nothing", "no release", "not a release-type", "nothing to release"]
+          "value": [
+            "releases nothing",
+            "release nothing",
+            "no release",
+            "not a release-type",
+            "nothing to release"
+          ]
         },
         {
           "name": "no-pr-required",
           "description": "Does not demand a reviewed PR",
           "type": "not_contains_any",
-          "value": ["must open a PR", "needs maintainer approval", "requires a reviewed PR"]
+          "value": [
+            "must open a PR",
+            "needs maintainer approval",
+            "requires a reviewed PR"
+          ]
         }
       ],
       "files": []
