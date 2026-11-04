@@ -1,3 +1,10 @@
+## writing-history [1.2.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.2.0...writing-history@1.2.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **writing-history:** require local commit hooks for every committer ([4c52871](https://github.com/CrackingShells/cracking-shells-playbook/commit/4c5287107a80c07095717d4513c753f47d3c19e5))
+
 # writing-history [1.2.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.1.0...writing-history@1.2.0) (2026-10-29)
 
 
