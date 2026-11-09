@@ -1,3 +1,16 @@
+# writing-reports [2.0.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.3...writing-reports@2.0.0) (2026-11-09)
+
+
+* feat(writing-reports)!: drop the test-definition report type ([c057b49](https://github.com/CrackingShells/cracking-shells-playbook/commit/c057b492e95bb9e2781129d6c3c50f320d6c3f76))
+
+
+### BREAKING CHANGES
+
+* writing-reports no longer offers the test-definition
+report type or its reference.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
 ## writing-reports [1.1.3](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.2...writing-reports@1.1.3) (2026-10-06)
 
 
