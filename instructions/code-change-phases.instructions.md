@@ -15,7 +15,7 @@ Understand the problem, design the solution, define the tests.
 
 ```
 Architecture Report (v0) → Agent Review → Architecture Report (v1) → ...
-Test Definition (v0) → Agent Review → Test Definition (v1) → ...
+Test Plan (v0) → Agent Review → Test Plan (v1) → ...
 ```
 
 **Agents**: Any combination of human stakeholders, LLM agents, or automated review tools. "Agent" is used generically throughout.
@@ -25,7 +25,7 @@ Test Definition (v0) → Agent Review → Test Definition (v1) → ...
 1. **Codebase assessment** — code review, dependency analysis, existing patterns
 2. **Requirements analysis** — functional/non-functional requirements, edge cases, constraints
 3. **Architecture design** — proposed changes, contracts/invariants, alternatives, risks
-4. **Test strategy** — risk-driven test matrix, fixtures strategy, regression set
+4. **Test strategy** — the guards each expected behavior needs, the probes that decide how to proceed, trust boundaries
 5. **Iterative refinement** — stakeholder feedback, architecture adjustments
 
 ### Analysis Accuracy Verification
@@ -37,9 +37,9 @@ Test Definition (v0) → Agent Review → Test Definition (v1) → ...
 
 ### Deliverables
 
-Versioned reports in `__reports__/<topic>/` produced with the `writing-reports` skill:
-- Architecture reports: its `architecture` report type
-- Test definition reports: its `test-definition` report type
+Versioned documents in `__reports__/<topic>/`, following the `writing-reports` naming scheme:
+- Architecture reports: the `writing-reports` skill's `architecture` report type
+- Test plans: the `designing-tests` skill (CrackingShells/Pinion)
 
 ### Exit Criteria
 
@@ -117,7 +117,7 @@ All nodes `done` at every level. All tests pass. Final agent review.
 | Previous Model | Current Model | Why |
 |:---|:---|:---|
 | Phase 1: Architectural Analysis | Stage 1: Analysis | Same purpose, now explicitly iterative with agent review |
-| Phase 2: Test Suite Development | Stage 1: Analysis (test definition reports) | Tests defined in analysis, implemented during execution |
+| Phase 2: Test Suite Development | Stage 1: Analysis (test plans) | Tests defined in analysis, implemented during execution |
 | Phase 3: Core Implementation | Stage 3: Execution | Driven by breadth-first tree traversal, not a phase |
 | Phase 4: Debugging to 100% | Stage 3: Execution (consistency checks per step) | Integrated into each step |
 | Phase 5: Git Commits | Stage 3: Execution (commit per step) | Prescribed in task files |
