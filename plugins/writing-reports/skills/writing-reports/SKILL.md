@@ -1,7 +1,7 @@
 ---
 name: writing-reports
 description: >
-  Guides production of stakeholder-reviewable reports across coding, research, data analysis, and writing work. Use when producing any of these seven report types: (1) observation — peripheral finding for cold-start agent hand-off; (2) findings — data-first results briefing with tables, charts, and steering questions; (3) notice — lightweight improvement idea captured outside current task scope; (4) open-question — open question framing for fresh-agent delegation; (5) architecture — pre-implementation analysis with diagrams, contracts, and risk register; (6) test-definition — risk-driven test plan with test matrix and fixtures strategy; (7) knowledge-transfer — post-cycle retrospective covering wins, pain points, and next-cycle changes. Applies a model-first, no-code-dump contract: lead with diagrams and schemas, never include full implementations. Saves reports under __reports__/TOPIC/ using round-versioned naming.
+  Guides production of stakeholder-reviewable reports across coding, research, data analysis, and writing work. Use when producing any of these six report types: (1) observation — peripheral finding for cold-start agent hand-off; (2) findings — data-first results briefing with tables, charts, and steering questions; (3) notice — lightweight improvement idea captured outside current task scope; (4) open-question — open question framing for fresh-agent delegation; (5) architecture — pre-implementation analysis with diagrams, contracts, and risk register; (6) knowledge-transfer — post-cycle retrospective covering wins, pain points, and next-cycle changes. Applies a model-first, no-code-dump contract: lead with diagrams and schemas, never include full implementations. Saves reports under __reports__/TOPIC/ using round-versioned naming.
 ---
 
 # Reporting Skill
@@ -17,7 +17,6 @@ Read this table first. Pick the report type that matches your situation, then op
 | Noticed an improvement idea or enhancement that is outside the current task's scope; want to capture it without interrupting the current thread | `notice` | [references/notice.md](references/notice.md) |
 | Have an open question that needs to be framed and delegated; no direction chosen yet | `open-question` | [references/open-question.md](references/open-question.md) |
 | Analyzing a proposed change before implementation | `architecture` | [references/software-architecture.md](references/software-architecture.md) |
-| Defining a test plan | `test-definition` | [references/software-test-definition.md](references/software-test-definition.md) |
 | Capturing post-cycle retrospective notes | `knowledge-transfer` | [references/software-knowledge-transfer.md](references/software-knowledge-transfer.md) |
 
 > For complex multi-phase efforts surfaced during analysis, use the `managing-roadmaps` skill to produce a formal roadmap.
@@ -60,10 +59,10 @@ Prefer tables, diagrams, and short sections. Avoid enumerating exhaustive permut
 ```
 __reports__/<topic>/
   00-architecture_v0.md       ┐
-  00-test_definition_v0.md    ├─ batch 0: three reports written together
+  00-observation_v0.md        ├─ batch 0: three reports written together
   00-open_question_v0.md      ┘
   01-findings_v0.md              batch 1: one report
-  02-test_definition_v1.md       batch 2: revision of the v0 from batch 0
+  02-architecture_v1.md          batch 2: revision of the v0 from batch 0
 ```
 
 - **Revisions**: a report updated in a later batch is written as a new file at that batch's `<round>` with `<version>` bumped (e.g. `00-foo_v0.md` stays; revision is `02-foo_v1.md`). Never overwrite or rename the original.
