@@ -23,7 +23,8 @@ import zipfile
 # Patterns to exclude when packaging skills.
 EXCLUDE_DIRS = {"__pycache__", "node_modules", "target"}
 EXCLUDE_GLOBS = {"*.pyc"}
-EXCLUDE_FILES = {".DS_Store", "package.json", "CHANGELOG.md"}
+# Release plumbing (package.json, .releaserc.js, CHANGELOG.md) stays in the repository.
+EXCLUDE_FILES = {".DS_Store", "package.json", ".releaserc.js", "CHANGELOG.md"}
 # Directories excluded only at the skill root (not when nested deeper).
 ROOT_EXCLUDE_DIRS = {"evals"}
 
