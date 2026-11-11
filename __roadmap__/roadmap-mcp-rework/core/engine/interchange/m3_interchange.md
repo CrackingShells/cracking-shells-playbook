@@ -6,7 +6,7 @@
 - [ ] Reminder `skills-rdm-M3` read
 **Success Gates**:
 - ⬜ Any leaf, directory or campaign exports to markdown, with the node table and the status graph derived at export time (I6)
-- ⬜ The seven valid campaigns under `__roadmap__/` import, pass validation and export with no loss of content, compared as parsed models
+- ⬜ Every campaign under `__roadmap__/` that the current `dirtree-rdm validate` accepts imports, pass validation and export with no loss of content, compared as parsed models
 - ⬜ `__roadmap__/create-reporting-skill/`, invalid by design, imports to a fixed list of diagnostics and writes nothing
 - ⬜ An import into a non-empty target is refused, and a dry-run writes nothing
 **References**: [R01 §Data Model, §Key Flows, §Deliberately open](../../../../../__design__/rdm/architecture.md) — what is stored and what is derived, and the migrate flow
@@ -15,7 +15,7 @@
 
 **Goal**: The campaign `__roadmap__/m3-interchange/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding: the markdown layout of an exported leaf, directory and campaign (close to today's format, since humans know it); how the existing Amendment Log and Progress rows map to amendments, history and progress; how ids are minted on import; what the importer does with input the old grammar rejects; how the eight campaigns become fixtures without copying their history; the import report.
+In plan mode, author the campaign with `managing-roadmaps`, deciding: the markdown layout of an exported leaf, directory and campaign (close to today's format, since humans know it); how the existing Amendment Log and Progress rows map to amendments, history and progress; how ids are minted on import; what the importer does with input the old grammar rejects; how the existing campaigns become fixtures without copying their history; the import report.
 Adversarial verification is required for the importer (a silent loss of content during migration is found months later).
 **Deliverables**: `__roadmap__/m3-interchange/README.md` and its leaves
 **Consistency Checks**: `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m3-interchange/` (expected: PASS)
