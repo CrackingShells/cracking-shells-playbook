@@ -221,7 +221,8 @@ Common to both kinds:
 | `path` | `string` | Derived: path segments from the campaign root |
 | `parent` | `string` | Derived: the path of the parent directory. `""` for a node under the root |
 | `rev` | `string` | Opaque, M1 |
-| `sealed` | `bool` | Derived from `statuses.md` `Sealing`: `true` when the content cannot change (leaf `cancelled` or `done`, directory with derived status `cancelled` or `done`) |
+| `finished` | `bool` | Derived from `statuses.md` `Finished nodes`: `true` when an edit needs a reason and is a correction (leaf `cancelled` or `done`, directory with derived status `cancelled` or `done`) |
+| `correction_count` | `integer` | Derived, never stored: the number of records with `correction: true` that name this node (its amendments, its `marks`, its `history`). It measures how often corrections and reversals happen. `0` for a node never corrected |
 | `comments` | `Comment[]` | The `_comments/` files whose `node_id` is this node, oldest first. The stored `Comment` shape |
 | `amendments` | `string[]` | Derived: display ids of the amendments whose `changes` name this node |
 | `added_by` | `string?` | As in `Campaign outline` |
@@ -236,14 +237,14 @@ Leaf only:
 | `ready` | `bool` | Derived, `Ready set` |
 | `held_by` | `string[]` | Derived: ids of the unfinished leaves that hold this leaf back, by the ready rule. Empty when none. Also set for a leaf that is not `planned`, so a reader sees what a paused leaf waits for |
 | `goal`, `preconditions`, `success_gates`, `references` | | The stored fields of `Leaf` |
-| `steps` | `StepView[]` | `StepView`: every stored `Step` field, plus `number` |
+| `steps` | `StepView[]` | `StepView`: every stored `Step` field, plus `number`. A consumer addresses a step by `id`, never by `number` |
 | `progress` | | `Leaf.progress`, as stored |
 | `commit_count` | `integer?` | Derived: the number of steps with a `commit_sha`; else `progress.commits`; else absent |
 | `step_progress` | `{done, total}` | Derived, as `steps` in `Campaign outline` |
 | `history` | `History[]` | `Leaf.history`, as stored, oldest first |
 | `marks` | `Mark[]` | `Leaf.marks`, as stored, oldest first: the trace of every criterion mark |
 
-`StepView.number` is derived: the position in `Leaf.steps` plus one.
+`StepView.number` is derived for display: the position in `Leaf.steps` plus one. It is not a reference: a reorder changes it, and `Step.id` does not. Criteria, references and checks are likewise addressed by their `id` (`stored-schema.md`, `Stable identity`).
 
 Directory only:
 
@@ -274,17 +275,17 @@ step 1.
     "id": "n_m1", "path": "core/m1_core_foundation", "parent": "core", "kind": "leaf",
     "rev": "rev-m1", "title": "M1 Core foundation",
     "status": "planned", "level": 1, "level_source": "depth",
-    "ready": false, "held_by": ["n_m0", "n_m0b"], "sealed": false,
+    "ready": false, "held_by": ["n_m0", "n_m0b"], "finished": false, "correction_count": 0,
     "goal": "`rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.",
     "preconditions": [
-      { "text": "`../m0_feasibility_spike.md` is `done` with a go", "met": false },
-      { "text": "`../m0b_domain_model_spec.md` is `done`", "met": false },
-      { "text": "Reminder `skills-rdm-M1` read", "met": false } ],
+      { "id": "k_1", "text": "`../m0_feasibility_spike.md` is `done` with a go", "met": false },
+      { "id": "k_2", "text": "`../m0b_domain_model_spec.md` is `done`", "met": false },
+      { "id": "k_3", "text": "Reminder `skills-rdm-M1` read", "met": false } ],
     "success_gates": [
-      { "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message", "met": false },
+      { "id": "k_4", "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message", "met": false },
       "[cut: 4 more gates, same shape]" ],
     "references": [
-      { "label": "R01", "title": "§Data Model, §Concurrency, §Contracts & Invariants",
+      { "id": "r_1", "label": "R01", "title": "§Data Model, §Concurrency, §Contracts & Invariants",
         "target": "../../../__design__/rdm/architecture.md",
         "note": "the file layout, the schema sketch, the lock, the journal and the revisions" } ],
     "steps": [
@@ -295,7 +296,7 @@ step 1.
           "[cut: 1 more line]" ],
         "deliverables": [ "`__roadmap__/m1-core-foundation/README.md` and its leaves" ],
         "references": [],
-        "checks": [ { "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
+        "checks": [ { "id": "ck_1", "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
                       "expected": "PASS" } ],
         "commit": { "type": "chore", "scope": "roadmap", "breaking": false,
                     "summary": "plan the m1-core-foundation milestone" },
@@ -436,11 +437,12 @@ Request parameters: `node` (an id or a path: keep amendments whose `changes` nam
 | `ts`, `actor`, `description` | | `Amendment.ts`, `.actor`, `.description` |
 | `source` | `string?` | `Amendment.source` |
 | `op_id` | `string?` | `Amendment.op_id` |
+| `correction` | `bool?` | `Amendment.correction`: `true` for an edit that needed a reason on a finished node or a recorded step |
 | `has_snapshot` | `bool` | Derived: `Amendment.snapshot` is present. The snapshot itself is not returned |
 | `changes` | `ChangeView[]` | `Amendment.changes`, each as below |
 
 `ChangeView` carries the stored `Change` fields (`node_id`, `op`, `path_before?`, `path_after?`,
-`field?`, `old?`, `new?`) and two derived ones:
+`item_id?`, `field?`, `old?`, `new?`) and two derived ones:
 
 | Field | Type | Source |
 |:--|:--|:--|
@@ -557,3 +559,5 @@ No stored field a projection needs is missing. Two limits, neither one blocking:
 | 5 | Sibling order is not stored. Projections order by level, then leaves before directories, then path (`traceability.md`, `Sibling order`) | Eliott, 2026-11-16 |
 | 6 | Versions are three-part `0.X.Y`, first value `0.1.0`, for the format, the read model and the crate. A reader refuses a different major or a higher X and reads a higher Y. Bumps come from commit messages through the existing release setup; M7 wires the crate | Eliott, 2026-11-16 |
 | 7 | The node projections carry `marks`, the trace of criterion marks. `ready` is unchanged: it does not read pre-conditions, which gate the start separately (`statuses.md`, `Criteria`) | Eliott, 2026-11-16 (rule), coordinator (projection) |
+| 8 | Sealing becomes a reason requirement, so the node projections carry `finished` (replacing `sealed`) and a derived `correction_count`, the number of records with `correction: true` that name the node. It is never stored | Eliott, 2026-11-16 |
+| 9 | Projections address sub-items by `id`; `StepView.number` and `level` are display positions and never references | Eliott, 2026-11-16 |

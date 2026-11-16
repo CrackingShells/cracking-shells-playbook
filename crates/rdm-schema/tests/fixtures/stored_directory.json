@@ -11,12 +11,14 @@
   "goal": "`rdm-engine` holds a roadmap as JSON files that many processes can read and write safely.",
   "preconditions": [
     {
+      "id": "cr_7",
       "text": "`m0_feasibility_spike.md` is `done` with a go",
       "met": false
     }
   ],
   "success_gates": [
     {
+      "id": "cg_8",
       "text": "`m1_core_foundation.md` is `done`",
       "met": false
     }

@@ -32,17 +32,17 @@ that the export (M3) re-creates the text from stored fields.
 | `<field-goal>` | `stored` | `goal`, one line |
 | `<field-preconditions>` | `stored` | `preconditions[]` |
 | `<field-success-gates>` | `stored` | `success_gates[]` |
-| `<field-references>` | `stored` | `references[]`, the line split on a semicolon and a space into `Reference` |
-| `<checkbox-item>` | `stored` | `preconditions[].text` and `.met`; `[x]` is `true`, `[ ]` is `false` |
-| `<gate-item>` | `stored` | `success_gates[].text` and `.met`; the check mark is `true`, the empty box is `false` |
-| `<step>` | `stored` | One element of `steps[]` |
-| `<step-heading>` | `stored` | `steps[].title` is the text after the colon; the digit is dropped: the step number is derived from position |
+| `<field-references>` | `stored` | `references[]`, the line split on a semicolon and a space into `Reference`, each with a minted `id` |
+| `<checkbox-item>` | `stored` | `preconditions[].id` (minted by the importer), `.text` and `.met`; `[x]` is `true`, `[ ]` is `false` |
+| `<gate-item>` | `stored` | `success_gates[].id` (minted by the importer), `.text` and `.met`; the check mark is `true`, the empty box is `false` |
+| `<step>` | `stored` | One element of `steps[]`, with a minted `steps[].id` |
+| `<step-heading>` | `stored` | `steps[].title` is the text after the colon; the digit is dropped: the step number is derived from position and is never a reference: records point by `steps[].id` |
 | `<step-field>` | `stored` | `steps[]` fields `goal`, `implementation_logic`, `references`, `deliverables`, `checks` or `commit`, below |
 | `<step-field-goal>` | `stored` | `steps[].goal` |
 | `<step-field-impl-logic>` | `stored` | `steps[].implementation_logic`, the body lines with blank lines kept. The header line and trailing blank lines are presentation |
 | `<step-field-references>` | `stored` | `steps[].references[]` |
 | `<step-field-deliverables>` | `stored` | `steps[].deliverables`, one element, not split |
-| `<step-field-consistency>` | `stored` | `steps[].checks[].text` and `.expected`. The trailer `(expected: X)` becomes `expected`. `command` is not extracted: the check is prose |
+| `<step-field-consistency>` | `stored` | `steps[].checks[].id` (minted), `.text` and `.expected`. The trailer `(expected: X)` becomes `expected`. `command` is not extracted: the check is prose |
 | `<step-field-commit>` | `stored` | `steps[].commit.type`, `.scope`, `.breaking`, `.summary`. The backticks are presentation and are dropped |
 | `<step-field-requires>` | `stored` | `steps[].requires`, prose lines |
 | `<h1-title>` | `stored` | `title` |
@@ -72,18 +72,18 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `<section-reference-documents>` | `stored` | `references[]`. The section is optional; an absent section is an empty array |
 | `<h2-reference-documents>` | `dropped` | Heading literal, not a field |
 | `<reference-list>` | `stored` | `references[]` |
-| `<reference-item>` | `stored` | `references[].label` is the letter R and two digits, `.title`, `.target`, `.note` from the text after the dash |
+| `<reference-item>` | `stored` | `references[].id` (minted) and `references[].label` is the letter R and two digits, `.title`, `.target`, `.note` from the text after the dash |
 | `<section-goal>` | `stored` | `goal` |
 | `<h2-goal>` | `dropped` | Heading literal, not a field |
 | `<goal-body>` | `stored` | `goal`, exactly one line |
 | `<section-preconditions>` | `stored` | `preconditions[]` |
 | `<h2-preconditions>` | `dropped` | Heading literal, not a field |
 | `<checkbox-list>` | `stored` | `preconditions[]` |
-| `<checkbox-item>` | `stored` | `preconditions[].text` and `.met` |
+| `<checkbox-item>` | `stored` | `preconditions[].id` (minted), `.text` and `.met` |
 | `<section-success-gates>` | `stored` | `success_gates[]` |
 | `<h2-success-gates>` | `dropped` | Heading literal, not a field |
 | `<gate-list>` | `stored` | `success_gates[]` |
-| `<gate-item>` | `stored` | `success_gates[].text` and `.met` |
+| `<gate-item>` | `stored` | `success_gates[].id` (minted), `.text` and `.met` |
 | `<section-gotchas>` | `stored` | `gotchas`, verbatim lines. The section is optional; absent is an empty array |
 | `<h2-gotchas>` | `dropped` | Heading literal, not a field |
 | `<section-status>` | `derived` | The status view of the node's children, from their `status` or derived status |
@@ -129,7 +129,7 @@ Counts are over `__roadmap__/` at the date of this document.
 
 | Item | Evidence | Home or drop | Importer rule |
 |:--|:--|:--|:--|
-| Checked pre-conditions | 16 `[x]` pre-conditions outside the M0 and M0b campaigns; 150 gate check marks; 30 of 48 `done` leaves still carry an unmet gate | `stored`: `Criterion.met`, enforced (`statuses.md`, `Criteria`): the start needs every pre-condition `met`, `done` needs every gate `met`. Later changes of a mark are traced in `Leaf.marks` and `Directory.marks` | `[x]` and the check mark give `true`. Nothing is inferred from the leaf's status, and no tick is invented. A `done` node left with an unmet criterion is imported as it is and reported by `validate` as an error to reconcile. The importer writes no `Mark` |
+| Checked pre-conditions | 16 `[x]` pre-conditions outside the M0 and M0b campaigns; 150 gate check marks; 30 of 48 `done` leaves still carry an unmet gate | `stored`: `Criterion.met`, enforced (`statuses.md`, `Criteria`): the start needs every pre-condition `met`, `done` needs every gate `met`. Later changes of a mark are traced in `Leaf.marks` and `Directory.marks`, each pointing by `Mark.criterion_id` | `[x]` and the check mark give `true`. Nothing is inferred from the leaf's status, and no tick is invented. A `done` node left with an unmet criterion is imported as it is and reported by `validate` as an error to reconcile. The importer writes no `Mark` |
 | Progress rows on directories | 3 rows: `implement/`, `finalize/` (both with dashes) and `packaging/` (branch, count 1, empty notes). R01 puts progress on leaves only | `stored`: `Directory.notes`. Branch and commit count are `dropped`, copies of the leaves' | A directory row sets `notes` and nothing else |
 | Dash cells | 2 rows use an em dash (U+2014). The validator accepts only `-`, `--` and `---` | `dropped` as a value: a dash means absent | `—`, `–`, `-`, `--` and `---` all mean no value |
 | Rows the validator never reads | Its row loop stops silently at the first row that does not match. Only 1 of 14 real Progress rows matches: 11 write the branch in backticks, 2 use the em dash, and 5 have an empty Notes cell, which its pattern cannot match either | No fact lost in the schema | The importer reads every row, strips backticks around the branch, and accepts an empty Notes cell. A row it cannot read is kept as text in `Directory.notes` with a warning, never skipped |
@@ -144,6 +144,7 @@ Counts are over `__roadmap__/` at the date of this document.
 | Mermaid labels | 13 of 95 differ from the child's H1 | `dropped`: derived from `title` | The H1 wins; the importer warns on a difference |
 | Sibling order | Nodes-table row order | `dropped`: siblings are parallel, order carries no meaning | Readers order by depth, kind and name |
 | Bulleted References | `create-reporting-skill/write_test_definition_reference.md` (lines 13-14 and 34-35) and `write_knowledge_transfer_reference.md` (lines 11-12) write `**References**:` followed by bullet lines, not one `; `-separated line | `stored`: `references[]`, one `Reference` per bullet | Each bullet is one `Reference`, split as a directory item (`label`, `title`, `target`, `note`). Bullets and the one-line form give the same array |
+| Sub-item identity | The legacy markdown has no id for a criterion, a reference, a check or a step: they are addressed by position or by text | `stored`: `Criterion.id`, `Reference.id`, `Check.id`, `Step.id` | The importer mints every id, once, at import (stable ids, `stored-schema.md`, `Stable identity`). A re-import of an edited file is not supported, so no id has to be matched to a legacy position |
 | Step count | 23 leaves with 1 step, 16 with 2, 23 with 3, 3 with 4, 2 with 5 | `validate` rule: 1 to 5 | None needed; none exceeds 5 |
 
 ## Decisions
@@ -151,3 +152,5 @@ Counts are over `__roadmap__/` at the date of this document.
 | # | Decision | Decided |
 |:--|:--|:--|
 | 1 | Criteria are enforced; legacy done nodes with open criteria are imported unchanged and reported by `validate`; the importer never ticks and writes no `Mark` | Eliott, 2026-11-16 |
+| 2 | The importer mints the id of every addressable sub-item (criteria, references, checks, steps). Legacy position is never stored as identity | Eliott, 2026-11-16 |
+| 3 | A `done` legacy node with an open gate is reconciled by an ordinary reasoned mark (`correction: true`); the importer still writes no `Mark` | Eliott, 2026-11-16 |

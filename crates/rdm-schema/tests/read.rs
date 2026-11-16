@@ -27,7 +27,7 @@ fn directory_detail_round_trips() {
       "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "node",
       "campaign": {"id": "c", "path": "p", "title": "T"}, "tree_rev": "t",
       "node": { "kind": "directory", "id": "d", "path": "core", "parent": "", "rev": "r", "title": "Core",
-        "sealed": false, "comments": [], "amendments": [], "is_campaign": false, "status": "planned",
+        "finished": false, "correction_count": 2, "comments": [], "amendments": [], "is_campaign": false, "status": "planned",
         "counts": {"planned":1,"ongoing":0,"paused":0,"cancelled":0,"done":0},
         "context": ["c"], "goal": "g", "preconditions": [], "success_gates": [], "references": [],
         "gotchas": [], "notes": [], "marks": [],
@@ -60,4 +60,15 @@ fn wrong_kind_is_refused() {
     let mut v = fixture("outline.json");
     v["root"]["kind"] = json!("leaf");
     assert!(serde_json::from_value::<OutlineView>(v).is_err());
+}
+
+#[test]
+fn node_detail_has_finished_and_correction_count_and_no_sealed() {
+    let v = fixture("node.json");
+    assert_eq!(v["node"]["finished"], json!(false));
+    assert_eq!(v["node"]["correction_count"], json!(0));
+    assert!(v["node"].get("sealed").is_none());
+    let mut bad = v;
+    bad["node"].as_object_mut().unwrap().remove("correction_count");
+    assert!(serde_json::from_value::<NodeView>(bad).is_err());
 }

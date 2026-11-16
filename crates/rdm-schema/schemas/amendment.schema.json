@@ -38,6 +38,13 @@
         "null"
       ]
     },
+    "correction": {
+      "description": "`true` for an edit of a finished node or of a step recorded done; `description` is its reason.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "changes": {
       "type": "array",
       "items": {
@@ -101,6 +108,13 @@
           ]
         },
         "path_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item_id": {
+          "description": "The id of the sub-item the change names; `field` is then a pointer inside it.",
           "type": [
             "string",
             "null"

@@ -147,6 +147,8 @@ pub struct Step {
 /// An element of `Step.checks`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Check {
+    /// Stable id.
+    pub id: String,
     pub text: String,
     pub expected: Expected,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,6 +160,8 @@ pub struct Check {
 /// An element of `preconditions` or `success_gates`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Criterion {
+    /// Stable id, minted at creation, never a position (`Stable identity`).
+    pub id: String,
     pub text: String,
     pub met: bool,
     #[serde(flatten)]
@@ -167,6 +171,8 @@ pub struct Criterion {
 /// An element of `references`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Reference {
+    /// Stable id.
+    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub title: String,
@@ -174,6 +180,9 @@ pub struct Reference {
     pub target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// The campaign node the reference names, when it names one. Followed over `target`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -204,18 +213,11 @@ pub struct History {
     pub r#override: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
+    /// `true` for a reversal out of `done`; `reason` is then required and not blank.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<bool>,
     #[serde(flatten)]
     pub extra: Extra,
-}
-
-/// `Mark.kind`: which criterion array a mark refers to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum CriterionKind {
-    /// `preconditions`.
-    Pre,
-    /// `success_gates`.
-    Gate,
 }
 
 /// An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.
@@ -223,13 +225,18 @@ pub enum CriterionKind {
 pub struct Mark {
     pub ts: Ts,
     pub actor: Actor,
-    pub kind: CriterionKind,
-    /// Position of the criterion in its array, from 0.
-    pub index: u32,
+    /// The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.
+    pub criterion_id: String,
     /// The new value of `met`.
     pub met: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+    /// Why the mark was made. Required and not blank when `correction` is `true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// `true` when the mark was made on a finished node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<bool>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -275,6 +282,9 @@ pub struct Amendment {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
+    /// `true` for an edit of a finished node or of a step recorded done; `description` is its reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<bool>,
     pub changes: Vec<Change>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<Value>,
@@ -291,6 +301,9 @@ pub struct Change {
     pub path_before: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path_after: Option<String>,
+    /// The id of the sub-item the change names; `field` is then a pointer inside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
     #[serde(default, deserialize_with = "some_value", skip_serializing_if = "Option::is_none")]

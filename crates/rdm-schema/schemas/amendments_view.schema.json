@@ -112,6 +112,12 @@
             "null"
           ]
         },
+        "correction": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "has_snapshot": {
           "type": "boolean"
         },
@@ -190,6 +196,13 @@
           ]
         },
         "path_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item_id": {
+          "description": "The id of the sub-item the change names; `field` is then a pointer inside it.",
           "type": [
             "string",
             "null"

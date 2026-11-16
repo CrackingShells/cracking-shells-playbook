@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::stored::{Mark, 
-    Actor, Change, Comment, Criterion, Extra, History, Lines, Progress, Reference, Status, Step, Ts,
+use crate::stored::{
+    Mark, Actor, Change, Comment, Criterion, Extra, History, Lines, Progress, Reference, Status, Step, Ts,
 };
 
 /// The rule that produced a `level`. One value today.
@@ -196,7 +196,8 @@ pub struct LeafDetail {
     pub level_source: LevelSource,
     pub ready: bool,
     pub held_by: Vec<String>,
-    pub sealed: bool,
+    pub finished: bool,
+    pub correction_count: u32,
     pub goal: String,
     pub preconditions: Vec<Criterion>,
     pub success_gates: Vec<Criterion>,
@@ -224,7 +225,8 @@ pub struct DirectoryDetail {
     pub parent: String,
     pub rev: String,
     pub title: String,
-    pub sealed: bool,
+    pub finished: bool,
+    pub correction_count: u32,
     pub comments: Vec<Comment>,
     pub amendments: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -326,6 +328,8 @@ pub struct AmendmentEntry {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<bool>,
     pub has_snapshot: bool,
     pub changes: Vec<ChangeView>,
     #[serde(flatten)]
