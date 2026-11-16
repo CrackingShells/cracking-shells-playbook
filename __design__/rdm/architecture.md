@@ -15,7 +15,7 @@ spec-first milestone M0b.
   part of what a roadmap needs: no leaf editing, no batch, no amendment or progress writer, no
   graph walk. Re-planning a long roadmap is therefore hand-editing a grammar. The markdown itself
   serves a human review that no longer happens.
-- **Proposed change.** One Rust library, `rdm-core`, owns the roadmap model, its JSON store and
+- **Proposed change.** One Rust library, `rdm-engine`, owns the roadmap model, its JSON store and
   every graph operation. Two thin consumers sit on it: `rdm-mcp`, a stdio MCP server for agents,
   and `rdm-cli` (binary `rdm`) for humans. JSON is the stored format; markdown is an export. The
   server carries a graph view for MCP Apps hosts. The stored types and the read model live in a fourth crate, `rdm-schema`, versioned on its own. All four crates are published to crates.io.
@@ -64,7 +64,7 @@ graph TD
     CLI[rdm-cli: binary rdm, for humans]
     UI[graph view: Svelte page served as a ui:// resource]
   end
-  subgraph Core [rdm-core]
+  subgraph Core [rdm-engine]
     OPS[ops: CRUD, structural edits, batch, impact]
     ORD[order: waves, ready set, status FSM]
     VAL[validate]
@@ -90,7 +90,7 @@ graph TD
 | Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly (3.9.0 at design time, MSRV 1.88). |
 | UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. |
 | Home | A Cargo workspace in this repository under `crates/`, outside `skills/`. |
-| Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-core` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
+| Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-engine` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
 
 **The consumer rule.** `rdm-mcp` and `rdm-cli` hold no roadmap logic. Each maps its inputs to one
 core call and renders the result. A behaviour that exists in one consumer and not in the core is a

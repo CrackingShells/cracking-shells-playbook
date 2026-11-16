@@ -1,7 +1,7 @@
 # rdm rework — meta-roadmap
 
 ## Context
-The milestone graph for implementing `__design__/rdm/architecture.md`: the `managing-roadmaps` tooling moves from the `dirtree-rdm` script to a Rust core (`rdm-core`) with an MCP server (`rdm-mcp`) and a CLI (`rdm-cli`). Each node is one milestone. Its detailed roadmap is not here: the milestone's own session, started by Eliott in plan mode with the milestone's reminder (list "Agent Skills") and a link to its leaf, writes it as a separate campaign `__roadmap__/<milestone>/`.
+The milestone graph for implementing `__design__/rdm/architecture.md`: the `managing-roadmaps` tooling moves from the `dirtree-rdm` script to a Rust core (`rdm-engine`) with an MCP server (`rdm-mcp`) and a CLI (`rdm-cli`). Each node is one milestone. Its detailed roadmap is not here: the milestone's own session, started by Eliott in plan mode with the milestone's reminder (list "Agent Skills") and a link to its leaf, writes it as a separate campaign `__roadmap__/<milestone>/`.
 
 ## Reference Documents
 - [R01 Architecture](../../__design__/rdm/architecture.md) — the design every milestone implements; updated together with the code when a decision changes
@@ -18,7 +18,7 @@ The milestone graph for implementing `__design__/rdm/architecture.md`: the `mana
 
 ## Success Gates
 - ⬜ Every milestone leaf below is `done`
-- ⬜ `rdm-schema`, `rdm-core`, `rdm-mcp` and `rdm-cli` are published and the `managing-roadmaps` plugin pins the server it starts
+- ⬜ `rdm-schema`, `rdm-engine`, `rdm-mcp` and `rdm-cli` are published and the `managing-roadmaps` plugin pins the server it starts
 - ⬜ `__design__/rdm/architecture.md` describes what is built, with no decision left marked provisional unless deliberately carried on
 
 ## Gotchas

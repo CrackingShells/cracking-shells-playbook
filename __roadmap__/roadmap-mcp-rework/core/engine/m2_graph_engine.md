@@ -1,12 +1,12 @@
 # M2 Graph engine
 
-**Goal**: `rdm-core` validates a whole campaign, computes its order, enforces the status machine and applies every create, read, update, delete and restructuring operation, singly or as an atomic batch, with amendments recorded.
+**Goal**: `rdm-engine` validates a whole campaign, computes its order, enforces the status machine and applies every create, read, update, delete and restructuring operation, singly or as an atomic batch, with amendments recorded.
 **Pre-conditions**:
 - [ ] `../m1_core_foundation.md` is `done`
 - [ ] Reminder `skills-rdm-M2` read
 **Success Gates**:
 - ⬜ Whole-campaign validation returns diagnostics with stable codes, and a golden test pins the wave semantics (the ordering rule M0b fixes, checked against `skills/managing-roadmaps/references/dirtree-execution.md`)
-- ⬜ The read-model projections of `rdm-schema` are computed by one set of functions in `rdm-core`, and a golden test pins each against the worked examples of M0b
+- ⬜ The read-model projections of `rdm-schema` are computed by one set of functions in `rdm-engine`, and a golden test pins each against the worked examples of M0b
 - ⬜ Property tests: random trees under random operation sequences stay valid, keep ids unique and conserve leaves except on delete
 - ⬜ Every content or structure edit writes exactly one amendment with a non-empty description; status and progress write none (I5)
 - ⬜ A batch is atomic: a failing operation leaves the campaign untouched, and a dry-run writes nothing
@@ -28,9 +28,9 @@ Adversarial verification is required for the structural operations and impact an
 **Goal**: The milestone campaign is executed and lands on `main`.
 **Implementation Logic**:
 Execute the campaign on `feat/m2-graph-engine`, then land it on `main` through the lane the `writing-release` skill assigns, as one merge commit. Git management follows the `writing-history` skill. The Success Gates above must pass on `main` after the merge. If a design decision changed, `__design__/rdm/architecture.md` changes in the same merge.
-**Deliverables**: `crates/rdm-core` modules for validation, order, the status machine, operations, impact analysis and batch; the property tests
-**Consistency Checks**: `cargo test -p rdm-core` (expected: PASS)
-**Commit**: `feat(rdm-core): land the graph engine`
+**Deliverables**: `crates/rdm-engine` modules for validation, order, the status machine, operations, impact analysis and batch; the property tests
+**Consistency Checks**: `cargo test -p rdm-engine` (expected: PASS)
+**Commit**: `feat(rdm-engine): land the graph engine`
 
 ## Step 3: Close out
 

@@ -1,12 +1,12 @@
 # M1 Core foundation
 
-**Goal**: `rdm-core` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.
+**Goal**: `rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.
 **Pre-conditions**:
 - [ ] `../m0_feasibility_spike.md` is `done` with a go
 - [ ] `../m0b_domain_model_spec.md` is `done`
 - [ ] Reminder `skills-rdm-M1` read
 **Success Gates**:
-- ⬜ `rdm-core` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message
+- ⬜ `rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message
 - ⬜ Canonical serialisation round-trips byte for byte, and unknown fields survive a read and a write (I12)
 - ⬜ A multi-process test with kill injection at every journal stage passes on macOS, Linux and Windows: no lost update, no state that fails to load (I3)
 - ⬜ A write presenting a stale revision is refused and changes nothing (I4)
@@ -28,9 +28,9 @@ Adversarial verification is required for the store, lock and journal (silent dat
 **Goal**: The milestone campaign is executed and lands on `main`.
 **Implementation Logic**:
 Execute the campaign on `feat/m1-core-foundation`, then land it on `main` through the lane the `writing-release` skill assigns, as one merge commit. Git management follows the `writing-history` skill. The Success Gates above must pass on `main` after the merge. If a design decision changed, `__design__/rdm/architecture.md` changes in the same merge.
-**Deliverables**: `crates/rdm-core` modules for the store (lock, atomic writes, journal, revisions) over the `rdm-schema` types; the multi-process test
-**Consistency Checks**: `cargo test -p rdm-core` (expected: PASS)
-**Commit**: `feat(rdm-core): land the core foundation`
+**Deliverables**: `crates/rdm-engine` modules for the store (lock, atomic writes, journal, revisions) over the `rdm-schema` types; the multi-process test
+**Consistency Checks**: `cargo test -p rdm-engine` (expected: PASS)
+**Commit**: `feat(rdm-engine): land the core foundation`
 
 ## Step 3: Close out
 

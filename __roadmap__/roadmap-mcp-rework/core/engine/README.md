@@ -4,7 +4,7 @@
 Depth 2. Runs after M1's store. M2 adds everything that understands the tree: validation, order, the status machine and the operations that change it.
 
 ## Goal
-`rdm-core` can validate, order and restructure a campaign, with every edit recorded as an amendment.
+`rdm-engine` can validate, order and restructure a campaign, with every edit recorded as an amendment.
 
 ## Pre-conditions
 - [ ] `m1_core_foundation.md` is `done`

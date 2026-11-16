@@ -4,7 +4,7 @@
 Depth 1 of the meta-roadmap. Runs after `m0_feasibility_spike`, which proves the stack and creates the workspace. M1 builds the store every later milestone writes through.
 
 ## Goal
-`rdm-core` holds a roadmap as JSON files that many processes can read and write safely.
+`rdm-engine` holds a roadmap as JSON files that many processes can read and write safely.
 
 ## Pre-conditions
 - [ ] `m0_feasibility_spike.md` is `done` with a go
