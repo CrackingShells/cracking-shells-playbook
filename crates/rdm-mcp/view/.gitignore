@@ -1,0 +1,2 @@
+# the built page is committed on purpose: the server embeds it
+!dist/
