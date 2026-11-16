@@ -70,7 +70,7 @@ pub enum ChangeOp {
 /// `_dir.json`: the campaign root and every directory node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Directory {
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
     pub id: String,
     pub kind: DirectoryKind,
@@ -82,6 +82,7 @@ pub struct Directory {
     pub success_gates: Vec<Criterion>,
     pub gotchas: Lines,
     pub notes: Lines,
+    pub marks: Vec<Mark>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -89,7 +90,7 @@ pub struct Directory {
 /// `<leaf>.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Leaf {
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
     pub id: String,
     pub kind: LeafKind,
@@ -104,6 +105,7 @@ pub struct Leaf {
     pub steps: Vec<Step>,
     pub progress: Progress,
     pub history: Vec<History>,
+    pub marks: Vec<Mark>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -206,6 +208,32 @@ pub struct History {
     pub extra: Extra,
 }
 
+/// `Mark.kind`: which criterion array a mark refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CriterionKind {
+    /// `preconditions`.
+    Pre,
+    /// `success_gates`.
+    Gate,
+}
+
+/// An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Mark {
+    pub ts: Ts,
+    pub actor: Actor,
+    pub kind: CriterionKind,
+    /// Position of the criterion in its array, from 0.
+    pub index: u32,
+    /// The new value of `met`.
+    pub met: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
 /// Who made a move, a comment or an amendment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Actor {
@@ -219,7 +247,7 @@ pub struct Actor {
 /// `_comments/<ulid>.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Comment {
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
     pub id: String,
     pub node_id: String,
@@ -235,7 +263,7 @@ pub struct Comment {
 /// `_amendments/<ulid>.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Amendment {
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

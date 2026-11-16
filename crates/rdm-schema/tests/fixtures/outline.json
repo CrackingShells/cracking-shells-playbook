@@ -1,6 +1,6 @@
 {
-  "read_model_version": "0.1",
-  "format_version": "0.1",
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
   "projection": "outline",
   "campaign": {
     "id": "c_rework",

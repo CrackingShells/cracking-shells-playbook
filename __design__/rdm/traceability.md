@@ -129,7 +129,7 @@ Counts are over `__roadmap__/` at the date of this document.
 
 | Item | Evidence | Home or drop | Importer rule |
 |:--|:--|:--|:--|
-| Checked pre-conditions | 16 `[x]` pre-conditions outside the M0 and M0b campaigns; 150 gate check marks; 30 of 48 `done` leaves still carry an unmet gate | `stored`: `Criterion.met`. A `done` leaf may keep unmet gates, so `met` never gates a move | `[x]` and the check mark give `true`. Nothing is inferred from the leaf's status |
+| Checked pre-conditions | 16 `[x]` pre-conditions outside the M0 and M0b campaigns; 150 gate check marks; 30 of 48 `done` leaves still carry an unmet gate | `stored`: `Criterion.met`, enforced (`statuses.md`, `Criteria`): the start needs every pre-condition `met`, `done` needs every gate `met`. Later changes of a mark are traced in `Leaf.marks` and `Directory.marks` | `[x]` and the check mark give `true`. Nothing is inferred from the leaf's status, and no tick is invented. A `done` node left with an unmet criterion is imported as it is and reported by `validate` as an error to reconcile. The importer writes no `Mark` |
 | Progress rows on directories | 3 rows: `implement/`, `finalize/` (both with dashes) and `packaging/` (branch, count 1, empty notes). R01 puts progress on leaves only | `stored`: `Directory.notes`. Branch and commit count are `dropped`, copies of the leaves' | A directory row sets `notes` and nothing else |
 | Dash cells | 2 rows use an em dash (U+2014). The validator accepts only `-`, `--` and `---` | `dropped` as a value: a dash means absent | `—`, `–`, `-`, `--` and `---` all mean no value |
 | Rows the validator never reads | Its row loop stops silently at the first row that does not match. Only 1 of 14 real Progress rows matches: 11 write the branch in backticks, 2 use the em dash, and 5 have an empty Notes cell, which its pattern cannot match either | No fact lost in the schema | The importer reads every row, strips backticks around the branch, and accepts an empty Notes cell. A row it cannot read is kept as text in `Directory.notes` with a warning, never skipped |
@@ -145,3 +145,9 @@ Counts are over `__roadmap__/` at the date of this document.
 | Sibling order | Nodes-table row order | `dropped`: siblings are parallel, order carries no meaning | Readers order by depth, kind and name |
 | Bulleted References | `create-reporting-skill/write_test_definition_reference.md` (lines 13-14 and 34-35) and `write_knowledge_transfer_reference.md` (lines 11-12) write `**References**:` followed by bullet lines, not one `; `-separated line | `stored`: `references[]`, one `Reference` per bullet | Each bullet is one `Reference`, split as a directory item (`label`, `title`, `target`, `note`). Bullets and the one-line form give the same array |
 | Step count | 23 leaves with 1 step, 16 with 2, 23 with 3, 3 with 4, 2 with 5 | `validate` rule: 1 to 5 | None needed; none exceeds 5 |
+
+## Decisions
+
+| # | Decision | Decided |
+|:--|:--|:--|
+| 1 | Criteria are enforced; legacy done nodes with open criteria are imported unchanged and reported by `validate`; the importer never ticks and writes no `Mark` | Eliott, 2026-11-16 |

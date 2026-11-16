@@ -85,6 +85,6 @@ fn version_fields_carry_the_pattern() {
         let path = format!("{}/schemas/{file}.schema.json", env!("CARGO_MANIFEST_DIR"));
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let pat = v.pointer(&format!("{pointer}/pattern")).and_then(|p| p.as_str());
-        assert_eq!(pat, Some(r"^[0-9]+\.[0-9]+$"), "{file} {pointer}");
+        assert_eq!(pat, Some(r"^[0-9]+\.[0-9]+\.[0-9]+$"), "{file} {pointer}");
     }
 }

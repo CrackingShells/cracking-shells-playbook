@@ -115,7 +115,7 @@ six directories hold only `planned` leaves, so `planned` (row 7).
 
 ```json
 {
-  "read_model_version": "0.1", "format_version": "0.1", "projection": "outline",
+  "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "outline",
   "campaign": { "id": "c_rework", "path": "__roadmap__/roadmap-mcp-rework",
                 "title": "rdm rework — meta-roadmap" },
   "tree_rev": "tree-1",
@@ -241,6 +241,7 @@ Leaf only:
 | `commit_count` | `integer?` | Derived: the number of steps with a `commit_sha`; else `progress.commits`; else absent |
 | `step_progress` | `{done, total}` | Derived, as `steps` in `Campaign outline` |
 | `history` | `History[]` | `Leaf.history`, as stored, oldest first |
+| `marks` | `Mark[]` | `Leaf.marks`, as stored, oldest first: the trace of every criterion mark |
 
 `StepView.number` is derived: the position in `Leaf.steps` plus one.
 
@@ -252,6 +253,7 @@ Directory only:
 | `status` | status | Derived, `statuses.md` |
 | `counts` | `StatusCounts` | Derived, as in `Campaign outline` |
 | `context`, `goal`, `preconditions`, `success_gates`, `references`, `gotchas`, `notes` | | The stored fields of `Directory` |
+| `marks` | `Mark[]` | `Directory.marks`, as stored, oldest first |
 | `children` | `{id, path, kind, title, status}[]` | Derived from the directory listing, in the order above |
 
 Both kinds: a top-level `holders` map, id to `Holder`, holds every id named in `held_by`, so the
@@ -264,7 +266,7 @@ step 1.
 
 ```json
 {
-  "read_model_version": "0.1", "format_version": "0.1", "projection": "node",
+  "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "node",
   "campaign": { "id": "c_rework", "path": "__roadmap__/roadmap-mcp-rework",
                 "title": "rdm rework — meta-roadmap" },
   "tree_rev": "tree-1",
@@ -301,7 +303,7 @@ step 1.
       "[cut: steps 2 and 3, same shape]" ],
     "progress": { "notes": [] },
     "step_progress": { "done": 0, "total": 3 },
-    "history": [], "comments": [], "amendments": []
+    "history": [], "marks": [], "comments": [], "amendments": []
   },
   "holders": {
     "n_m0":  { "path": "m0_feasibility_spike",  "title": "M0 Feasibility spike",  "status": "ongoing" },
@@ -342,7 +344,7 @@ M1 is held by M0 and M0b. M2 adds M1, and so on down the chain.
 
 ```json
 {
-  "read_model_version": "0.1", "format_version": "0.1", "projection": "ready",
+  "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "ready",
   "campaign": { "id": "c_rework", "path": "__roadmap__/roadmap-mcp-rework",
                 "title": "rdm rework — meta-roadmap" },
   "tree_rev": "tree-1",
@@ -454,7 +456,7 @@ The whole log of `roadmap-mcp-rework`: one amendment, imported from the legacy r
 
 ```json
 {
-  "read_model_version": "0.1", "format_version": "0.1", "projection": "amendments",
+  "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "amendments",
   "campaign": { "id": "c_rework", "path": "__roadmap__/roadmap-mcp-rework",
                 "title": "rdm rework — meta-roadmap" },
   "tree_rev": "tree-1",
@@ -495,7 +497,7 @@ Every leaf in every projection carries both fields:
 Why the source is reported: depth is the only ordering rule, and the ordering open question
 (R04) keeps other rules possible. If a rule other than depth is added later, `level` changes
 meaning and `level_source` says which. A consumer groups by `level` only for a `level_source` it
-knows, and shows a flat list for another. A new `level_source` value is a minor change of the
+knows, and shows a flat list for another. A new `level_source` value is a Y change of the
 read-model version (`Versions`). The ready rule does not read `level`: it reads the directory
 tree, so a change of `level_source` alone cannot change the ready set.
 
@@ -503,30 +505,32 @@ Directories have no level.
 
 ## Versions
 
-Two version numbers, two constants, both in `rdm-schema`.
+Two version numbers, two constants, both in `rdm-schema`. Eliott, 2026-11-16: both are
+three-part, `0.X.Y`.
 
 | Item | Format version | Read-model version |
 |:--|:--|:--|
 | Constant | `FORMAT_VERSION` | `READ_MODEL_VERSION` |
-| Form | `"MAJOR.MINOR"` string | `"MAJOR.MINOR"` string |
-| First value | `"0.1"` | `"0.1"` |
+| Form | `"0.X.Y"` string | `"0.X.Y"` string |
+| First value | `"0.1.0"` | `"0.1.0"` |
 | Where it appears | `schema_version` in every stored file | `read_model_version` in every projection |
 | Format of what it covers | The stored files (`stored-schema.md`) | The four projections of this document |
-| Bump: minor | A new optional stored field, or a new enum value old readers can ignore | A new optional field, a new projection, a new request parameter, a new `level_source` value |
-| Bump: major | A stored field removed, renamed, retyped, given another meaning, or made required | A projection field removed, renamed, retyped or given another meaning; a changed derivation (the ready rule, the order, a status derivation); a required request parameter added |
-| Reader | Refuses a file with a higher major, with an upgrade message | A consumer refuses a payload with a higher major |
-| While the major is 0 | A reader refuses a higher minor too | A consumer refuses a higher minor too |
-| From major 1 | A higher minor is read, unknown fields kept (I12) | A higher minor is read, unknown fields ignored |
-| Crate rule | A format major forces a crate major. A format minor forces a crate minor | A read-model major forces a crate major. A read-model minor forces a crate minor |
+| Bump Y | A new optional stored field, or a new enum value old readers can ignore; a compatible fix | A new optional field, a new projection, a new request parameter, a new `level_source` value; a compatible fix |
+| Bump X (breaking, while the major is 0) | A stored field removed, renamed, retyped, given another meaning, or made required | A projection field removed, renamed, retyped or given another meaning; a changed derivation (the ready rule, the order, a status derivation); a required request parameter added |
+| Reader | Refuses a different major or a higher X, with an upgrade message. Reads a higher Y and keeps unknown fields (I12) | A consumer refuses a payload with a different major or a higher X. It reads a higher Y and ignores unknown fields |
+| Crate rule | A breaking format change forces a crate X bump. A compatible one forces at least a crate Y bump | A breaking read-model change forces a crate X bump. A compatible one forces at least a crate Y bump |
 
-The crate is `rdm-schema`. It stays at `0.x` until M7, so no major change reaches the crate
-before then: a bump of the format or read-model major would force crate `1.0.0`, so M0b to M7
-change only minors. "Forces a crate minor" means that at least a minor bump of the crate is made;
-the crate may bump more for its own reasons. While the crate is `0.x`, a minor bump is the
-breaking one in Rust's own rules.
+**Bumps come from commit messages.** The crate's version is decided from commit types and scopes
+by the repository's existing multi-semantic-release setup (`@semantic-release/commit-analyzer`,
+`release-config.js`, `.github/workflows/release.yml`, which release `skills/**` only today). A
+`!` or BREAKING commit gives X and `feat` or `fix` gives Y, while the crate stays `0.x`. Wiring
+the crate into that release job, with a rule that keeps a breaking change at `0.x` (semantic-release
+goes to 1.0.0 by default), is M7's job. No CI check is added. "Forces at least a Y bump" means the
+crate may bump more for its own reasons. While the crate is `0.x`, an X bump is the breaking one
+in Rust's own rules.
 
 A format change can leave the read model alone: a new optional stored field that no projection
-shows is a format minor and no read-model change. A format major needs a read-model review,
+shows is a format Y bump and no read-model change. A breaking format change needs a read-model review,
 because a projection may read the field that changed. The read-model version moves only if a
 projection field does.
 
@@ -548,6 +552,8 @@ No stored field a projection needs is missing. Two limits, neither one blocking:
 |:--|:--|:--|
 | 1 | The ready set uses the scoped rule: an unfinished leaf holds back only the deeper leaves under its own parent | Eliott, 2026-11-16 |
 | 2 | `level` is reported as `{level, level_source: "depth"}` | Eliott, 2026-11-16 |
-| 3 | The read-model version is separate from the format version, with its own bump rule and constant. A read-model major or minor forces a crate major or minor, as the format does | coordinator, 2026-11-16 |
+| 3 | The read-model version is separate from the format version, with its own bump rule and constant. A breaking read-model change forces a crate X bump, a compatible one at least a Y bump, as the format does | coordinator, 2026-11-16 |
 | 4 | `held_by` and `holders`: a ready projection names what stalls each leaf by id, with one map of holders to avoid repeating them | coordinator, 2026-11-16 |
 | 5 | Sibling order is not stored. Projections order by level, then leaves before directories, then path (`traceability.md`, `Sibling order`) | Eliott, 2026-11-16 |
+| 6 | Versions are three-part `0.X.Y`, first value `0.1.0`, for the format, the read model and the crate. A reader refuses a different major or a higher X and reads a higher Y. Bumps come from commit messages through the existing release setup; M7 wires the crate | Eliott, 2026-11-16 |
+| 7 | The node projections carry `marks`, the trace of criterion marks. `ready` is unchanged: it does not read pre-conditions, which gate the start separately (`statuses.md`, `Criteria`) | Eliott, 2026-11-16 (rule), coordinator (projection) |

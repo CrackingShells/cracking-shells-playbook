@@ -50,7 +50,7 @@ is derived (`statuses.md`, `Subtrees and directories`).
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `schema_version` | `string` | yes | Format version, `"MAJOR.MINOR"` |
+| `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
 | `id` | `string` | yes | Immutable node id |
 | `kind` | `"campaign"` or `"directory"` | yes | `campaign` for the root file only |
 | `title` | `string` | yes | The H1 of the legacy README |
@@ -61,6 +61,7 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | `success_gates` | `Criterion[]` | yes | Completion criteria, one or more |
 | `gotchas` | `lines` | yes | Legacy `## Gotchas`, verbatim markdown lines. May be empty (the section is optional) |
 | `notes` | `lines` | yes | **new**: the `Notes` cell of the directory's own row in its parent's Progress table. May be empty |
+| `marks` | `Mark[]` | yes | **new**: the trace of every change of a criterion mark of this directory, oldest first. Empty on a new or imported directory |
 
 Rules for `validate`: `goal` has no line break; `preconditions` and `success_gates` each have at
 least one entry; `kind` is `campaign` exactly when the file is at the campaign root.
@@ -75,7 +76,7 @@ the branch of one of its leaves and a count of commits; both are dropped (see `t
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `schema_version` | `string` | yes | Format version |
+| `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
 | `id` | `string` | yes | Immutable node id |
 | `kind` | `"leaf"` | yes | Discriminates a leaf from a directory when a reader holds only the JSON |
 | `title` | `string` | yes | The H1 of the legacy leaf file |
@@ -88,6 +89,7 @@ the branch of one of its leaves and a count of commits; both are dropped (see `t
 | `steps` | `Step[]` | yes | One to five steps, in order |
 | `progress` | `Progress` | yes | Where the work happened |
 | `history` | `History[]` | yes | Status moves, oldest first. Empty on a new leaf, and on a leaf imported from legacy markdown |
+| `marks` | `Mark[]` | yes | **new**: the trace of every change of a criterion mark of this leaf, oldest first. Empty on a new or imported leaf. Kept apart from `history` so that the last `history` entry stays the last status move |
 
 `Progress` is an object, not a separate type section:
 
@@ -106,6 +108,8 @@ Rules for `validate`:
 - `status == done` implies every step has `done: true`.
 - `status_reason` is present exactly when `status` is `paused` or `cancelled`, and equals the `reason` of the last `history` entry when `history` is not empty.
 - A leaf imported as `done` has steps with `done: true` and no `commit_sha`. I8 is checked when a move to `done` is made (see `Changes against R01`).
+- A `done` leaf with a criterion that is not `met` is an **error to reconcile** (`marks`, `Criterion`). The importer never ticks a criterion, so every legacy done leaf with an open gate reports it. The same holds for a directory whose derived status is `done`.
+- For each criterion, when `marks` holds a record for it, `met` equals the `met` of its last record. A legacy tick that has no record is allowed.
 
 ## Step
 
@@ -163,8 +167,30 @@ An element of `preconditions` or `success_gates`, at leaf and directory level.
 | `met` | `bool` | yes | Pre-condition: `[x]` is `true`. Gate: `✅` is `true`. A new criterion is `false` |
 
 `met` is a state mark, not content: setting it produces no amendment and is allowed until the
-node is sealed. A `done` leaf may carry unmet gates; `met` informs and gates nothing
-(`statuses.md`, `Sealing`). Real campaigns hold 16 checked pre-conditions and 150 `✅` gate marks.
+node is sealed. It is enforced (Eliott, 2026-11-16): `planned → ongoing` needs every
+pre-condition `met`, `ongoing → done` needs every success gate `met`, and a directory is `done`
+only when its leaves are finished and its own gates are `met` (`statuses.md`, `Criteria`). Every
+change of `met` writes a `Mark`. Real campaigns hold 16 checked pre-conditions and 150 `✅` gate
+marks, and 30 of 48 done leaves carry an open gate: the importer imports them as they are, and
+`validate` reports each `done` node with an unmet criterion as an error to reconcile.
+
+## Mark
+
+An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`. Written by
+the operation that sets the mark; never an amendment (I5).
+
+| Field | Type | Req | Meaning |
+|:--|:--|:--:|:--|
+| `ts` | `ts` | yes | When the mark was changed |
+| `actor` | `Actor` | yes | Who changed it |
+| `kind` | `"pre"` or `"gate"` | yes | `pre` for `preconditions`, `gate` for `success_gates` |
+| `index` | `integer` | yes | The position of the criterion in its array, from 0 |
+| `met` | `bool` | yes | The new value |
+| `evidence` | `string?` | no | Free text: a command, its result, a commit |
+
+A wrong check stays traceable: correcting it writes a new record, and the old one stays. The
+criterion is addressed by position, so reordering criteria is a content edit that M2 must reject
+once a mark refers to them, or rewrite the marks in the same amendment (left to M2).
 
 ## Reference
 
@@ -246,7 +272,7 @@ it, so a comment never changes the node's `rev`. Decided 2026-11-16 (Eliott): th
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `schema_version` | `string` | yes | Format version |
+| `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
 | `id` | `ulid` | yes | Identity and order |
 | `node_id` | `string` | yes | The node commented on |
 | `ts` | `ts` | yes | When it was added |
@@ -263,7 +289,7 @@ its comments; the removing amendment's `snapshot` keeps them with it.
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `schema_version` | `string` | yes | Format version |
+| `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
 | `id` | `ulid` | yes | Identity and order. The display id is derived (below) |
 | `legacy_id` | `string?` | no | **new**: the legacy `A1`, `A2`, … of an imported amendment |
 | `ts` | `ts` | yes | When it was made. For a legacy row: the row's day at `T00:00:00Z` |
@@ -302,20 +328,29 @@ the nodes; the amendment is stored once, at the campaign root, and `changes` nam
 
 | Item | Decision |
 |:--|:--|
-| Field | `schema_version`, a string `"MAJOR.MINOR"`, in every file |
-| First value | `"0.1"`. The crate stays at `0.x` until M7, so the format does too: a format `1.0` would force crate `1.0` |
+| Field | `schema_version`, a string `"0.X.Y"`, in every file |
+| First value | `"0.1.0"`. The crate stays at `0.x` until M7, so the format does too |
 | Constant | `FORMAT_VERSION` in `rdm-schema` |
-| Bump: minor | A new optional field or a new enum value that old readers can ignore. Adding an optional edge field later is a minor bump |
-| Bump: major | A field removed, renamed or given another meaning, or a field made required |
-| Reader | Refuses a file with a higher major, with an upgrade message. While the major is `0`, it refuses a higher minor too, since `0.x` minors may break. From `1.0`, a higher minor is read and its unknown fields kept (I12) |
-| Writer | Stamps the version it writes. One campaign may hold files of different minors |
-| Relation to the crate | A format major forces a crate major, a format minor a crate minor (M0b plan). The read-model version is a separate constant, in `read-model.md` |
+| Bump X (`0.X.y`) | A breaking change while the major is `0`: a field removed, renamed or given another meaning, or a field made required |
+| Bump Y (`0.x.Y`) | A compatible addition or fix: a new optional field, or a new enum value that old readers can ignore |
+| Reader | Refuses a different major or a higher X, with an upgrade message. It reads a higher Y and keeps unknown fields (I12) |
+| Writer | Stamps the version it writes. One campaign may hold files of different Y |
+| Where bumps come from | The commit messages (see `Release`): the crate's version is decided from commit types and scopes by the repository's existing multi-semantic-release setup, not by hand |
+| Relation to the crate | A breaking format change forces a crate X bump, a compatible one at least a Y bump. The read-model version is a separate constant, in `read-model.md` |
+
+### Release
+
+The crate's version is decided from commit types and scopes by `@semantic-release/commit-analyzer`
+(`release-config.js`, `.github/workflows/release.yml`, which release `skills/**` only today). A
+`!` or BREAKING commit gives X and `feat` or `fix` gives Y, while the crate stays `0.x`. Wiring
+the crate into that release job, with a rule that keeps a breaking change at `0.x` (semantic-release
+goes to 1.0.0 by default), is M7's job. No CI check is added for versions.
 
 ## Changes against R01
 
 | Area | R01 sketch | This schema |
 |:--|:--|:--|
-| Criteria | `preconditions[]`, `success_gates[]` as plain text | `Criterion {text, met}`, at leaf and directory level |
+| Criteria | `preconditions[]`, `success_gates[]` as plain text | `Criterion {text, met}`, at leaf and directory level, enforced, with `Mark` records in `marks` |
 | Step | `{id, goal, implementation_logic, deliverables[], checks[], commit, references[], requires[], done, commit_sha?}` | adds `title`, `done_at?`; `implementation_logic` and `deliverables` are `lines`; `requires` is optional prose; `id` is kept and the number is derived |
 | Check | `{command, expected}` | `{text, expected, command?}` |
 | Commit | `{type, scope, summary}` | `{type, scope?, breaking, summary}` |
@@ -328,7 +363,7 @@ the nodes; the amendment is stored once, at the campaign root, and `changes` nam
 | Progress | `{branch?, notes}` | adds `commits?` (import only); `notes` is `lines` |
 | Gotchas, context | strings or lines unstated | `lines` |
 | Unknown fields | I12 stated | Every type keeps them, nested ones too |
-| Format version | "every file carries `schema_version`" | `"MAJOR.MINOR"`, first value `"0.1"`, reader rules above |
+| Format version | "every file carries `schema_version`" | `"0.X.Y"`, first value `"0.1.0"`, reader rules above |
 
 **Finding against R01 (invariant I8).** R01 says a leaf is `done` only when every step is done
 with its commit recorded. A leaf imported from legacy markdown is `done` and has no `commit_sha`
@@ -343,3 +378,13 @@ beside its source, which I6 forbids. The default keeps it because an imported `b
 leaf has no history entry to hold the reason. Alternative: the importer writes one `history` entry
 with `actor.kind: "import"` and `status_reason` is derived. Default kept, with the consistency
 rule in `Leaf`. Decided 2026-11-16 (coordinator).
+
+## Decisions
+
+| # | Decision | Decided |
+|:--|:--|:--|
+| 1 | Criteria are enforced: `met` gates the start (pre-conditions) and `done` (gates), and gates a directory's `done`. Reverses the earlier rule that `met` gates nothing | Eliott, 2026-11-16 |
+| 2 | Every change of a criterion mark writes a `Mark` (`ts`, `actor`, `kind`, `index`, `met`, `evidence?`), in `marks` on `Leaf` and on `Directory` | Eliott, 2026-11-16 |
+| 3 | Legacy done nodes with an open criterion are imported as they are, and reported by `validate` as errors to reconcile. The importer never ticks | Eliott, 2026-11-16 |
+| 4 | Versions are `0.X.Y`; a breaking change bumps X, a compatible one Y; bumps come from commit messages through the existing release setup; M7 wires the crate | Eliott, 2026-11-16 |
+| 5 | The mark records live in a `marks` array beside `history`, not inside it, so the last `history` entry stays the last status move (`status_reason` rule) | coordinator, 2026-11-16 |

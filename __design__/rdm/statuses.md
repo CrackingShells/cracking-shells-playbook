@@ -38,15 +38,15 @@ status is `paused` or `cancelled`). "Ready set" says what the move does to the s
 | From | To | Allowed | Who | Reason | Precondition | Ready set |
 |:--|:--|:--|:--|:--|:--|:--|
 | `planned` | `planned` | refused | | | A move to the same status is a no-op and writes no history | none |
-| `planned` | `ongoing` | allowed | both | only for an override | The leaf is in the ready set. Outside it, an override with a reason is needed, and the entry records `override: true` | LEAVE |
+| `planned` | `ongoing` | allowed | both | only for an override | Every pre-condition is `met`, and the leaf is in the ready set. Outside the set, an override with a reason is needed, and the entry records `override: true`. The override skips the ready set, never the pre-conditions (Eliott, 2026-11-16) | LEAVE |
 | `planned` | `paused` | allowed | both | required | none | LEAVE |
 | `planned` | `cancelled` | allowed | both | required | none | LEAVE, RELEASE |
-| `planned` | `done` | refused | | | Start the leaf first: `done` needs the steps recorded (I8) | none |
+| `planned` | `done` | refused | | | Start the leaf first: `done` needs the steps recorded (I8) and the gates `met` | none |
 | `ongoing` | `planned` | refused | | | Use `paused`, then `planned` while no step is done | none |
 | `ongoing` | `ongoing` | refused | | | No-op | none |
 | `ongoing` | `paused` | allowed | both | required | none | none |
 | `ongoing` | `cancelled` | allowed | both | required | none. Steps already done stay sealed and recorded | RELEASE |
-| `ongoing` | `done` | allowed | both | none | Every step is done with its commit recorded (I8). Gate marks are not checked, see `Sealing` | RELEASE |
+| `ongoing` | `done` | allowed | both | none | Every step is done with its commit recorded (I8), and every success gate is `met` (Eliott, 2026-11-16). See `Criteria` | RELEASE |
 | `paused` | `planned` | allowed | both | required | No step is recorded done (coordinator, 2026-11-16) | ENTER if nothing shallower holds it back |
 | `paused` | `ongoing` | allowed | both | required | The leaf was `ongoing` before the pause (last pause entry has `from: ongoing`), or it is in the ready set. Otherwise an override with a reason | none |
 | `paused` | `paused` | refused | | | No-op | none |
@@ -67,7 +67,7 @@ Rules that hold for every row:
 
 - No move is human-only. `history[].actor` records who made it.
 - A move presents the status it expects to leave. A mismatch is refused (R01 §Concurrency).
-- A move writes one history entry and never an amendment (I5).
+- A move writes one history entry and never an amendment (I5). A criterion mark writes a mark record, see `Criteria`.
 - A move into `done` or `cancelled` may carry the final `progress` in the same operation. After it, only comments are accepted, and from `cancelled` only the move to `planned`.
 - The reason is required text, not blank, for `paused`, `cancelled`, `paused → planned`, `paused → ongoing` and every undo out of `cancelled`.
 
@@ -91,6 +91,18 @@ restore rule fixes it: a leaf cancelled from `ongoing` or `paused` returns there
 cancelled leaf can release a deeper leaf that really needed it. That is Eliott's intent. The
 impact report of a cancel (M2) should list the leaves it makes ready, so the release is never
 silent.
+
+## Criteria
+
+Eliott, 2026-11-16: verified pre- and post-conditions are cornerstones of AI planning, an
+unmaintained checklist is pointless, and a wrong check must be traceable. So criteria are
+enforced, and every mark leaves a trace.
+
+- **Pre-conditions gate the start.** `planned → ongoing` needs every pre-condition `met`. This holds for an override too: an override skips the ready set, never the pre-conditions. The same holds for `paused → ongoing` by override.
+- **Success gates gate the finish.** `ongoing → done` needs every success gate `met`, in addition to I8.
+- **Every mark is traced.** A change of a criterion's `met` mark, on a leaf or a directory, writes a mark record: `ts`, `actor`, the criterion (kind `pre` or `gate`, plus its index), the new value, and `evidence?` (free text: a command, its result, a commit). Leaves and directories keep the records in their own `marks` array, apart from `history` (stored-schema.md).
+- **`met` is a state mark, not content.** Setting it makes no amendment, and a node sealed at `done` or `cancelled` accepts no mark. A wrong mark is corrected by another mark record before the move to `done`; both records stay.
+- **Legacy data.** 30 of 48 done leaves under `__roadmap__/` carry open gates. The importer never invents a tick: it imports them as they are, and `validate` reports each `done` node with an unmet criterion as an error to reconcile. Whoever reconciles ticks the criterion, and that writes a mark record. The reconcile path on a sealed node is an open defect: see `Decisions`, row 8.
 
 ## Ready set
 
@@ -140,13 +152,14 @@ leaves under it, at any depth. The first matching row wins.
 |:--|:--|:--|
 | 1 | none | `planned` |
 | 2 | all `cancelled` | `cancelled` |
-| 3 | all finished, at least one `done` | `done` |
+| 3 | all finished, at least one `done`, and the directory's own gates all `met` | `done` |
+| 3b | all finished, at least one `done`, and a gate of the directory not `met` | `ongoing` |
 | 4 | at least one `ongoing` | `ongoing` |
 | 5 | at least one `paused` | `paused` |
 | 6 | at least one `done`, the others `planned` or `cancelled` | `ongoing` |
 | 7 | otherwise (`planned`, with or without `cancelled`) | `planned` |
 
-Row 3 reads a directory whose leaves are all finished as `done` even if some were cancelled. A
+Row 3 reads a directory whose leaves are all finished as `done` even if some were cancelled, once its own gates are met. Until then it is `ongoing` (row 3b): the directory's gates are the last thing left to check. A
 reader that must tell them apart uses the counts per status, which the read model carries.
 
 ## Sealing
@@ -162,14 +175,14 @@ append-only comment (a file `_comments/<ulid>.json` whose `node_id` names the no
 | `cancelled` | refused | allowed | only the undo, to the pre-cancel status | refused |
 | `done` | refused | allowed | refused | refused |
 
-- **Content** is every stored field except `status`, `status_reason`, `history`, `progress` and the state marks. The state marks are a criterion's `met`, and a step's `done`, `commit_sha` and `done_at`.
+- **Content** is every stored field except `status`, `status_reason`, `history`, `progress` and the state marks. The state marks are a criterion's `met` with its mark record, and a step's `done`, `commit_sha` and `done_at`.
 - **The amendment rule is uniform.** Any content edit to a `planned`, `ongoing` or `paused` node carries the amendment note, whatever the status. The stricter rule applies everywhere, as Eliott decided.
-- **Status moves, progress, comments and state marks never produce an amendment (I5).** Setting `met` is a state change like a move, allowed until the leaf is `done` or `cancelled`.
+- **Status moves, progress, comments and state marks never produce an amendment (I5).** Setting `met` is a state change like a move, allowed until the leaf is `done` or `cancelled`, and it writes a mark record.
 - **A step recorded done inside an `ongoing` or `paused` leaf is sealed.** Its commit is on record, so its content (goal, logic, deliverables, checks, commit, references) cannot change and its `done` mark cannot be cleared. The other steps and the leaf's own fields stay editable. A sealed step cannot be removed or reordered.
 - **Directories follow their derived status.** A directory (or the campaign root) whose derived status is `done` or `cancelled` is sealed: its own content (title, context, goal, criteria, references, gotchas, notes) cannot change, and it accepts comments. Adding or removing a child is a structure edit of the child, not a content edit of the directory, so it stays allowed with an amendment. A directory in any other derived status takes edits with an amendment note. Weak point: a new `planned` child moves the derived status off `done`, which unseals the directory. The amendment log still records both edits.
 - **A cancelled node stays sealed while it is cancelled.** Undoing the cancel unseals it, in the status it had before. A `done` node never unseals.
 - **Nothing reopens done work.** A new piece of work is a new node. There is no `done → ongoing`.
-- **Gate marks do not gate `done`.** Real campaigns leave open (`⬜`) gates on most done leaves: 30 of 48 done leaves under `__roadmap__/` carry at least one. So the only precondition of `done` is I8, as in R01. Criteria `met` is information, not a check.
+- **Criteria gate the moves.** `done` needs I8 and every gate `met`; the start needs every pre-condition `met` (see `Criteria`). A directory is `done` only when its leaves are finished and its own gates are met.
 - **Structure edits on sealed nodes.** Deleting a `done` or `cancelled` leaf keeps its acknowledgement (I9) and its snapshot in the amendment. Moving a sealed leaf changes no content. Whether a move that changes the ready set of other leaves needs the acknowledgement is left to M2's impact analysis.
 
 **Recorded objection (coordinator kept the default): a wrong step record is permanent.** A mistyped `commit_sha` on a sealed step cannot be
@@ -202,9 +215,9 @@ For `r01_sync`. R01 is not edited by this leaf.
 | §Graph operations, after the FSM | "Starting a leaf outside the ready set is refused unless an override with a reason is given" stays. Add the directory pause and cancel operation and the derivation table |
 | §Graph operations, Impact analysis | Remove "done work reopened". Add "leaves made ready by a cancel" |
 | §Contracts, I5 | Add: comments (separate append-only files) and state marks never produce an amendment. A sealed node accepts no content edit |
-| §Contracts, I8 | Unchanged. Add: it is the only precondition of `done` |
+| §Contracts, I8 | Keep I8. Add: `done` also needs every success gate `met`, and the start needs every pre-condition `met`; every mark is traced |
 | §Contracts, I9 | "Deleting or reopening done work, or moving work in progress, needs an explicit acknowledgement" becomes "Deleting sealed work, or moving work in progress, needs an explicit acknowledgement. Nothing reopens done work". Reopening is replaced by sealing |
-| §Data Model, schema sketch | `blocked_reason?` becomes `status_reason?`; history `note?` becomes `reason?`; comments are not a node field: they are files `_comments/<ulid>.json` (details in stored-schema.md), so the §Data Model tree gains `_comments/` |
+| §Data Model, schema sketch | criteria carry `met` with mark records in `history`; `blocked_reason?` becomes `status_reason?`; history `note?` becomes `reason?`; comments are not a node field: they are files `_comments/<ulid>.json` (details in stored-schema.md), so the §Data Model tree gains `_comments/` |
 | §Concurrency, last bullet | "records `inprogress`" becomes "records `ongoing`" |
 | §Graph operations, after the FSM | Add a directory `uncancel` through the `op_id` of the cancel |
 | §Key Flows, Execute | `inprogress` becomes `ongoing` |
@@ -222,3 +235,5 @@ Nothing is open. Who decided what:
 | 4 | `paused → planned` needs no step recorded done | coordinator, 2026-11-16 |
 | 5 | A step recorded done is sealed, so a mistyped `commit_sha` is permanent. Recorded objection: a human-only correction with an amendment would be the least invasive fix | default kept, coordinator, 2026-11-16 |
 | 6 | Undoing a cancel restores the status the node had just before the cancel, read from history, with a required reason: `planned`, `ongoing` or `paused`. A directory undo restores each leaf through the cancel's `op_id`. `done` stays the only terminal status. Replaces the earlier `cancelled → planned` only form and closes its gap (coordinator, 2026-11-16) | coordinator, 2026-11-16 |
+| 7 | Criteria are enforced: `planned → ongoing` needs every pre-condition `met` (override included), `ongoing → done` needs every success gate `met` plus I8, and a directory is `done` only when its leaves are finished and its own gates are met. Every mark leaves a mark record (`ts`, `actor`, kind, index, value, `evidence?`). Legacy done leaves with open gates are imported as they are and reported by `validate`. Reverses the earlier rule that gate marks do not gate `done` | Eliott, 2026-11-16 |
+| 8 | Open defect: a `done` node is sealed, so ticking a criterion to reconcile a legacy node needs a defined path. This document keeps marks refused on a sealed node and leaves the reconcile path (a human-only mark with evidence, no amendment) to M2 | coordinator, flagged |
