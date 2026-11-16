@@ -86,6 +86,7 @@ struct LeafGetResult {
 enum RunKind {
     Cold,
     Warm,
+    Unknown,
 }
 
 /// One probe measurement sent by the view.
