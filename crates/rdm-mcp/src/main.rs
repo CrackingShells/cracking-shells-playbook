@@ -15,7 +15,7 @@ use rmcp::{
     },
     model::{
         CallToolResult, ContentBlock, Implementation, ExtensionCapabilities, ListResourcesResult, MetaObject,
-        PaginatedRequestParams, ProtocolVersion, Resource, ReadResourceRequestParams,
+        PaginatedRequestParams, ProtocolVersion, ListResourceTemplatesResult, ResourceTemplate, Resource, ReadResourceRequestParams,
         ReadResourceResponse, ReadResourceResult, ResourceContents, ServerCapabilities,
         ServerConfig,
     },
@@ -57,16 +57,68 @@ struct Fixture {
     nodes: Vec<FixtureNode>,
 }
 
-/// Structured output of `roadmap_view`: the fixture plus two timing fields.
+/// A node as served to the page: the fixture node plus a leaf's markdown.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct ViewNode {
+    #[serde(flatten)]
+    node: FixtureNode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    markdown: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum Mode {
+    Result,
+    Chunks,
+    Stream,
+}
+
+impl Mode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Result => "result",
+            Self::Chunks => "chunks",
+            Self::Stream => "stream",
+        }
+    }
+}
+
+/// Arguments of `roadmap_view`; all optional.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+struct RoadmapViewArgs {
+    /// How the nodes reach the page: `result` (default), `chunks` or `stream`.
+    #[serde(default)]
+    mode: Option<Mode>,
+    /// Repeat the fixture this many times, 1 to 100 (default 1).
+    #[serde(default)]
+    scale: Option<u32>,
+}
+
+/// Structured output of `roadmap_view`. Which optional fields are present
+/// depends on `mode`.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 struct RoadmapView {
     campaign: String,
     frozen_at: String,
-    nodes: Vec<FixtureNode>,
+    mode: String,
+    scale: u32,
     /// Milliseconds since the Unix epoch, taken just before the result is returned.
     t_server_ms: u64,
-    /// Byte length of the serialised fixture.
+    /// Total serialised bytes of the scaled node list, markdown included.
     payload_bytes: u64,
+    node_count: u64,
+    /// Present in `result` mode only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nodes: Option<Vec<Value>>,
+    /// Present in `chunks` mode only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chunk_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chunk_uri_template: Option<String>,
+    /// Present in `stream` mode only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stream_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -138,6 +190,152 @@ fn internal(e: impl std::fmt::Display) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
 
+/// Largest accepted `scale`.
+const MAX_SCALE: u32 = 100;
+/// Target size of one chunk, in serialised bytes.
+const CHUNK_BYTES: usize = 64 * 1024;
+/// Port of the localhost SSE listener, set once in `main`.
+static STREAM_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+
+/// Markdown of a leaf; a `copy<k>/` prefix is stripped first.
+fn leaf_markdown(path: &str) -> Option<&'static str> {
+    let base = match path.strip_prefix("copy") {
+        Some(rest) => match rest.split_once('/') {
+            Some((k, tail)) if !k.is_empty() && k.bytes().all(|b| b.is_ascii_digit()) => tail,
+            _ => path,
+        },
+        None => path,
+    };
+    LEAVES.iter().find(|(p, _)| *p == base).map(|(_, m)| *m)
+}
+
+/// The fixture repeated `scale` times, breadth-first within each copy. Copy
+/// k > 0 prefixes every path and parent with `copy<k>/`; titles, statuses and
+/// depths are unchanged and each leaf carries its markdown.
+fn scaled_nodes(scale: u32) -> Result<Vec<ViewNode>, ErrorData> {
+    let fixture: Fixture = serde_json::from_str(ROADMAP_JSON).map_err(internal)?;
+    let mut out = Vec::with_capacity(fixture.nodes.len() * scale as usize);
+    for k in 0..scale {
+        for node in &fixture.nodes {
+            let mut node = node.clone();
+            let markdown = (node.kind == "leaf")
+                .then(|| leaf_markdown(&node.path).map(str::to_owned))
+                .flatten();
+            if k > 0 {
+                node.path = format!("copy{k}/{}", node.path);
+                node.parent = node.parent.map(|p| format!("copy{k}/{p}"));
+            }
+            out.push(ViewNode { node, markdown });
+        }
+    }
+    Ok(out)
+}
+
+/// Splits nodes into chunks of about `CHUNK_BYTES` serialised bytes.
+fn chunk_nodes(nodes: &[ViewNode]) -> Vec<&[ViewNode]> {
+    let mut chunks = Vec::new();
+    let (mut start, mut size) = (0, 0);
+    for (i, n) in nodes.iter().enumerate() {
+        size += serde_json::to_vec(n).map_or(0, |v| v.len() + 1);
+        if size >= CHUNK_BYTES {
+            chunks.push(&nodes[start..=i]);
+            start = i + 1;
+            size = 0;
+        }
+    }
+    if start < nodes.len() {
+        chunks.push(&nodes[start..]);
+    }
+    chunks
+}
+
+fn query_scale(query: &str) -> Option<u32> {
+    let v = query.split('&').find_map(|kv| kv.strip_prefix("scale="))?;
+    v.parse().ok().filter(|s| (1..=MAX_SCALE).contains(s))
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && let Some(h) = s.get(i + 1..i + 3)
+            && let Ok(v) = u8::from_str_radix(h, 16)
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Spike-only SSE listener on loopback: one event per node, then `done`.
+fn serve_stream(mut conn: std::net::TcpStream) -> std::io::Result<()> {
+    use std::io::{BufRead, BufReader};
+    let mut request_line = String::new();
+    {
+        let mut reader = BufReader::new(&conn);
+        reader.read_line(&mut request_line)?;
+        let mut line = String::new();
+        while reader.read_line(&mut line)? > 2 {
+            line.clear();
+        }
+    }
+    let mut parts = request_line.split_whitespace();
+    let (method, target) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    if method != "GET" || path != "/stream" {
+        return conn.write_all(
+            b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+    }
+    let Some(scale) = query_scale(query) else {
+        return conn.write_all(
+            b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+    };
+    conn.write_all(
+        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+          Access-Control-Allow-Origin: *\r\nCache-Control: no-store\r\n\
+          Connection: close\r\n\r\n",
+    )?;
+    conn.flush()?;
+    let nodes = scaled_nodes(scale).map_err(|e| std::io::Error::other(e.message.to_string()))?;
+    for n in &nodes {
+        let json = serde_json::to_string(n).map_err(std::io::Error::other)?;
+        write!(conn, "data: {json}\n\n")?;
+        conn.flush()?;
+    }
+    conn.write_all(b"event: done\ndata: {}\n\n")?;
+    conn.flush()
+}
+
+/// Binds `127.0.0.1:0` and serves the stream on background threads.
+fn start_stream_listener() -> std::io::Result<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    std::thread::spawn(move || {
+        for conn in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let _ = serve_stream(conn);
+            });
+        }
+    });
+    Ok(port)
+}
+
+/// Page-level CSP: lets the page connect to the stream listener.
+fn ui_page_meta() -> MetaObject {
+    let origin = STREAM_PORT
+        .get()
+        .map_or_else(Vec::new, |p| vec![format!("http://127.0.0.1:{p}")]);
+    meta_from(json!({ "ui": { "csp": { "connectDomains": origin } } }))
+}
+
 /// The spike server. It keeps no state between calls.
 #[derive(Clone)]
 struct RdmSpike {
@@ -157,22 +355,66 @@ impl RdmSpike {
         output_schema = schema_for_output::<RoadmapView>(),
         meta = ui_resource_meta()
     )]
-    async fn roadmap_view(&self) -> Result<CallToolResult, ErrorData> {
+    async fn roadmap_view(
+        &self,
+        Parameters(args): Parameters<RoadmapViewArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mode = args.mode.unwrap_or(Mode::Result);
+        let scale = args.scale.unwrap_or(1);
+        if !(1..=MAX_SCALE).contains(&scale) {
+            return Err(ErrorData::invalid_params(
+                format!("scale must be an integer from 1 to {MAX_SCALE}"),
+                None,
+            ));
+        }
+        if matches!(mode, Mode::Result) && scale > 1 {
+            return Err(ErrorData::invalid_params(
+                "mode \"result\" cannot take scale > 1: the result enters the model context; \
+                 use mode \"chunks\" or \"stream\""
+                    .to_owned(),
+                None,
+            ));
+        }
         let fixture: Fixture = serde_json::from_str(ROADMAP_JSON).map_err(internal)?;
-        let payload_bytes = serde_json::to_vec(&fixture).map_err(internal)?.len();
-        let summary = format!(
-            "Roadmap {} at {}: {} nodes.",
-            fixture.campaign,
-            fixture.frozen_at,
-            fixture.nodes.len()
-        );
-        let view = RoadmapView {
+        let nodes = scaled_nodes(scale)?;
+        let payload_bytes = serde_json::to_vec(&nodes).map_err(internal)?.len();
+        let mut view = RoadmapView {
             campaign: fixture.campaign,
             frozen_at: fixture.frozen_at,
-            nodes: fixture.nodes,
+            mode: mode.as_str().to_owned(),
+            scale,
+            t_server_ms: 0,
             payload_bytes: u64::try_from(payload_bytes).map_err(internal)?,
-            t_server_ms: now_ms(),
+            node_count: u64::try_from(nodes.len()).map_err(internal)?,
+            nodes: None,
+            chunk_count: None,
+            chunk_uri_template: None,
+            stream_url: None,
         };
+        match mode {
+            Mode::Result => {
+                view.nodes = Some(
+                    nodes
+                        .iter()
+                        .map(serde_json::to_value)
+                        .collect::<Result<_, _>>()
+                        .map_err(internal)?,
+                );
+            }
+            Mode::Chunks => {
+                view.chunk_count = Some(u64::try_from(chunk_nodes(&nodes).len()).map_err(internal)?);
+                view.chunk_uri_template = Some(format!("rdm://chunk/{{n}}?scale={scale}"));
+            }
+            Mode::Stream => {
+                let port = STREAM_PORT.get().ok_or_else(|| internal("stream listener is not bound"))?;
+                view.stream_url = Some(format!("http://127.0.0.1:{port}/stream?scale={scale}"));
+            }
+        }
+        let summary = format!(
+            "Roadmap {} at {}: {} nodes, mode {}, scale {}.",
+            view.campaign, view.frozen_at, view.node_count, view.mode, scale
+        );
+        view.t_server_ms = now_ms();
         let mut result =
             CallToolResult::structured(serde_json::to_value(&view).map_err(internal)?);
         result.content = vec![ContentBlock::text(summary)];
@@ -187,13 +429,11 @@ impl RdmSpike {
         &self,
         Parameters(args): Parameters<LeafGetArgs>,
     ) -> Result<Json<LeafGetResult>, ErrorData> {
-        let (_, markdown) = LEAVES
-            .iter()
-            .find(|(p, _)| *p == args.path)
+        let markdown = leaf_markdown(&args.path)
             .ok_or_else(|| ErrorData::invalid_params(format!("unknown leaf: {}", args.path), None))?;
         Ok(Json(LeafGetResult {
             path: args.path,
-            markdown: (*markdown).to_owned(),
+            markdown: markdown.to_owned(),
         }))
     }
 
@@ -275,8 +515,24 @@ impl ServerHandler for RdmSpike {
     ) -> Result<ListResourcesResult, ErrorData> {
         let page = Resource::new(UI_URI, "rdm graph")
             .with_description("Interactive roadmap graph")
-            .with_mime_type(APPS_MIME);
+            .with_mime_type(APPS_MIME)
+            .with_meta(ui_page_meta());
         Ok(ListResourcesResult::with_all_items(vec![page]))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
+        Ok(ListResourceTemplatesResult::with_all_items(vec![
+            ResourceTemplate::new("rdm://leaf/{path}", "leaf")
+                .with_description("Markdown of one frozen leaf")
+                .with_mime_type("text/markdown"),
+            ResourceTemplate::new("rdm://chunk/{n}?scale={scale}", "chunk")
+                .with_description("One chunk of the scaled node list")
+                .with_mime_type("application/json"),
+        ]))
     }
 
     async fn read_resource(
@@ -284,13 +540,30 @@ impl ServerHandler for RdmSpike {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        if request.uri != UI_URI {
-            return Err(ErrorData::invalid_params(
-                format!("unknown resource: {}", request.uri),
-                None,
-            ));
-        }
-        let contents = ResourceContents::text(VIEW_HTML, UI_URI).with_mime_type(APPS_MIME);
+        let uri = request.uri.as_str();
+        let bad = |m: String| ErrorData::invalid_params(m, None);
+        let contents = if uri == UI_URI {
+            ResourceContents::text(VIEW_HTML, UI_URI)
+                .with_mime_type(APPS_MIME)
+                .with_meta(ui_page_meta())
+        } else if let Some(path) = uri.strip_prefix("rdm://leaf/") {
+            let path = percent_decode(path);
+            let md = leaf_markdown(&path).ok_or_else(|| bad(format!("unknown leaf: {path}")))?;
+            ResourceContents::text(md, uri).with_mime_type("text/markdown")
+        } else if let Some(rest) = uri.strip_prefix("rdm://chunk/") {
+            let (n, query) = rest.split_once('?').unwrap_or((rest, ""));
+            let n: usize = n.parse().map_err(|_| bad(format!("bad chunk index: {n}")))?;
+            let scale = query_scale(query).ok_or_else(|| bad("scale must be 1 to 100".to_owned()))?;
+            let nodes = scaled_nodes(scale)?;
+            let chunks = chunk_nodes(&nodes);
+            let chunk = chunks
+                .get(n)
+                .ok_or_else(|| bad(format!("chunk {n} out of range (0..{})", chunks.len())))?;
+            let body = serde_json::to_string(&json!({ "n": n, "nodes": chunk })).map_err(internal)?;
+            ResourceContents::text(body, uri).with_mime_type("application/json")
+        } else {
+            return Err(bad(format!("unknown resource: {uri}")));
+        };
         Ok(ReadResourceResult::new(vec![contents]).into())
     }
 }
@@ -301,6 +574,7 @@ static SERVER_STARTED_MS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = SERVER_STARTED_MS.set(now_ms());
+    let _ = STREAM_PORT.set(start_stream_listener()?);
     let service = RdmSpike::new().serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
