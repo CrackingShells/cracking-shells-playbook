@@ -19,7 +19,7 @@ Notation:
 | `ts` | UTC instant, RFC 3339, `"2026-11-16T10:20:30Z"` |
 | `ulid` | A ULID, 26 characters of Crockford base32 |
 | `T[]` | Array of `T` |
-| `T?` | Optional: the key is absent when there is no value, never `null` |
+| `T?` | Optional: the key is absent when there is no value. A writer never writes `null`. A reader treats `null` as absent. The exception is `Change.old` and `Change.new`, where `null` is a value |
 
 ## Files
 
@@ -39,7 +39,7 @@ __roadmap__/<campaign>/
 | Names are paths | A node's name is its path segment, `^[a-z][a-z0-9_-]*$`. It is not stored in the file |
 | Identity | Every node has an immutable `id`. The id format and its minting belong to M1. The schema types it as `string` |
 | Version stamp | Every file carries `schema_version` (see `Format version`) |
-| Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12 |
+| Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12. Keys keep their order, so the crate enables `serde_json`'s `preserve_order`. Numbers outside the `i64`, `u64` and `f64` range are not preserved exactly, because `arbitrary_precision` is not enabled. `Envelope` (read model) has no `extra` of its own: it is flattened into each view, whose `extra` keeps the unknown keys |
 | Canonical order | The order of the rows in each field table is the canonical field order. Two-space indent, LF, trailing newline. M1 owns the serialiser |
 | Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number, the display id of an amendment, a leaf's commit count when the engine recorded the steps |
 
@@ -187,6 +187,7 @@ Legacy forms and how they split:
 | a segment that is not a link | none | the whole segment | none | none |
 
 The importer splits a leaf's one-line `**References**` on `; ` outside brackets and parentheses.
+A `**References**:` line followed by bullet lines (`- [text](target) — note`) is the bulleted form: each bullet is one `Reference`, split like a directory item.
 A label is the prefix `R` and two digits followed by a space at the start of the link text. A
 segment it cannot parse becomes a reference with only `title`, so nothing is dropped.
 Note: a relative `target` breaks when a node moves. M2 may normalise targets to repository-relative

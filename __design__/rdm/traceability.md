@@ -28,7 +28,7 @@ that the export (M3) re-creates the text from stored fields.
 |:--|:--|:--|
 | `<leaf-task>` | `stored` | One `Leaf` file, `<name>.json`. The order of H1, header and steps is export layout |
 | `<task-header>` | `stored` | Leaf `goal`, `preconditions`, `success_gates`, `references`. The grammar is order-insensitive, so no order is kept |
-| `<header-field>` | `stored` | One of the four header fields below |
+| `<header-field>` | `stored` | Leaf `goal`, `preconditions`, `success_gates` or `references`, the four header fields below |
 | `<field-goal>` | `stored` | `goal`, one line |
 | `<field-preconditions>` | `stored` | `preconditions[]` |
 | `<field-success-gates>` | `stored` | `success_gates[]` |
@@ -37,7 +37,7 @@ that the export (M3) re-creates the text from stored fields.
 | `<gate-item>` | `stored` | `success_gates[].text` and `.met`; the check mark is `true`, the empty box is `false` |
 | `<step>` | `stored` | One element of `steps[]` |
 | `<step-heading>` | `stored` | `steps[].title` is the text after the colon; the digit is dropped: the step number is derived from position |
-| `<step-field>` | `stored` | One of the step fields below |
+| `<step-field>` | `stored` | `steps[]` fields `goal`, `implementation_logic`, `references`, `deliverables`, `checks` or `commit`, below |
 | `<step-field-goal>` | `stored` | `steps[].goal` |
 | `<step-field-impl-logic>` | `stored` | `steps[].implementation_logic`, the body lines with blank lines kept. The header line and trailing blank lines are presentation |
 | `<step-field-references>` | `stored` | `steps[].references[]` |
@@ -70,24 +70,24 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `<h2-context>` | `dropped` | Heading literal. The field name is `context` |
 | `<context-body>` | `stored` | `context`, the lines |
 | `<section-reference-documents>` | `stored` | `references[]`. The section is optional; an absent section is an empty array |
-| `<h2-reference-documents>` | `dropped` | Heading literal |
+| `<h2-reference-documents>` | `dropped` | Heading literal, not a field |
 | `<reference-list>` | `stored` | `references[]` |
-| `<reference-item>` | `stored` | `references[].label` is the `R` and two digits, `.title`, `.target`, `.note` from the text after the dash |
+| `<reference-item>` | `stored` | `references[].label` is the letter R and two digits, `.title`, `.target`, `.note` from the text after the dash |
 | `<section-goal>` | `stored` | `goal` |
-| `<h2-goal>` | `dropped` | Heading literal |
+| `<h2-goal>` | `dropped` | Heading literal, not a field |
 | `<goal-body>` | `stored` | `goal`, exactly one line |
 | `<section-preconditions>` | `stored` | `preconditions[]` |
-| `<h2-preconditions>` | `dropped` | Heading literal |
+| `<h2-preconditions>` | `dropped` | Heading literal, not a field |
 | `<checkbox-list>` | `stored` | `preconditions[]` |
 | `<checkbox-item>` | `stored` | `preconditions[].text` and `.met` |
 | `<section-success-gates>` | `stored` | `success_gates[]` |
-| `<h2-success-gates>` | `dropped` | Heading literal |
+| `<h2-success-gates>` | `dropped` | Heading literal, not a field |
 | `<gate-list>` | `stored` | `success_gates[]` |
 | `<gate-item>` | `stored` | `success_gates[].text` and `.met` |
 | `<section-gotchas>` | `stored` | `gotchas`, verbatim lines. The section is optional; absent is an empty array |
-| `<h2-gotchas>` | `dropped` | Heading literal |
+| `<h2-gotchas>` | `dropped` | Heading literal, not a field |
 | `<section-status>` | `derived` | The status view of the node's children, from their `status` or derived status |
-| `<h2-status>` | `dropped` | Heading literal |
+| `<h2-status>` | `dropped` | Heading literal, not a field |
 | `<mermaid-block>` | `derived` | The graph of the node's children, rebuilt on each export |
 | `MERMAID_OPEN` | `dropped` | Markup; the export emits it |
 | `MERMAID_CLOSE` | `dropped` | Markup; the export emits it |
@@ -99,7 +99,7 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `<mermaid-classdef-amendment>` | `dropped` | Colours are presentation. The status `amendment` no longer exists (`statuses.md`) |
 | `<mermaid-classdef-blocked>` | `dropped` | Colours are presentation. The status `blocked` no longer exists (`statuses.md`) |
 | `<section-nodes>` | `derived` | The table of the node's children, from the directory listing |
-| `<h2-nodes>` | `dropped` | Heading literal |
+| `<h2-nodes>` | `dropped` | Heading literal, not a field |
 | `<nodes-table>` | `derived` | One row per child. Row order carries no meaning: siblings are parallel, so readers order by depth, kind and name. The authored row order is not kept |
 | `<table-header-nodes>` | `dropped` | Fixed header; the export emits it |
 | `<table-separator>` | `dropped` | Markdown table syntax |
@@ -107,12 +107,12 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `<nodes-table-leaf-row>` | `derived` | Name from the path, type from `kind`, status from `Leaf.status`. The emoji labels are presentation |
 | `<nodes-table-dir-row>` | `derived` | Name from the path, status derived from the leaves under it (`statuses.md`). The emoji labels are presentation |
 | `<section-amendment-log>` | `stored` | `Amendment` files. The log of a directory is the amendments whose changes name its nodes |
-| `<h2-amendment-log>` | `dropped` | Heading literal |
+| `<h2-amendment-log>` | `dropped` | Heading literal, not a field |
 | `<amendment-table>` | `stored` | `Amendment` files, one per row |
 | `<table-header-amendment>` | `dropped` | Fixed header; the export emits it |
 | `<amendment-row>` | `stored` | `Amendment.legacy_id`, `.ts`, `.source`, `.changes[]` (one add per filename), `.description` |
 | `<section-progress>` | `stored` | `Leaf.progress` and `Directory.notes` |
-| `<h2-progress>` | `dropped` | Heading literal |
+| `<h2-progress>` | `dropped` | Heading literal, not a field |
 | `<progress-table>` | `derived` | Rendered from the progress of every leaf and the notes of every directory |
 | `<table-header-progress>` | `dropped` | Fixed header; the export emits it |
 | `<progress-row>` | `stored` | Leaf row: `Leaf.progress.branch`, `.commits`, `.notes`. Directory row: `Directory.notes`; its branch and commit count are dropped as copies of its leaves' |
@@ -143,4 +143,5 @@ Counts are over `__roadmap__/` at the date of this document.
 | Reference items without a label | `create-reporting-skill/README.md` lists a reference with no `R01` label, so its validation fails at that line | `Reference.label` is optional in the type | The label is absent and the importer warns. `validate` requires a label in a directory |
 | Mermaid labels | 13 of 95 differ from the child's H1 | `dropped`: derived from `title` | The H1 wins; the importer warns on a difference |
 | Sibling order | Nodes-table row order | `dropped`: siblings are parallel, order carries no meaning | Readers order by depth, kind and name |
+| Bulleted References | `create-reporting-skill/write_test_definition_reference.md` (lines 13-14 and 34-35) and `write_knowledge_transfer_reference.md` (lines 11-12) write `**References**:` followed by bullet lines, not one `; `-separated line | `stored`: `references[]`, one `Reference` per bullet | Each bullet is one `Reference`, split as a directory item (`label`, `title`, `target`, `note`). Bullets and the one-line form give the same array |
 | Step count | 23 leaves with 1 step, 16 with 2, 23 with 3, 3 with 4, 2 with 5 | `validate` rule: 1 to 5 | None needed; none exceeds 5 |
