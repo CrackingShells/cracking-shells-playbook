@@ -4,7 +4,8 @@
 
 | Round | Document | Status |
 |:--|:--|:--|
-| 00 | [00-findings_spike_v0.md](00-findings_spike_v0.md) | latest |
+| 00 | [00-findings_spike_v0.md](00-findings_spike_v0.md) | latest, with steering answers |
+| 01 | [01-knowledge_transfer_v0.md](01-knowledge_transfer_v0.md) | latest |
 
 ## Trial notes
 
@@ -17,4 +18,4 @@
 
 ## Status
 
-The findings report is written. M4, M6 and M7 amendments are proposed, not applied. A knowledge-transfer report is still to come at close-out.
+The findings report is written. M4, M6 and M7 amendments are proposed, not applied. Steering answers are recorded in the findings report. The knowledge-transfer report closes M0.
