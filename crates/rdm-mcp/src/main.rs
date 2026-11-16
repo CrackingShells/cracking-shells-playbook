@@ -219,6 +219,14 @@ impl RdmSpike {
                     .map_or(Value::Null, |v| Value::String(v.as_str().to_owned())),
             );
             map.insert("t_recorded_ms".into(), json!(now_ms()));
+            // Tags the server process, so the first first-paint probe of each
+            // process can be told apart as a cold run when the host gives the
+            // page no `?run=` flag.
+            map.insert("server_pid".into(), json!(std::process::id()));
+            map.insert(
+                "server_started_ms".into(),
+                json!(SERVER_STARTED_MS.get().copied()),
+            );
         }
         let dir = std::path::PathBuf::from(dir);
         std::fs::create_dir_all(&dir).map_err(internal)?;
@@ -287,8 +295,12 @@ impl ServerHandler for RdmSpike {
     }
 }
 
+/// When this server process started, in epoch milliseconds (set once in `main`).
+static SERVER_STARTED_MS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = SERVER_STARTED_MS.set(now_ms());
     let service = RdmSpike::new().serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
