@@ -35,7 +35,7 @@ The milestone graph for implementing `__design__/rdm/architecture.md`: the `mana
 ## Status
 ```mermaid
 graph TD
-    m0_feasibility_spike[M0 Feasibility spike]:::inprogress
+    m0_feasibility_spike[M0 Feasibility spike]:::done
     core[Core]:::planned
     m0b_domain_model_spec[M0b Domain model spec]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
@@ -48,7 +48,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `m0_feasibility_spike.md` | 📄 Leaf Task | 🔄 In Progress |
+| `m0_feasibility_spike.md` | 📄 Leaf Task | ✅ Done |
 | `core/` | 📁 Directory | ⬜ Planned |
 | `m0b_domain_model_spec.md` | 📄 Leaf Task | 🔄 In Progress |
 
