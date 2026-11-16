@@ -8,6 +8,7 @@ Depth 1 of the meta-roadmap. Runs after `m0_feasibility_spike`, which proves the
 
 ## Pre-conditions
 - [ ] `m0_feasibility_spike.md` is `done` with a go
+- [ ] `m0b_domain_model_spec.md` is `done`
 
 ## Success Gates
 - ⬜ `m1_core_foundation.md` is `done`

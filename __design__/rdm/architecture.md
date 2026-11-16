@@ -4,7 +4,9 @@ The design of `rdm`, the Rust core, MCP server and CLI that replace the `dirtree
 `managing-roadmaps` skill. Nothing is built yet. Points marked *provisional* are expected to move
 once code meets real hosts; points marked *suggestion* are left to the milestone that owns them; the
 rest stand unless implementation proves them wrong, and then this document changes together with
-the code. Decisions were taken with the maintainer on 2026-11-11.
+the code. Decisions were taken with the maintainer on 2026-11-11. Amended on 2026-11-16 (A1 of the
+meta-roadmap): the domain model and the stored types move to a fourth crate, `rdm-schema`, owned by a
+spec-first milestone M0b.
 
 ## Executive Summary
 
@@ -16,7 +18,7 @@ the code. Decisions were taken with the maintainer on 2026-11-11.
 - **Proposed change.** One Rust library, `rdm-core`, owns the roadmap model, its JSON store and
   every graph operation. Two thin consumers sit on it: `rdm-mcp`, a stdio MCP server for agents,
   and `rdm-cli` (binary `rdm`) for humans. JSON is the stored format; markdown is an export. The
-  server carries a graph view for MCP Apps hosts. All three crates are published to crates.io.
+  server carries a graph view for MCP Apps hosts. The stored types and the read model live in a fourth crate, `rdm-schema`, versioned on its own. All four crates are published to crates.io.
 - **Non-goals.** Explicit dependency edges (depth stays the ordering); an HTTP transport; a UI that
   writes; scheduling or assignment of agents; anything about what a roadmap should contain.
 - **Biggest risks.** Hosts that do not yet speak MCP 2026-07-28; rmcp's fast-moving 3.x API and its
@@ -88,7 +90,7 @@ graph TD
 | Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly (3.9.0 at design time, MSRV 1.88). |
 | UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. |
 | Home | A Cargo workspace in this repository under `crates/`, outside `skills/`. |
-| Crates | `rdm-core` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
+| Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-core` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
 
 **The consumer rule.** `rdm-mcp` and `rdm-cli` hold no roadmap logic. Each maps its inputs to one
 core call and renders the result. A behaviour that exists in one consumer and not in the core is a
@@ -123,7 +125,7 @@ __roadmap__/<campaign>/
   reader refuses a newer major version with an upgrade message. JSON Schemas are generated from
   the Rust types and committed; CI fails when they drift.
 
-Schema sketch (field names *provisional*, owned by M1):
+Schema sketch (field names *provisional*, owned by M0b, which holds them as types in `rdm-schema`):
 
 ```
 _dir.json   { schema_version, id, kind: campaign|directory, title, context, goal,
@@ -142,6 +144,9 @@ amendment   { schema_version, id, ts, actor, description, source?, op_id?,
               changes[{node_id, op, path_before?, path_after?, field?, old?, new?}],
               snapshot? }
 ```
+
+The sketch omits facts the legacy grammars carry (per-criterion state, step title, the breaking mark of a
+commit, a reference shape, a step timestamp, a readable amendment id). M0b decides whether each is stored.
 
 The amendment log of a node is the set of amendment files whose `changes` name its id. A delete
 stores the removed subtree in `snapshot`, so it can be restored.
@@ -281,9 +286,9 @@ receives the same data as text and structured content.
 
 ## Launch and distribution (*provisional*, owned by M7)
 
-- **Publication:** the three crates on crates.io, released by CI after a merge to `main`
-  (`release-plz`, a shared version), beside the existing skill releases. In one workflow run:
-  crates, then prebuilt binaries and checksums on the GitHub release, then the plugin pinned to
+- **Publication:** the four crates on crates.io, released by CI after a merge to `main`
+  (`release-plz`; `rdm-schema` on its own version line, the other three on one product version), beside the existing skill releases. In one workflow run:
+  crates (schema, core, then server and CLI), then prebuilt binaries and checksums on the GitHub release, then the plugin pinned to
   that version. The plugin never names an unpublished server.
 - **Launch:** the plugin runs `rdm-mcp serve --require-version X.Y.Z`. A binary of another version
   fetches the matching prebuilt one from the release, checks its sha256, caches it per version and
@@ -325,7 +330,7 @@ receives the same data as text and structured content.
 
 ## Deliberately open
 
-Decided by the milestone that owns it: field names and the id format (M1); journal format (M1); the
+Decided by the milestone that owns it: field names, status meanings, the read model and the format version (M0b); the id minting and the journal format (M1); the
 exact operation set and its error codes (M2); whether a cross-worktree claim hint is worth having
 (M2); markdown layout of the export and what the importer does with invalid input (M3); tool names,
 count and output budgets (M4); CLI verbs and output style (M5); layout and refresh of the view
