@@ -18,8 +18,8 @@ Depth 2 of M0b, its last level. The crate turns the three spec documents into ty
 ## Status
 ```mermaid
 graph TD
-    rdm_schema_crate[rdm-schema crate]:::inprogress
-    r01_sync[R01 sync]:::inprogress
+    rdm_schema_crate[rdm-schema crate]:::done
+    r01_sync[R01 sync]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -30,8 +30,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `rdm_schema_crate.md` | 📄 Leaf Task | 🔄 In Progress |
-| `r01_sync.md` | 📄 Leaf Task | 🔄 In Progress |
+| `rdm_schema_crate.md` | 📄 Leaf Task | ✅ Done |
+| `r01_sync.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
