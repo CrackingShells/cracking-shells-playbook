@@ -37,7 +37,7 @@ The milestone graph for implementing `__design__/rdm/architecture.md`: the `mana
 graph TD
     m0_feasibility_spike[M0 Feasibility spike]:::done
     core[Core]:::planned
-    m0b_domain_model_spec[M0b Domain model spec]:::inprogress
+    m0b_domain_model_spec[M0b Domain model spec]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -50,7 +50,7 @@ graph TD
 |:-----|:-----|:-------|
 | `m0_feasibility_spike.md` | 📄 Leaf Task | ✅ Done |
 | `core/` | 📁 Directory | ⬜ Planned |
-| `m0b_domain_model_spec.md` | 📄 Leaf Task | 🔄 In Progress |
+| `m0b_domain_model_spec.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
