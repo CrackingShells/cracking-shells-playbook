@@ -1,0 +1,134 @@
+{
+  "campaign": "roadmap-mcp-rework",
+  "frozen_at": "af8ad04893fc3e201d005fcdbc454737df184204",
+  "nodes": [
+    {
+      "path": "m0_feasibility_spike.md",
+      "parent": null,
+      "kind": "leaf",
+      "title": "M0 Feasibility spike",
+      "status": "inprogress",
+      "depth": 0
+    },
+    {
+      "path": "core",
+      "parent": null,
+      "kind": "dir",
+      "title": "Core",
+      "status": "planned",
+      "depth": 0
+    },
+    {
+      "path": "m0b_domain_model_spec.md",
+      "parent": null,
+      "kind": "leaf",
+      "title": "M0b Domain model spec",
+      "status": "inprogress",
+      "depth": 0
+    },
+    {
+      "path": "core/m1_core_foundation.md",
+      "parent": "core",
+      "kind": "leaf",
+      "title": "M1 Core foundation",
+      "status": "planned",
+      "depth": 1
+    },
+    {
+      "path": "core/engine",
+      "parent": "core",
+      "kind": "dir",
+      "title": "Engine",
+      "status": "planned",
+      "depth": 1
+    },
+    {
+      "path": "core/engine/m2_graph_engine.md",
+      "parent": "core/engine",
+      "kind": "leaf",
+      "title": "M2 Graph engine",
+      "status": "planned",
+      "depth": 2
+    },
+    {
+      "path": "core/engine/interchange",
+      "parent": "core/engine",
+      "kind": "dir",
+      "title": "Interchange",
+      "status": "planned",
+      "depth": 2
+    },
+    {
+      "path": "core/engine/interchange/m3_interchange.md",
+      "parent": "core/engine/interchange",
+      "kind": "leaf",
+      "title": "M3 Interchange",
+      "status": "planned",
+      "depth": 3
+    },
+    {
+      "path": "core/engine/interchange/consumers",
+      "parent": "core/engine/interchange",
+      "kind": "dir",
+      "title": "Consumers",
+      "status": "planned",
+      "depth": 3
+    },
+    {
+      "path": "core/engine/interchange/consumers/m4_mcp_server.md",
+      "parent": "core/engine/interchange/consumers",
+      "kind": "leaf",
+      "title": "M4 MCP server",
+      "status": "planned",
+      "depth": 4
+    },
+    {
+      "path": "core/engine/interchange/consumers/m5_cli.md",
+      "parent": "core/engine/interchange/consumers",
+      "kind": "leaf",
+      "title": "M5 CLI",
+      "status": "planned",
+      "depth": 4
+    },
+    {
+      "path": "core/engine/interchange/consumers/delivery",
+      "parent": "core/engine/interchange/consumers",
+      "kind": "dir",
+      "title": "Delivery",
+      "status": "planned",
+      "depth": 4
+    },
+    {
+      "path": "core/engine/interchange/consumers/delivery/m6_apps_view.md",
+      "parent": "core/engine/interchange/consumers/delivery",
+      "kind": "leaf",
+      "title": "M6 Apps view",
+      "status": "planned",
+      "depth": 5
+    },
+    {
+      "path": "core/engine/interchange/consumers/delivery/m7_distribution.md",
+      "parent": "core/engine/interchange/consumers/delivery",
+      "kind": "leaf",
+      "title": "M7 Distribution",
+      "status": "planned",
+      "depth": 5
+    },
+    {
+      "path": "core/engine/interchange/consumers/delivery/cutover",
+      "parent": "core/engine/interchange/consumers/delivery",
+      "kind": "dir",
+      "title": "Cutover",
+      "status": "planned",
+      "depth": 5
+    },
+    {
+      "path": "core/engine/interchange/consumers/delivery/cutover/m8_cutover.md",
+      "parent": "core/engine/interchange/consumers/delivery/cutover",
+      "kind": "leaf",
+      "title": "M8 Cutover",
+      "status": "planned",
+      "depth": 6
+    }
+  ]
+}

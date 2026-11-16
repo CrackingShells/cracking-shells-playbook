@@ -18,7 +18,7 @@ A findings report under `__reports__/m0-feasibility-spike/` that later milestone
 ## Status
 ```mermaid
 graph TD
-    spike_report[Spike report]:::planned
+    spike_report[Spike report]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -29,7 +29,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `spike_report.md` | 📄 Leaf Task | ⬜ Planned |
+| `spike_report.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
