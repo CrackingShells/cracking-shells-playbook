@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+exclude = [
+    "skills/managing-roadmaps/scripts/dirtree-rdm",
+    "plugins/managing-roadmaps/skills/managing-roadmaps/scripts/dirtree-rdm",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/CrackingShells/cracking-shells-playbook"

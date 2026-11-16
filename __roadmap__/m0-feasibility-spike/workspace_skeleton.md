@@ -14,7 +14,7 @@
 1. Root `Cargo.toml`:
    - `[workspace]` with `resolver = "3"` and `members = ["crates/*"]`.
    - `exclude` lists both copies of the legacy crate: `skills/managing-roadmaps/scripts/dirtree-rdm` and `plugins/managing-roadmaps/skills/managing-roadmaps/scripts/dirtree-rdm`. Without it, cargo walks up from those crates, finds the new root and refuses to build them.
-   - `[workspace.package]` with `edition = "2024"`, `rust-version = "1.88"` (the MSRV of `rmcp`) and `license = "MIT"`. The license is checked against the repository's LICENSE.
+   - `[workspace.package]` with `edition = "2024"`, `rust-version = "1.88"` (the MSRV of `rmcp`) and `license = "AGPL-3.0-or-later"`, which matches the plugin manifests.
    - `crates/.gitkeep` is added so the glob has a directory to resolve against.
 2. Root `.gitignore` gains `/target`.
 3. `.github/workflows/rust.yml` runs `cargo test --workspace --locked` on `ubuntu-latest` with `dtolnay/rust-toolchain@stable`.
