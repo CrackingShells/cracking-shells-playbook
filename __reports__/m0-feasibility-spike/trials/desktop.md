@@ -40,3 +40,8 @@ Run on 2026-11-16 after the fix that keeps `frozen_at` (commit `7981e5c`). The f
 - **The finding:** Claude Code Desktop hands the result-level `_meta` to the page and does NOT put it in the model context. It does put `structuredContent` in the model context, contrary to the Apps spec's "not added to model context". So the full roadmap can reach the inline page at no token cost, if it travels in `_meta`.
 - **The host validates `structuredContent` against `outputSchema`,** so every required field must be present in every mode.
 - **Capabilities that changed on this run:** `ui/message` returned ok this time, but no `RDM_PROBE` text was found in the transcript. `hostCapabilities.sandbox.csp.connectDomains` now lists the declared `http://127.0.0.1:<port>`, yet Trial 3's stream was CSP-blocked. Re-test the stream before concluding.
+
+### Trial 4, scale 10 (Eliott's panel)
+- 160 of 160 nodes from `_meta` (438,707 B). First data to first paint: 18 ms. Complete paint came at the same time as first paint.
+- `t_result − t_server` was 670,660 ms. Desktop creates the page frame only when the message is on screen, and Eliott scrolled back to it about 11 minutes later. So server-to-page time in Desktop measures when the user looks, and data-to-paint is the comparable number.
+- `ui/message` returned ok, and no `RDM_PROBE` reached the transcript.
