@@ -19,9 +19,9 @@ function plain(v: unknown): unknown {
   return v === undefined ? null : JSON.parse(JSON.stringify(v));
 }
 
-async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
-  // Field names are the probe_record contract of build/stub_server.md Step 2.
-  return callAppTool('probe_record', {
+/** The probe JSON; field names are the probe_record contract of build/stub_server.md Step 2. */
+export function buildProbe(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
+  return {
     run_kind: runKind(),
     t_server_ms: view.t_server_ms,
     t_view_ms: tViewMs,
@@ -30,7 +30,11 @@ async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayM
     host_capabilities: plain(host.hostCapabilities),
     host_context: plain(host.hostContext),
     display_mode: displayMode,
-  });
+  };
+}
+
+async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
+  return callAppTool('probe_record', buildProbe(view, host, tViewMs, displayMode));
 }
 
 /** First paint: one probe_record, display_mode taken from the host's current mode. */
