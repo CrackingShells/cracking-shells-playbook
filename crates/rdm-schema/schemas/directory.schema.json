@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Directory",
+  "description": "`_dir.json`: the campaign root and every directory node.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/DirectoryKind"
+    },
+    "title": {
+      "type": "string"
+    },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Reference"
+      }
+    },
+    "goal": {
+      "type": "string"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "success_gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "gotchas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "title",
+    "context",
+    "references",
+    "goal",
+    "preconditions",
+    "success_gates",
+    "gotchas",
+    "notes"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "DirectoryKind": {
+      "description": "`Directory.kind`.",
+      "type": "string",
+      "enum": [
+        "campaign",
+        "directory"
+      ]
+    },
+    "Reference": {
+      "description": "An element of `references`.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "met": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "met"
+      ],
+      "additionalProperties": true
+    }
+  }
+}
