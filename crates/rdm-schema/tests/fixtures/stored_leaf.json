@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.1.0",
   "id": "n_m1",
   "kind": "leaf",
   "title": "M1 Core foundation",
@@ -91,6 +91,19 @@
       },
       "reason": "unblocked",
       "override": true
+    }
+  ],
+  "marks": [
+    {
+      "ts": "2026-11-16T10:30:00Z",
+      "actor": {
+        "kind": "agent",
+        "name": "session-1"
+      },
+      "kind": "gate",
+      "index": 0,
+      "met": true,
+      "evidence": "cargo test -p rdm-schema --locked: ok"
     }
   ]
 }

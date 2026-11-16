@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::stored::{
+use crate::stored::{Mark, 
     Actor, Change, Comment, Criterion, Extra, History, Lines, Progress, Reference, Status, Step, Ts,
 };
 
@@ -48,9 +48,9 @@ pub struct CampaignRef {
 /// keeps the unknown fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Envelope {
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub read_model_version: String,
-    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub format_version: String,
     pub projection: Projection,
     pub campaign: CampaignRef,
@@ -207,6 +207,7 @@ pub struct LeafDetail {
     pub commit_count: Option<u64>,
     pub step_progress: StepCounts,
     pub history: Vec<History>,
+    pub marks: Vec<Mark>,
     pub comments: Vec<Comment>,
     pub amendments: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -238,6 +239,7 @@ pub struct DirectoryDetail {
     pub references: Vec<Reference>,
     pub gotchas: Lines,
     pub notes: Lines,
+    pub marks: Vec<Mark>,
     pub children: Vec<ChildRef>,
     #[serde(flatten)]
     pub extra: Extra,

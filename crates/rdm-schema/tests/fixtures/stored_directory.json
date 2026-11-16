@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.1.0",
   "id": "d_core",
   "kind": "directory",
   "title": "Core",
@@ -22,5 +22,6 @@
     }
   ],
   "gotchas": [],
-  "notes": []
+  "notes": [],
+  "marks": []
 }

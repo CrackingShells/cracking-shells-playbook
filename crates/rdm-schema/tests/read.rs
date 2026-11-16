@@ -24,13 +24,13 @@ fn amendments_example_round_trips() {
 #[test]
 fn directory_detail_round_trips() {
     let v = json!({
-      "read_model_version": "0.1", "format_version": "0.1", "projection": "node",
+      "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "node",
       "campaign": {"id": "c", "path": "p", "title": "T"}, "tree_rev": "t",
       "node": { "kind": "directory", "id": "d", "path": "core", "parent": "", "rev": "r", "title": "Core",
         "sealed": false, "comments": [], "amendments": [], "is_campaign": false, "status": "planned",
         "counts": {"planned":1,"ongoing":0,"paused":0,"cancelled":0,"done":0},
         "context": ["c"], "goal": "g", "preconditions": [], "success_gates": [], "references": [],
-        "gotchas": [], "notes": [],
+        "gotchas": [], "notes": [], "marks": [],
         "children": [{"id":"n","path":"core/m1","kind":"leaf","title":"M1","status":"planned"}] },
       "holders": {}
     });

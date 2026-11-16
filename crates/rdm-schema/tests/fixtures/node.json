@@ -1,6 +1,6 @@
 {
-  "read_model_version": "0.1",
-  "format_version": "0.1",
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
   "projection": "node",
   "campaign": {
     "id": "c_rework",
@@ -89,6 +89,7 @@
       "total": 3
     },
     "history": [],
+    "marks": [],
     "comments": [],
     "amendments": []
   },

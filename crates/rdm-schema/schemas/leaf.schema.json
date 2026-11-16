@@ -6,7 +6,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+$"
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "id": {
       "type": "string"
@@ -61,6 +61,12 @@
       "items": {
         "$ref": "#/$defs/History"
       }
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Mark"
+      }
     }
   },
   "required": [
@@ -75,7 +81,8 @@
     "references",
     "steps",
     "progress",
-    "history"
+    "history",
+    "marks"
   ],
   "additionalProperties": true,
   "$defs": {
@@ -380,6 +387,60 @@
         "agent",
         "human",
         "import"
+      ]
+    },
+    "Mark": {
+      "description": "An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.",
+      "type": "object",
+      "properties": {
+        "ts": {
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "kind": {
+          "$ref": "#/$defs/CriterionKind"
+        },
+        "index": {
+          "description": "Position of the criterion in its array, from 0.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "met": {
+          "description": "The new value of `met`.",
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ts",
+        "actor",
+        "kind",
+        "index",
+        "met"
+      ],
+      "additionalProperties": true
+    },
+    "CriterionKind": {
+      "description": "`Mark.kind`: which criterion array a mark refers to.",
+      "oneOf": [
+        {
+          "description": "`preconditions`.",
+          "type": "string",
+          "const": "pre"
+        },
+        {
+          "description": "`success_gates`.",
+          "type": "string",
+          "const": "gate"
+        }
       ]
     }
   }
