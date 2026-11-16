@@ -4,23 +4,25 @@
   "description": "The campaign outline with waves.",
   "type": "object",
   "properties": {
-    "campaign": {
-      "$ref": "#/$defs/CampaignRef"
+    "read_model_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "format_version": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "projection": {
       "$ref": "#/$defs/Projection"
     },
-    "read_model_version": {
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "tree_rev": {
       "type": "string"
     },
     "root": {
       "$ref": "#/$defs/OutlineNode"
-    },
-    "tree_rev": {
-      "type": "string"
     },
     "waves": {
       "type": "array",
@@ -29,7 +31,6 @@
       }
     }
   },
-  "additionalProperties": true,
   "required": [
     "read_model_version",
     "format_version",
@@ -39,7 +40,18 @@
     "root",
     "waves"
   ],
+  "additionalProperties": true,
   "$defs": {
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    },
     "CampaignRef": {
       "description": "Identity of the campaign in an envelope.",
       "type": "object",
@@ -54,136 +66,12 @@
           "type": "string"
         }
       },
-      "additionalProperties": true,
       "required": [
         "id",
         "path",
         "title"
-      ]
-    },
-    "LevelSource": {
-      "description": "The rule that produced a `level`. One value today.",
-      "type": "string",
-      "enum": [
-        "depth"
-      ]
-    },
-    "OutlineDirectory": {
-      "description": "A directory in the outline.",
-      "type": "object",
-      "properties": {
-        "amendment_count": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0
-        },
-        "children": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/OutlineNode"
-          }
-        },
-        "counts": {
-          "$ref": "#/$defs/StatusCounts"
-        },
-        "goal": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "id": {
-          "type": "string"
-        },
-        "is_campaign": {
-          "type": "boolean"
-        },
-        "path": {
-          "type": "string"
-        },
-        "rev": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "title",
-        "is_campaign",
-        "status",
-        "counts",
-        "rev",
-        "children"
-      ]
-    },
-    "OutlineLeaf": {
-      "description": "A leaf in the outline.",
-      "type": "object",
-      "properties": {
-        "added_by": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "id": {
-          "type": "string"
-        },
-        "level": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "level_source": {
-          "$ref": "#/$defs/LevelSource"
-        },
-        "path": {
-          "type": "string"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "rev": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "status_reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "steps": {
-          "$ref": "#/$defs/StepCounts"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "title",
-        "status",
-        "level",
-        "level_source",
-        "ready",
-        "steps",
-        "rev"
-      ]
+      ],
+      "additionalProperties": true
     },
     "OutlineNode": {
       "description": "A node of the outline, discriminated by `kind`.",
@@ -216,16 +104,6 @@
         }
       ]
     },
-    "Projection": {
-      "description": "Which projection a payload is.",
-      "type": "string",
-      "enum": [
-        "outline",
-        "node",
-        "ready",
-        "amendments"
-      ]
-    },
     "Status": {
       "description": "The five statuses of a leaf (`statuses.md`).",
       "type": "string",
@@ -241,12 +119,7 @@
       "description": "Leaves counted by status.",
       "type": "object",
       "properties": {
-        "cancelled": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "done": {
+        "planned": {
           "type": "integer",
           "format": "uint32",
           "minimum": 0
@@ -261,19 +134,89 @@
           "format": "uint32",
           "minimum": 0
         },
-        "planned": {
+        "cancelled": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "done": {
           "type": "integer",
           "format": "uint32",
           "minimum": 0
         }
       },
-      "additionalProperties": true,
       "required": [
         "planned",
         "ongoing",
         "paused",
         "cancelled",
         "done"
+      ],
+      "additionalProperties": true
+    },
+    "OutlineDirectory": {
+      "description": "A directory in the outline.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "is_campaign": {
+          "type": "boolean"
+        },
+        "goal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        },
+        "amendment_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "rev": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutlineNode"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title",
+        "is_campaign",
+        "status",
+        "counts",
+        "rev",
+        "children"
+      ],
+      "additionalProperties": true
+    },
+    "LevelSource": {
+      "description": "The rule that produced a `level`. One value today.",
+      "type": "string",
+      "enum": [
+        "depth"
       ]
     },
     "StepCounts": {
@@ -291,24 +234,33 @@
           "minimum": 0
         }
       },
-      "additionalProperties": true,
       "required": [
         "done",
         "total"
-      ]
+      ],
+      "additionalProperties": true
     },
-    "WaveView": {
-      "description": "One wave of the outline.",
+    "OutlineLeaf": {
+      "description": "A leaf in the outline.",
       "type": "object",
       "properties": {
-        "counts": {
-          "$ref": "#/$defs/StatusCounts"
+        "id": {
+          "type": "string"
         },
-        "leaf_ids": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "level": {
           "type": "integer",
@@ -317,15 +269,65 @@
         },
         "level_source": {
           "$ref": "#/$defs/LevelSource"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "steps": {
+          "$ref": "#/$defs/StepCounts"
+        },
+        "added_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rev": {
+          "type": "string"
         }
       },
-      "additionalProperties": true,
+      "required": [
+        "id",
+        "path",
+        "title",
+        "status",
+        "level",
+        "level_source",
+        "ready",
+        "steps",
+        "rev"
+      ],
+      "additionalProperties": true
+    },
+    "WaveView": {
+      "description": "One wave of the outline.",
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        },
+        "leaf_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        }
+      },
       "required": [
         "level",
         "level_source",
         "leaf_ids",
         "counts"
-      ]
+      ],
+      "additionalProperties": true
     }
   }
 }

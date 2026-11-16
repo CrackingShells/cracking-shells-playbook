@@ -4,8 +4,9 @@
   "description": "`_comments/<ulid>.json`.",
   "type": "object",
   "properties": {
-    "actor": {
-      "$ref": "#/$defs/Actor"
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "id": {
       "type": "string"
@@ -13,14 +14,11 @@
     "node_id": {
       "type": "string"
     },
-    "op_id": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "schema_version": {
+    "ts": {
       "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
     },
     "text": {
       "type": "array",
@@ -28,11 +26,13 @@
         "type": "string"
       }
     },
-    "ts": {
-      "type": "string"
+    "op_id": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
-  "additionalProperties": true,
   "required": [
     "schema_version",
     "id",
@@ -41,6 +41,7 @@
     "actor",
     "text"
   ],
+  "additionalProperties": true,
   "$defs": {
     "Actor": {
       "description": "Who made a move, a comment or an amendment.",
@@ -56,10 +57,10 @@
           ]
         }
       },
-      "additionalProperties": true,
       "required": [
         "kind"
-      ]
+      ],
+      "additionalProperties": true
     },
     "ActorKind": {
       "description": "`Actor.kind`.",

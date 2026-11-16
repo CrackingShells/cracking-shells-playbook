@@ -4,22 +4,29 @@
   "description": "`_amendments/<ulid>.json`.",
   "type": "object",
   "properties": {
-    "actor": {
-      "$ref": "#/$defs/Actor"
-    },
-    "changes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/Change"
-      }
-    },
-    "description": {
-      "type": "string"
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "id": {
       "type": "string"
     },
     "legacy_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "description": {
+      "type": "string"
+    },
+    "source": {
       "type": [
         "string",
         "null"
@@ -31,21 +38,14 @@
         "null"
       ]
     },
-    "schema_version": {
-      "type": "string"
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Change"
+      }
     },
-    "snapshot": true,
-    "source": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "ts": {
-      "type": "string"
-    }
+    "snapshot": true
   },
-  "additionalProperties": true,
   "required": [
     "schema_version",
     "id",
@@ -54,6 +54,7 @@
     "description",
     "changes"
   ],
+  "additionalProperties": true,
   "$defs": {
     "Actor": {
       "description": "Who made a move, a comment or an amendment.",
@@ -69,10 +70,10 @@
           ]
         }
       },
-      "additionalProperties": true,
       "required": [
         "kind"
-      ]
+      ],
+      "additionalProperties": true
     },
     "ActorKind": {
       "description": "`Actor.kind`.",
@@ -87,19 +88,17 @@
       "description": "An element of `Amendment.changes`.",
       "type": "object",
       "properties": {
-        "field": {
+        "node_id": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/ChangeOp"
+        },
+        "path_before": {
           "type": [
             "string",
             "null"
           ]
-        },
-        "new": true,
-        "node_id": {
-          "type": "string"
-        },
-        "old": true,
-        "op": {
-          "$ref": "#/$defs/ChangeOp"
         },
         "path_after": {
           "type": [
@@ -107,18 +106,20 @@
             "null"
           ]
         },
-        "path_before": {
+        "field": {
           "type": [
             "string",
             "null"
           ]
-        }
+        },
+        "old": true,
+        "new": true
       },
-      "additionalProperties": true,
       "required": [
         "node_id",
         "op"
-      ]
+      ],
+      "additionalProperties": true
     },
     "ChangeOp": {
       "description": "`Change.op`.",

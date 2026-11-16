@@ -4,32 +4,33 @@
   "description": "Node detail.",
   "type": "object",
   "properties": {
+    "read_model_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "format_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
     "campaign": {
       "$ref": "#/$defs/CampaignRef"
     },
-    "format_version": {
+    "tree_rev": {
       "type": "string"
+    },
+    "node": {
+      "$ref": "#/$defs/NodeDetail"
     },
     "holders": {
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/Holder"
       }
-    },
-    "node": {
-      "$ref": "#/$defs/NodeDetail"
-    },
-    "projection": {
-      "$ref": "#/$defs/Projection"
-    },
-    "read_model_version": {
-      "type": "string"
-    },
-    "tree_rev": {
-      "type": "string"
     }
   },
-  "additionalProperties": true,
   "required": [
     "read_model_version",
     "format_version",
@@ -39,33 +40,16 @@
     "node",
     "holders"
   ],
+  "additionalProperties": true,
   "$defs": {
-    "Actor": {
-      "description": "Who made a move, a comment or an amendment.",
-      "type": "object",
-      "properties": {
-        "kind": {
-          "$ref": "#/$defs/ActorKind"
-        },
-        "name": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "kind"
-      ]
-    },
-    "ActorKind": {
-      "description": "`Actor.kind`.",
+    "Projection": {
+      "description": "Which projection a payload is.",
       "type": "string",
       "enum": [
-        "agent",
-        "human",
-        "import"
+        "outline",
+        "node",
+        "ready",
+        "amendments"
       ]
     },
     "CampaignRef": {
@@ -82,498 +66,12 @@
           "type": "string"
         }
       },
-      "additionalProperties": true,
       "required": [
         "id",
         "path",
         "title"
-      ]
-    },
-    "Check": {
-      "description": "An element of `Step.checks`.",
-      "type": "object",
-      "properties": {
-        "command": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "expected": {
-          "$ref": "#/$defs/Expected"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "text",
-        "expected"
-      ]
-    },
-    "ChildRef": {
-      "description": "A child in a directory's detail.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "kind": {
-          "$ref": "#/$defs/NodeKind"
-        },
-        "path": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "kind",
-        "title",
-        "status"
-      ]
-    },
-    "Comment": {
-      "description": "`_comments/<ulid>.json`.",
-      "type": "object",
-      "properties": {
-        "actor": {
-          "$ref": "#/$defs/Actor"
-        },
-        "id": {
-          "type": "string"
-        },
-        "node_id": {
-          "type": "string"
-        },
-        "op_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "schema_version": {
-          "type": "string"
-        },
-        "text": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "ts": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "schema_version",
-        "id",
-        "node_id",
-        "ts",
-        "actor",
-        "text"
-      ]
-    },
-    "Commit": {
-      "description": "`Step.commit`.",
-      "type": "object",
-      "properties": {
-        "breaking": {
-          "type": "boolean"
-        },
-        "scope": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "summary": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "type",
-        "breaking",
-        "summary"
-      ]
-    },
-    "Criterion": {
-      "description": "An element of `preconditions` or `success_gates`.",
-      "type": "object",
-      "properties": {
-        "met": {
-          "type": "boolean"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "text",
-        "met"
-      ]
-    },
-    "DirectoryDetail": {
-      "description": "Detail of a directory or the campaign root.",
-      "type": "object",
-      "properties": {
-        "added_by": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "amendments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "children": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ChildRef"
-          }
-        },
-        "comments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Comment"
-          }
-        },
-        "context": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "counts": {
-          "$ref": "#/$defs/StatusCounts"
-        },
-        "goal": {
-          "type": "string"
-        },
-        "gotchas": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "id": {
-          "type": "string"
-        },
-        "is_campaign": {
-          "type": "boolean"
-        },
-        "notes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "parent": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "preconditions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Criterion"
-          }
-        },
-        "references": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Reference"
-          }
-        },
-        "rev": {
-          "type": "string"
-        },
-        "sealed": {
-          "type": "boolean"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "success_gates": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Criterion"
-          }
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "parent",
-        "rev",
-        "title",
-        "sealed",
-        "comments",
-        "amendments",
-        "is_campaign",
-        "status",
-        "counts",
-        "context",
-        "goal",
-        "preconditions",
-        "success_gates",
-        "references",
-        "gotchas",
-        "notes",
-        "children"
-      ]
-    },
-    "Expected": {
-      "description": "`Check.expected`.",
-      "type": "string",
-      "enum": [
-        "PASS",
-        "FAIL"
-      ]
-    },
-    "History": {
-      "description": "An element of `Leaf.history`: one status move.",
-      "type": "object",
-      "properties": {
-        "actor": {
-          "$ref": "#/$defs/Actor"
-        },
-        "from": {
-          "$ref": "#/$defs/Status"
-        },
-        "op_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "override": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "to": {
-          "$ref": "#/$defs/Status"
-        },
-        "ts": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "ts",
-        "from",
-        "to",
-        "actor"
-      ]
-    },
-    "Holder": {
-      "description": "A leaf that holds another back.",
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "status_reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "path",
-        "title",
-        "status"
-      ]
-    },
-    "LeafDetail": {
-      "description": "Detail of a leaf.",
-      "type": "object",
-      "properties": {
-        "added_by": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "amendments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "comments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Comment"
-          }
-        },
-        "commit_count": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0
-        },
-        "goal": {
-          "type": "string"
-        },
-        "held_by": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "history": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/History"
-          }
-        },
-        "id": {
-          "type": "string"
-        },
-        "level": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "level_source": {
-          "$ref": "#/$defs/LevelSource"
-        },
-        "parent": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "preconditions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Criterion"
-          }
-        },
-        "progress": {
-          "$ref": "#/$defs/Progress"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "references": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Reference"
-          }
-        },
-        "rev": {
-          "type": "string"
-        },
-        "sealed": {
-          "type": "boolean"
-        },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "status_reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_since": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "step_progress": {
-          "$ref": "#/$defs/StepCounts"
-        },
-        "steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/StepView"
-          }
-        },
-        "success_gates": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Criterion"
-          }
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "parent",
-        "rev",
-        "title",
-        "status",
-        "level",
-        "level_source",
-        "ready",
-        "held_by",
-        "sealed",
-        "goal",
-        "preconditions",
-        "success_gates",
-        "references",
-        "steps",
-        "progress",
-        "step_progress",
-        "history",
-        "comments",
-        "amendments"
-      ]
-    },
-    "LevelSource": {
-      "description": "The rule that produced a `level`. One value today.",
-      "type": "string",
-      "enum": [
-        "depth"
-      ]
+      ],
+      "additionalProperties": true
     },
     "NodeDetail": {
       "description": "The detail of one node, discriminated by `kind`.",
@@ -606,13 +104,213 @@
         }
       ]
     },
-    "NodeKind": {
-      "description": "`NodeKind` of a child reference.",
+    "Status": {
+      "description": "The five statuses of a leaf (`statuses.md`).",
       "type": "string",
       "enum": [
-        "leaf",
-        "directory"
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
+        "done"
       ]
+    },
+    "LevelSource": {
+      "description": "The rule that produced a `level`. One value today.",
+      "type": "string",
+      "enum": [
+        "depth"
+      ]
+    },
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "met": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "met"
+      ],
+      "additionalProperties": true
+    },
+    "Reference": {
+      "description": "An element of `references`.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "StepView": {
+      "description": "A stored step plus its derived number.",
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "implementation_logic": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deliverables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Check"
+          }
+        },
+        "commit": {
+          "$ref": "#/$defs/Commit"
+        },
+        "requires": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "done_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "number",
+        "id",
+        "title",
+        "goal",
+        "implementation_logic",
+        "deliverables",
+        "references",
+        "checks",
+        "commit",
+        "done"
+      ],
+      "additionalProperties": true
+    },
+    "Check": {
+      "description": "An element of `Step.checks`.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "expected": {
+          "$ref": "#/$defs/Expected"
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "text",
+        "expected"
+      ],
+      "additionalProperties": true
+    },
+    "Expected": {
+      "description": "`Check.expected`.",
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "Commit": {
+      "description": "`Step.commit`.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "breaking": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "breaking",
+        "summary"
+      ],
+      "additionalProperties": true
     },
     "Progress": {
       "description": "`Leaf.progress`.",
@@ -639,101 +337,10 @@
           }
         }
       },
-      "additionalProperties": true,
       "required": [
         "notes"
-      ]
-    },
-    "Projection": {
-      "description": "Which projection a payload is.",
-      "type": "string",
-      "enum": [
-        "outline",
-        "node",
-        "ready",
-        "amendments"
-      ]
-    },
-    "Reference": {
-      "description": "An element of `references`.",
-      "type": "object",
-      "properties": {
-        "label": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "note": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "target": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "title"
-      ]
-    },
-    "Status": {
-      "description": "The five statuses of a leaf (`statuses.md`).",
-      "type": "string",
-      "enum": [
-        "planned",
-        "ongoing",
-        "paused",
-        "cancelled",
-        "done"
-      ]
-    },
-    "StatusCounts": {
-      "description": "Leaves counted by status.",
-      "type": "object",
-      "properties": {
-        "cancelled": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "done": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "ongoing": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "paused": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "planned": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "planned",
-        "ongoing",
-        "paused",
-        "cancelled",
-        "done"
-      ]
+      ],
+      "additionalProperties": true
     },
     "StepCounts": {
       "description": "`{done, total}` of a leaf's steps.",
@@ -750,62 +357,194 @@
           "minimum": 0
         }
       },
-      "additionalProperties": true,
       "required": [
         "done",
         "total"
-      ]
+      ],
+      "additionalProperties": true
     },
-    "StepView": {
-      "description": "A stored step plus its derived number.",
+    "History": {
+      "description": "An element of `Leaf.history`: one status move.",
       "type": "object",
       "properties": {
-        "checks": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Check"
-          }
-        },
-        "commit": {
-          "$ref": "#/$defs/Commit"
-        },
-        "commit_sha": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "deliverables": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "done": {
-          "type": "boolean"
-        },
-        "done_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "goal": {
+        "ts": {
           "type": "string"
+        },
+        "from": {
+          "$ref": "#/$defs/Status"
+        },
+        "to": {
+          "$ref": "#/$defs/Status"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "override": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "op_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ts",
+        "from",
+        "to",
+        "actor"
+      ],
+      "additionalProperties": true
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "Comment": {
+      "description": "`_comments/<ulid>.json`.",
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
         },
         "id": {
           "type": "string"
         },
-        "implementation_logic": {
+        "node_id": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "text": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "number": {
+        "op_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "node_id",
+        "ts",
+        "actor",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    "LeafDetail": {
+      "description": "Detail of a leaf.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "parent": {
+          "type": "string"
+        },
+        "rev": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_since": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
           "type": "integer",
           "format": "uint32",
           "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "held_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sealed": {
+          "type": "boolean"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          }
+        },
+        "success_gates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          }
         },
         "references": {
           "type": "array",
@@ -813,32 +552,296 @@
             "$ref": "#/$defs/Reference"
           }
         },
-        "requires": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StepView"
+          }
+        },
+        "progress": {
+          "$ref": "#/$defs/Progress"
+        },
+        "commit_count": {
           "type": [
-            "array",
+            "integer",
             "null"
           ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "step_progress": {
+          "$ref": "#/$defs/StepCounts"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/History"
+          }
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Comment"
+          }
+        },
+        "amendments": {
+          "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "title": {
-          "type": "string"
+        "added_by": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "additionalProperties": true,
       "required": [
-        "number",
         "id",
+        "path",
+        "parent",
+        "rev",
         "title",
+        "status",
+        "level",
+        "level_source",
+        "ready",
+        "held_by",
+        "sealed",
         "goal",
-        "implementation_logic",
-        "deliverables",
+        "preconditions",
+        "success_gates",
         "references",
-        "checks",
-        "commit",
+        "steps",
+        "progress",
+        "step_progress",
+        "history",
+        "comments",
+        "amendments"
+      ],
+      "additionalProperties": true
+    },
+    "StatusCounts": {
+      "description": "Leaves counted by status.",
+      "type": "object",
+      "properties": {
+        "planned": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "ongoing": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "paused": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "cancelled": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "done": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
         "done"
+      ],
+      "additionalProperties": true
+    },
+    "ChildRef": {
+      "description": "A child in a directory's detail.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/NodeKind"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "kind",
+        "title",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "NodeKind": {
+      "description": "`NodeKind` of a child reference.",
+      "type": "string",
+      "enum": [
+        "leaf",
+        "directory"
       ]
+    },
+    "DirectoryDetail": {
+      "description": "Detail of a directory or the campaign root.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "parent": {
+          "type": "string"
+        },
+        "rev": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "sealed": {
+          "type": "boolean"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Comment"
+          }
+        },
+        "amendments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "added_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "is_campaign": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "goal": {
+          "type": "string"
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          }
+        },
+        "success_gates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "gotchas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChildRef"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "parent",
+        "rev",
+        "title",
+        "sealed",
+        "comments",
+        "amendments",
+        "is_campaign",
+        "status",
+        "counts",
+        "context",
+        "goal",
+        "preconditions",
+        "success_gates",
+        "references",
+        "gotchas",
+        "notes",
+        "children"
+      ],
+      "additionalProperties": true
+    },
+    "Holder": {
+      "description": "A leaf that holds another back.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "title",
+        "status"
+      ],
+      "additionalProperties": true
     }
   }
 }

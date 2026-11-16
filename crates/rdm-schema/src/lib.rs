@@ -21,11 +21,18 @@ pub fn version_string(v: Version) -> String {
     format!("{}.{}", v.0, v.1)
 }
 
-/// Parses `"MAJOR.MINOR"`. Returns `None` for any other form.
+/// Parses `"MAJOR.MINOR"`. Strict: ASCII digits only, no sign, no whitespace, and no leading
+/// zero except `0` itself. Returns `None` for any other form.
 #[must_use]
 pub fn parse_version(s: &str) -> Option<Version> {
+    fn part(p: &str) -> Option<u16> {
+        let ok = !p.is_empty()
+            && p.bytes().all(|b| b.is_ascii_digit())
+            && (p == "0" || !p.starts_with('0'));
+        if ok { p.parse().ok() } else { None }
+    }
     let (major, minor) = s.split_once('.')?;
-    Some((major.parse().ok()?, minor.parse().ok()?))
+    Some((part(major)?, part(minor)?))
 }
 
 /// Whether a reader that supports `supported` may read data stamped `found`.

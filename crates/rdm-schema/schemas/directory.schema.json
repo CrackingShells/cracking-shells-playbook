@@ -4,20 +4,9 @@
   "description": "`_dir.json`: the campaign root and every directory node.",
   "type": "object",
   "properties": {
-    "context": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "goal": {
-      "type": "string"
-    },
-    "gotchas": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "id": {
       "type": "string"
@@ -25,16 +14,13 @@
     "kind": {
       "$ref": "#/$defs/DirectoryKind"
     },
-    "notes": {
+    "title": {
+      "type": "string"
+    },
+    "context": {
       "type": "array",
       "items": {
         "type": "string"
-      }
-    },
-    "preconditions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/Criterion"
       }
     },
     "references": {
@@ -43,8 +29,14 @@
         "$ref": "#/$defs/Reference"
       }
     },
-    "schema_version": {
+    "goal": {
       "type": "string"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
     },
     "success_gates": {
       "type": "array",
@@ -52,11 +44,19 @@
         "$ref": "#/$defs/Criterion"
       }
     },
-    "title": {
-      "type": "string"
+    "gotchas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
-  "additionalProperties": true,
   "required": [
     "schema_version",
     "id",
@@ -70,24 +70,8 @@
     "gotchas",
     "notes"
   ],
+  "additionalProperties": true,
   "$defs": {
-    "Criterion": {
-      "description": "An element of `preconditions` or `success_gates`.",
-      "type": "object",
-      "properties": {
-        "met": {
-          "type": "boolean"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "text",
-        "met"
-      ]
-    },
     "DirectoryKind": {
       "description": "`Directory.kind`.",
       "type": "string",
@@ -106,11 +90,8 @@
             "null"
           ]
         },
-        "note": {
-          "type": [
-            "string",
-            "null"
-          ]
+        "title": {
+          "type": "string"
         },
         "target": {
           "type": [
@@ -118,14 +99,34 @@
             "null"
           ]
         },
-        "title": {
-          "type": "string"
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "additionalProperties": true,
       "required": [
         "title"
-      ]
+      ],
+      "additionalProperties": true
+    },
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "met": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "met"
+      ],
+      "additionalProperties": true
     }
   }
 }

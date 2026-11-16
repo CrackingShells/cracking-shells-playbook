@@ -81,3 +81,20 @@ fn reader_refuses_per_the_read_model_rule() {
     assert!(is_readable((1, 3), (1, 1)));
     assert!(!is_readable((2, 0), (1, 1)));
 }
+
+#[test]
+fn parse_version_is_strict() {
+    for bad in ["01.1", "+1.2", " 1.2", "1.2 ", "1.02", "-1.0", "1", "1.", ".1", "1.2.3", "banana", "", "1.x", "65536.0"] {
+        assert_eq!(parse_version(bad), None, "{bad:?}");
+    }
+    assert_eq!(parse_version("0.0"), Some((0, 0)));
+    assert_eq!(parse_version("10.20"), Some((10, 20)));
+}
+
+#[test]
+fn unknown_keys_keep_their_order_in_the_output_string() {
+    // Non-alphabetical unknown keys at two nesting levels, and one known key after them.
+    let input = r#"{"schema_version":"0.1","id":"c","node_id":"n","ts":"2026-11-16T12:00:00Z","actor":{"kind":"human","zeta":1,"alpha":2},"text":["a"],"zz":{"y":1,"b":2,"m":3},"aa":true}"#;
+    let c: Comment = serde_json::from_str(input).unwrap();
+    assert_eq!(serde_json::to_string(&c).unwrap(), input);
+}

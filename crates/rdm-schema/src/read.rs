@@ -48,7 +48,9 @@ pub struct CampaignRef {
 /// keeps the unknown fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Envelope {
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
     pub read_model_version: String,
+    #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+$"))]
     pub format_version: String,
     pub projection: Projection,
     pub campaign: CampaignRef,

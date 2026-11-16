@@ -4,22 +4,21 @@
   "description": "The ready set with what stalls the rest.",
   "type": "object",
   "properties": {
-    "campaign": {
-      "$ref": "#/$defs/CampaignRef"
+    "read_model_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "format_version": {
-      "type": "string"
-    },
-    "holders": {
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/Holder"
-      }
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
     },
     "projection": {
       "$ref": "#/$defs/Projection"
     },
-    "read_model_version": {
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "tree_rev": {
       "type": "string"
     },
     "ready": {
@@ -34,11 +33,13 @@
         "$ref": "#/$defs/StalledLeaf"
       }
     },
-    "tree_rev": {
-      "type": "string"
+    "holders": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Holder"
+      }
     }
   },
-  "additionalProperties": true,
   "required": [
     "read_model_version",
     "format_version",
@@ -49,7 +50,18 @@
     "stalled",
     "holders"
   ],
+  "additionalProperties": true,
   "$defs": {
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    },
     "CampaignRef": {
       "description": "Identity of the campaign in an envelope.",
       "type": "object",
@@ -64,18 +76,97 @@
           "type": "string"
         }
       },
-      "additionalProperties": true,
       "required": [
         "id",
         "path",
         "title"
+      ],
+      "additionalProperties": true
+    },
+    "ReadyLeaf": {
+      "description": "A `planned` leaf that nothing holds back.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title",
+        "level",
+        "level_source"
+      ],
+      "additionalProperties": true
+    },
+    "LevelSource": {
+      "description": "The rule that produced a `level`. One value today.",
+      "type": "string",
+      "enum": [
+        "depth"
       ]
+    },
+    "StalledLeaf": {
+      "description": "A `planned` leaf held back by unfinished leaves.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        },
+        "held_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title",
+        "level",
+        "level_source",
+        "held_by"
+      ],
+      "additionalProperties": true
     },
     "Holder": {
       "description": "A leaf that holds another back.",
       "type": "object",
       "properties": {
         "path": {
+          "type": "string"
+        },
+        "title": {
           "type": "string"
         },
         "status": {
@@ -86,103 +177,14 @@
             "string",
             "null"
           ]
-        },
-        "title": {
-          "type": "string"
         }
       },
-      "additionalProperties": true,
       "required": [
         "path",
         "title",
         "status"
-      ]
-    },
-    "LevelSource": {
-      "description": "The rule that produced a `level`. One value today.",
-      "type": "string",
-      "enum": [
-        "depth"
-      ]
-    },
-    "Projection": {
-      "description": "Which projection a payload is.",
-      "type": "string",
-      "enum": [
-        "outline",
-        "node",
-        "ready",
-        "amendments"
-      ]
-    },
-    "ReadyLeaf": {
-      "description": "A `planned` leaf that nothing holds back.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "level": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "level_source": {
-          "$ref": "#/$defs/LevelSource"
-        },
-        "path": {
-          "type": "string"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "title",
-        "level",
-        "level_source"
-      ]
-    },
-    "StalledLeaf": {
-      "description": "A `planned` leaf held back by unfinished leaves.",
-      "type": "object",
-      "properties": {
-        "held_by": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "id": {
-          "type": "string"
-        },
-        "level": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "level_source": {
-          "$ref": "#/$defs/LevelSource"
-        },
-        "path": {
-          "type": "string"
-        },
-        "title": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true,
-      "required": [
-        "id",
-        "path",
-        "title",
-        "level",
-        "level_source",
-        "held_by"
-      ]
+      ],
+      "additionalProperties": true
     },
     "Status": {
       "description": "The five statuses of a leaf (`statuses.md`).",

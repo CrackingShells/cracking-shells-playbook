@@ -9,6 +9,28 @@ fn generated<T: JsonSchema>() -> String {
     s
 }
 
+const NAMES: [&str; 8] = [
+    "directory", "leaf", "comment", "amendment", "outline_view", "node_view", "ready_view", "amendments_view",
+];
+
+/// A file in `schemas/` that no type generates is drift too. Bless removes it.
+fn orphans(failures: &mut Vec<String>) {
+    let dir = format!("{}/schemas", env!("CARGO_MANIFEST_DIR"));
+    let bless = std::env::var("RDM_SCHEMA_BLESS").as_deref() == Ok("1");
+    for entry in std::fs::read_dir(&dir).expect("schemas dir").flatten() {
+        let file = entry.file_name().to_string_lossy().into_owned();
+        let known = file.strip_suffix(".schema.json").is_some_and(|n| NAMES.contains(&n));
+        if known {
+            continue;
+        }
+        if bless {
+            std::fs::remove_file(entry.path()).expect("remove orphan");
+        } else {
+            failures.push(format!("{dir}/{file}: no type generates this file"));
+        }
+    }
+}
+
 /// Compares `want` with the committed file, or writes it when `RDM_SCHEMA_BLESS=1`.
 fn check_or_bless(name: &str, want: &str, failures: &mut Vec<String>) {
     let path = format!("{}/schemas/{name}.schema.json", env!("CARGO_MANIFEST_DIR"));
@@ -46,5 +68,23 @@ fn committed_schemas_match_the_types() {
     check_or_bless("node_view", &generated::<NodeView>(), &mut failures);
     check_or_bless("ready_view", &generated::<ReadyView>(), &mut failures);
     check_or_bless("amendments_view", &generated::<AmendmentsView>(), &mut failures);
+    orphans(&mut failures);
     assert!(failures.is_empty(), "schema drift:\n{}", failures.join("\n"));
+}
+
+#[test]
+fn version_fields_carry_the_pattern() {
+    for (file, pointer) in [
+        ("leaf", "/properties/schema_version"),
+        ("directory", "/properties/schema_version"),
+        ("comment", "/properties/schema_version"),
+        ("amendment", "/properties/schema_version"),
+        ("outline_view", "/properties/format_version"),
+        ("outline_view", "/properties/read_model_version"),
+    ] {
+        let path = format!("{}/schemas/{file}.schema.json", env!("CARGO_MANIFEST_DIR"));
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let pat = v.pointer(&format!("{pointer}/pattern")).and_then(|p| p.as_str());
+        assert_eq!(pat, Some(r"^[0-9]+\.[0-9]+$"), "{file} {pointer}");
+    }
 }
