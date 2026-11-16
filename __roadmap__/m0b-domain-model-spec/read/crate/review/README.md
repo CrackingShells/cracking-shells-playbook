@@ -16,6 +16,7 @@ Enforced criteria with trace records, and `0.X.Y` versions, in the specs, the cr
 ```mermaid
 graph TD
     criteria_and_versions[Enforced criteria and 0.X.Y versions]:::done
+    reasoned_edits_and_ids[Reasoned edits and stable ids]:::amendment
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -27,6 +28,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `criteria_and_versions.md` | 📄 Leaf Task | ✅ Done |
+| `reasoned_edits_and_ids.md` | 📄 Leaf Task | 🔵 Amendment |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
