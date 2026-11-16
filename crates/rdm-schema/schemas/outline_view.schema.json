@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OutlineView",
+  "description": "The campaign outline with waves.",
+  "type": "object",
+  "properties": {
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "format_version": {
+      "type": "string"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "read_model_version": {
+      "type": "string"
+    },
+    "root": {
+      "$ref": "#/$defs/OutlineNode"
+    },
+    "tree_rev": {
+      "type": "string"
+    },
+    "waves": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WaveView"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "read_model_version",
+    "format_version",
+    "projection",
+    "campaign",
+    "tree_rev",
+    "root",
+    "waves"
+  ],
+  "$defs": {
+    "CampaignRef": {
+      "description": "Identity of the campaign in an envelope.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "path",
+        "title"
+      ]
+    },
+    "LevelSource": {
+      "description": "The rule that produced a `level`. One value today.",
+      "type": "string",
+      "enum": [
+        "depth"
+      ]
+    },
+    "OutlineDirectory": {
+      "description": "A directory in the outline.",
+      "type": "object",
+      "properties": {
+        "amendment_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutlineNode"
+          }
+        },
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        },
+        "goal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "is_campaign": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "rev": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "path",
+        "title",
+        "is_campaign",
+        "status",
+        "counts",
+        "rev",
+        "children"
+      ]
+    },
+    "OutlineLeaf": {
+      "description": "A leaf in the outline.",
+      "type": "object",
+      "properties": {
+        "added_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        },
+        "path": {
+          "type": "string"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "rev": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steps": {
+          "$ref": "#/$defs/StepCounts"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "path",
+        "title",
+        "status",
+        "level",
+        "level_source",
+        "ready",
+        "steps",
+        "rev"
+      ]
+    },
+    "OutlineNode": {
+      "description": "A node of the outline, discriminated by `kind`.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "directory"
+            }
+          },
+          "$ref": "#/$defs/OutlineDirectory",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "leaf"
+            }
+          },
+          "$ref": "#/$defs/OutlineLeaf",
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    },
+    "Status": {
+      "description": "The five statuses of a leaf (`statuses.md`).",
+      "type": "string",
+      "enum": [
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
+        "done"
+      ]
+    },
+    "StatusCounts": {
+      "description": "Leaves counted by status.",
+      "type": "object",
+      "properties": {
+        "cancelled": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "done": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "ongoing": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "paused": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "planned": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
+        "done"
+      ]
+    },
+    "StepCounts": {
+      "description": "`{done, total}` of a leaf's steps.",
+      "type": "object",
+      "properties": {
+        "done": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "done",
+        "total"
+      ]
+    },
+    "WaveView": {
+      "description": "One wave of the outline.",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        },
+        "leaf_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "level",
+        "level_source",
+        "leaf_ids",
+        "counts"
+      ]
+    }
+  }
+}

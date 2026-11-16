@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Amendment",
+  "description": "`_amendments/<ulid>.json`.",
+  "type": "object",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Change"
+      }
+    },
+    "description": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "legacy_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "op_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "snapshot": true,
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "id",
+    "ts",
+    "actor",
+    "description",
+    "changes"
+  ],
+  "$defs": {
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ]
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "Change": {
+      "description": "An element of `Amendment.changes`.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "new": true,
+        "node_id": {
+          "type": "string"
+        },
+        "old": true,
+        "op": {
+          "$ref": "#/$defs/ChangeOp"
+        },
+        "path_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path_before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "node_id",
+        "op"
+      ]
+    },
+    "ChangeOp": {
+      "description": "`Change.op`.",
+      "type": "string",
+      "enum": [
+        "add",
+        "remove",
+        "set",
+        "rename",
+        "move"
+      ]
+    }
+  }
+}

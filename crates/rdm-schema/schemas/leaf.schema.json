@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Leaf",
+  "description": "`<leaf>.json`.",
+  "type": "object",
+  "properties": {
+    "goal": {
+      "type": "string"
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/History"
+      }
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/LeafKind"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "progress": {
+      "$ref": "#/$defs/Progress"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Reference"
+      }
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/Status"
+    },
+    "status_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Step"
+      }
+    },
+    "success_gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "title",
+    "status",
+    "goal",
+    "preconditions",
+    "success_gates",
+    "references",
+    "steps",
+    "progress",
+    "history"
+  ],
+  "$defs": {
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ]
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "Check": {
+      "description": "An element of `Step.checks`.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected": {
+          "$ref": "#/$defs/Expected"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "text",
+        "expected"
+      ]
+    },
+    "Commit": {
+      "description": "`Step.commit`.",
+      "type": "object",
+      "properties": {
+        "breaking": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "breaking",
+        "summary"
+      ]
+    },
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "met": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "text",
+        "met"
+      ]
+    },
+    "Expected": {
+      "description": "`Check.expected`.",
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "History": {
+      "description": "An element of `Leaf.history`: one status move.",
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "from": {
+          "$ref": "#/$defs/Status"
+        },
+        "op_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "override": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "$ref": "#/$defs/Status"
+        },
+        "ts": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "ts",
+        "from",
+        "to",
+        "actor"
+      ]
+    },
+    "LeafKind": {
+      "description": "`Leaf.kind`, the one value `leaf`.",
+      "type": "string",
+      "enum": [
+        "leaf"
+      ]
+    },
+    "Progress": {
+      "description": "`Leaf.progress`.",
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commits": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "notes"
+      ]
+    },
+    "Reference": {
+      "description": "An element of `references`.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "title"
+      ]
+    },
+    "Status": {
+      "description": "The five statuses of a leaf (`statuses.md`).",
+      "type": "string",
+      "enum": [
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
+        "done"
+      ]
+    },
+    "Step": {
+      "description": "An element of `Leaf.steps`.",
+      "type": "object",
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Check"
+          }
+        },
+        "commit": {
+          "$ref": "#/$defs/Commit"
+        },
+        "commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deliverables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "done_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "goal": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "implementation_logic": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          }
+        },
+        "requires": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "title",
+        "goal",
+        "implementation_logic",
+        "deliverables",
+        "references",
+        "checks",
+        "commit",
+        "done"
+      ]
+    }
+  }
+}

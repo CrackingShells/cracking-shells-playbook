@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AmendmentsView",
+  "description": "The amendment log.",
+  "type": "object",
+  "properties": {
+    "amendments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AmendmentEntry"
+      }
+    },
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "format_version": {
+      "type": "string"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "read_model_version": {
+      "type": "string"
+    },
+    "total": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "tree_rev": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "read_model_version",
+    "format_version",
+    "projection",
+    "campaign",
+    "tree_rev",
+    "total",
+    "amendments"
+  ],
+  "$defs": {
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ]
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "AmendmentEntry": {
+      "description": "One amendment of the log.",
+      "type": "object",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChangeView"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "display_id": {
+          "type": "string"
+        },
+        "has_snapshot": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "legacy_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "display_id",
+        "ts",
+        "actor",
+        "description",
+        "has_snapshot",
+        "changes"
+      ]
+    },
+    "CampaignRef": {
+      "description": "Identity of the campaign in an envelope.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "path",
+        "title"
+      ]
+    },
+    "ChangeOp": {
+      "description": "`Change.op`.",
+      "type": "string",
+      "enum": [
+        "add",
+        "remove",
+        "set",
+        "rename",
+        "move"
+      ]
+    },
+    "ChangeView": {
+      "description": "A stored change plus the node's current path and title.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "new": true,
+        "node_id": {
+          "type": "string"
+        },
+        "node_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "old": true,
+        "op": {
+          "$ref": "#/$defs/ChangeOp"
+        },
+        "path_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path_before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "node_id",
+        "op"
+      ]
+    },
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    }
+  }
+}

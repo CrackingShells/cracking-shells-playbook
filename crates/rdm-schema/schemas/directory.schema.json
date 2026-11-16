@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Directory",
+  "description": "`_dir.json`: the campaign root and every directory node.",
+  "type": "object",
+  "properties": {
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "goal": {
+      "type": "string"
+    },
+    "gotchas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/DirectoryKind"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Reference"
+      }
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "success_gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "title",
+    "context",
+    "references",
+    "goal",
+    "preconditions",
+    "success_gates",
+    "gotchas",
+    "notes"
+  ],
+  "$defs": {
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "met": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "text",
+        "met"
+      ]
+    },
+    "DirectoryKind": {
+      "description": "`Directory.kind`.",
+      "type": "string",
+      "enum": [
+        "campaign",
+        "directory"
+      ]
+    },
+    "Reference": {
+      "description": "An element of `references`.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "title"
+      ]
+    }
+  }
+}

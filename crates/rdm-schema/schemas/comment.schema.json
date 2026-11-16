@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Comment",
+  "description": "`_comments/<ulid>.json`.",
+  "type": "object",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "id": {
+      "type": "string"
+    },
+    "node_id": {
+      "type": "string"
+    },
+    "op_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "text": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ts": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "id",
+    "node_id",
+    "ts",
+    "actor",
+    "text"
+  ],
+  "$defs": {
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ]
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    }
+  }
+}
