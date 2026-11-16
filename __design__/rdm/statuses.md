@@ -18,7 +18,7 @@ Only a leaf has a stored status. A directory's status is derived (see `Subtrees 
 | `planned` | The leaf is written and not started. No step is recorded done. | no | no |
 | `ongoing` | Work has started on the leaf. Steps may be recorded done. | no | steps recorded done only |
 | `paused` | Work is held and can be resumed: a bug, a decision to wait, or a downstream branch held on purpose. | no | steps recorded done only |
-| `cancelled` | The leaf is abandoned. It holds nothing back while it is cancelled. Whatever was done stays on record. A mistaken cancel can be undone (`cancelled → planned`). | yes | yes, while cancelled |
+| `cancelled` | The leaf is abandoned. It holds nothing back while it is cancelled. Whatever was done stays on record. A mistaken cancel can be undone: the leaf returns to the status it had just before the cancel. | yes | yes, while cancelled |
 | `done` | Every step is done with its commit recorded. The only terminal status. | yes | yes, for good |
 
 `blocked` and `amendment` are not statuses. A "blocked" situation is `paused` (resumable) or
@@ -52,11 +52,11 @@ status is `paused` or `cancelled`). "Ready set" says what the move does to the s
 | `paused` | `paused` | refused | | | No-op | none |
 | `paused` | `cancelled` | allowed | both | required | none | RELEASE |
 | `paused` | `done` | refused | | | Resume to `ongoing` first | none |
-| `cancelled` | `planned` | allowed | both | required | No step is recorded done. Undoes a mistaken cancel, for one leaf or for a directory cancel through its `op_id`. Eliott, 2026-11-16 | ENTER if nothing shallower holds it back |
-| `cancelled` | `ongoing` | refused | | | Only `planned` leaves `cancelled` | none |
-| `cancelled` | `paused` | refused | | | Only `planned` leaves `cancelled` | none |
+| `cancelled` | `planned` | allowed | both | required | Undo: the status before the cancel, read from history (the `from` of the last cancel entry), is `planned`. Eliott's intent 2026-11-16, ruling (coordinator, 2026-11-16) | ENTER if nothing shallower holds it back |
+| `cancelled` | `ongoing` | allowed | both | required | Undo: the status before the cancel was `ongoing`. Any other target is refused (coordinator, 2026-11-16) | none |
+| `cancelled` | `paused` | allowed | both | required | Undo: the status before the cancel was `paused`. Any other target is refused (coordinator, 2026-11-16) | none |
 | `cancelled` | `cancelled` | refused | | | No-op | none |
-| `cancelled` | `done` | refused | | | Only `planned` leaves `cancelled` | none |
+| `cancelled` | `done` | refused | | | Only an undo leaves `cancelled`, and never to `done` | none |
 | `done` | `planned` | refused | | | Terminal: nothing reopens done work, new work is a new node | none |
 | `done` | `ongoing` | refused | | | Terminal | none |
 | `done` | `paused` | refused | | | Terminal | none |
@@ -69,21 +69,23 @@ Rules that hold for every row:
 - A move presents the status it expects to leave. A mismatch is refused (R01 §Concurrency).
 - A move writes one history entry and never an amendment (I5).
 - A move into `done` or `cancelled` may carry the final `progress` in the same operation. After it, only comments are accepted, and from `cancelled` only the move to `planned`.
-- The reason is required text, not blank, for `paused`, `cancelled`, `paused → planned`, `paused → ongoing` and `cancelled → planned`.
+- The reason is required text, not blank, for `paused`, `cancelled`, `paused → planned`, `paused → ongoing` and every undo out of `cancelled`.
 
 **`paused → planned` needs "no step is recorded done".** A step recorded done is sealed with its
-commit, so a `planned` leaf holding a recorded commit would contradict "not started". The same
-precondition holds for `cancelled → planned`. A leaf with a recorded step goes to `ongoing`
+commit, so a `planned` leaf holding a recorded commit would contradict "not started". A leaf with a recorded step goes to `ongoing`
 instead. Decided 2026-11-16 (coordinator).
 
 **`cancelled` is undoable.** A cancel is one call with a reason, and a directory cancel is one
-call over many leaves, so a mistake must be reversible. `cancelled → planned` is allowed with a
-required reason, recorded in history. Done work stays sealed: nothing leaves `done`. Decided
-2026-11-16 (Eliott).
+call over many leaves, so a mistake must be reversible. Undoing a cancel restores the status the
+node had just before the cancel, with a required reason, recorded in history. That status is read
+from history: the `from` of the last cancel entry. It may be `planned`, `ongoing` or `paused`. Any
+other target out of `cancelled` is refused. A leaf with no cancel entry in its history (one imported from legacy `blocked`) returns to `planned`, as the importer writes no steps done. Done work stays sealed: nothing leaves `done`.
+Eliott's intent 2026-11-16 ("undo a mistaken cancel with a reason"); the restore rule is the
+coordinator's ruling, 2026-11-16.
 
-**Not covered: a cancelled leaf with a recorded step.** It cannot return to `planned`, and no
-move leads from `cancelled` to `paused` or `ongoing`. If Eliott wants those leaves undoable too,
-`cancelled → paused` is the smallest addition.
+**Closed gap: a cancelled leaf with a recorded step.** The first form of the undo moved only to
+`planned`, which a leaf with a done step cannot take, so such a leaf could never be resumed. The
+restore rule fixes it: a leaf cancelled from `ongoing` or `paused` returns there.
 
 **Note: a cancel releases work without saying so.** Because `cancelled` holds nothing back, a
 cancelled leaf can release a deeper leaf that really needed it. That is Eliott's intent. The
@@ -93,8 +95,8 @@ silent.
 ## Ready set
 
 A leaf is ready when it is `planned` and every leaf that holds it back is `done` or `cancelled`.
-So `cancelled` holds nothing back while it is cancelled. Undoing a cancel makes the leaf `planned`
-and it holds back again; deeper leaves that already started are not stopped.
+So `cancelled` holds nothing back while it is cancelled. Undoing a cancel returns the leaf to its earlier status; if that is
+`planned`, `ongoing` or `paused` it holds back again; deeper leaves that already started are not stopped.
 
 **The rule (scoped, the legacy rule; Eliott, 2026-11-16).** An unfinished leaf holds back only
 the deeper leaves under its own parent. Precisely: leaf L is held back by every unfinished leaf
@@ -129,7 +131,7 @@ override (`planned → ongoing` outside the set) is recorded and allowed.
 - One reason, one timestamp and one `op_id` are shared by every history entry the operation writes. The operation is one call and one transaction, so it is "recorded once".
 - It is a snapshot, not a standing flag. A leaf added to the directory later starts `planned`.
 - `resume` of a directory sets each `paused` leaf under it to the `from` of its last pause entry (`planned` or `ongoing`). A leaf whose last pause came from another operation is resumed too, each by its own rule. The reason is required.
-- `uncancel` of a directory sets to `planned` every `cancelled` leaf whose last history entry carries the `op_id` of the cancel being undone, with one reason and one new `op_id`. A leaf that holds a recorded step is skipped and reported. Leaves cancelled by another operation are left alone.
+- `uncancel` of a directory restores every `cancelled` leaf whose last history entry carries the `op_id` of the cancel being undone. Each leaf returns to the `from` of that entry, so a leaf may come back `planned`, `ongoing` or `paused`. One reason and one new `op_id` are shared. Leaves cancelled by another operation are left alone.
 
 **A directory's status is derived on every read and never stored (I6).** It is computed from all
 leaves under it, at any depth. The first matching row wins.
@@ -157,7 +159,7 @@ append-only comment (a file `_comments/<ulid>.json` whose `node_id` names the no
 | `planned` | allowed, amendment note required | allowed | per `Transitions` | allowed |
 | `ongoing` | allowed except sealed steps, amendment note required | allowed | per `Transitions` | allowed |
 | `paused` | allowed except sealed steps, amendment note required | allowed | per `Transitions` | allowed |
-| `cancelled` | refused | allowed | only `→ planned` | refused |
+| `cancelled` | refused | allowed | only the undo, to the pre-cancel status | refused |
 | `done` | refused | allowed | refused | refused |
 
 - **Content** is every stored field except `status`, `status_reason`, `history`, `progress` and the state marks. The state marks are a criterion's `met`, and a step's `done`, `commit_sha` and `done_at`.
@@ -165,7 +167,7 @@ append-only comment (a file `_comments/<ulid>.json` whose `node_id` names the no
 - **Status moves, progress, comments and state marks never produce an amendment (I5).** Setting `met` is a state change like a move, allowed until the leaf is `done` or `cancelled`.
 - **A step recorded done inside an `ongoing` or `paused` leaf is sealed.** Its commit is on record, so its content (goal, logic, deliverables, checks, commit, references) cannot change and its `done` mark cannot be cleared. The other steps and the leaf's own fields stay editable. A sealed step cannot be removed or reordered.
 - **Directories follow their derived status.** A directory (or the campaign root) whose derived status is `done` or `cancelled` is sealed: its own content (title, context, goal, criteria, references, gotchas, notes) cannot change, and it accepts comments. Adding or removing a child is a structure edit of the child, not a content edit of the directory, so it stays allowed with an amendment. A directory in any other derived status takes edits with an amendment note. Weak point: a new `planned` child moves the derived status off `done`, which unseals the directory. The amendment log still records both edits.
-- **A cancelled node stays sealed while it is cancelled.** Undoing the cancel (`→ planned`) unseals it. A `done` node never unseals.
+- **A cancelled node stays sealed while it is cancelled.** Undoing the cancel unseals it, in the status it had before. A `done` node never unseals.
 - **Nothing reopens done work.** A new piece of work is a new node. There is no `done → ongoing`.
 - **Gate marks do not gate `done`.** Real campaigns leave open (`⬜`) gates on most done leaves: 30 of 48 done leaves under `__roadmap__/` carry at least one. So the only precondition of `done` is I8, as in R01. Criteria `met` is information, not a check.
 - **Structure edits on sealed nodes.** Deleting a `done` or `cancelled` leaf keeps its acknowledgement (I9) and its snapshot in the amendment. Moving a sealed leaf changes no content. Whether a move that changes the ready set of other leaves needs the acknowledgement is left to M2's impact analysis.
@@ -195,7 +197,7 @@ For `r01_sync`. R01 is not edited by this leaf.
 
 | R01 location | Change |
 |:--|:--|
-| §Graph operations, Status FSM diagram | Replace with the five-status machine of `Transitions`: `planned → ongoing, paused, cancelled`; `ongoing → paused, cancelled, done`; `paused → planned, ongoing, cancelled`; `cancelled → planned`. Remove `blocked`, `amendment` and the `done → amendment` edge |
+| §Graph operations, Status FSM diagram | Replace with the five-status machine of `Transitions`: `planned → ongoing, paused, cancelled`; `ongoing → paused, cancelled, done`; `paused → planned, ongoing, cancelled`; `cancelled → planned, ongoing, paused` (only the pre-cancel status). Remove `blocked`, `amendment` and the `done → amendment` edge |
 | §Graph operations, Order | "not done" becomes "`planned`"; "every leaf of smaller depth is done" becomes "`done` or `cancelled`". The ready rule becomes the scoped rule of `Ready set`. The sentence "Wave semantics are global: a leaf also waits for shallower leaves in unrelated branches" is replaced: a leaf waits only for shallower leaves under its own ancestors' parents. "Waves" stay a display of depth (`level`), not a readiness fact |
 | §Graph operations, after the FSM | "Starting a leaf outside the ready set is refused unless an override with a reason is given" stays. Add the directory pause and cancel operation and the derivation table |
 | §Graph operations, Impact analysis | Remove "done work reopened". Add "leaves made ready by a cancel" |
@@ -216,7 +218,7 @@ Nothing is open. Who decided what:
 |:--|:--|:--|
 | 1 | Ready rule: an unfinished leaf holds back only the deeper leaves under its own parent (legacy rule). Applies to `planned`, `ongoing` and `paused` alike | Eliott, 2026-11-16 |
 | 2 | Comments are one file each, `_comments/<ulid>.json`, append-only | Eliott, 2026-11-16 |
-| 3 | `cancelled → planned` allowed with a required reason; `done` stays terminal and sealed | Eliott, 2026-11-16 |
-| 4 | `paused → planned` and `cancelled → planned` need no step recorded done | coordinator, 2026-11-16 |
+| 3 | A mistaken cancel can be undone with a required reason; `done` stays terminal and sealed | Eliott, 2026-11-16 |
+| 4 | `paused → planned` needs no step recorded done | coordinator, 2026-11-16 |
 | 5 | A step recorded done is sealed, so a mistyped `commit_sha` is permanent. Recorded objection: a human-only correction with an amendment would be the least invasive fix | default kept, coordinator, 2026-11-16 |
-| 6 | Not covered: undoing the cancel of a leaf that holds a recorded step | for Eliott, if he wants it |
+| 6 | Undoing a cancel restores the status the node had just before the cancel, read from history, with a required reason: `planned`, `ongoing` or `paused`. A directory undo restores each leaf through the cancel's `op_id`. `done` stays the only terminal status. Replaces the earlier `cancelled → planned` only form and closes its gap (coordinator, 2026-11-16) | coordinator, 2026-11-16 |
