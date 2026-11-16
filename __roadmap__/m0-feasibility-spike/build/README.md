@@ -22,7 +22,7 @@ A stub `rdm-mcp` that serves the built graph page and passes its stdio integrati
 graph TD
     stub_server[Stub server]:::done
     graph_view[Graph view]:::done
-    trials[Host trials]:::inprogress
+    trials[Host trials]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -35,7 +35,7 @@ graph TD
 |:-----|:-----|:-------|
 | `stub_server.md` | 📄 Leaf Task | ✅ Done |
 | `graph_view.md` | 📄 Leaf Task | ✅ Done |
-| `trials/` | 📁 Directory | 🔄 In Progress |
+| `trials/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

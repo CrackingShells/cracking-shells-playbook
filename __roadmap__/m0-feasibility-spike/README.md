@@ -50,7 +50,7 @@ Show, on the real hosts, that the stub server and its `ui://` page work: the pag
 ```mermaid
 graph TD
     workspace_skeleton[Workspace skeleton]:::done
-    build[Build the stub]:::inprogress
+    build[Build the stub]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -62,7 +62,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `workspace_skeleton.md` | 📄 Leaf Task | ✅ Done |
-| `build/` | 📁 Directory | 🔄 In Progress |
+| `build/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
