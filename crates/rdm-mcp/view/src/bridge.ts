@@ -46,8 +46,37 @@ export async function connect(
 
 /** Call a server tool (tools/call) and return its structuredContent, or null. */
 export async function callAppTool<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T | null> {
-  const res = await app.callServerTool({ name, arguments: args });
-  return (res.structuredContent as T | undefined) ?? null;
+  try {
+    const res = await app.callServerTool({ name, arguments: args });
+    return (res.structuredContent as T | undefined) ?? null;
+  } catch (e) {
+    // Surface, never hide: every failed tool call is kept for the diagnostics panel.
+    toolErrorListener?.(name, String(e));
+    throw e;
+  }
+}
+
+let toolErrorListener: ((tool: string, text: string) => void) | null = null;
+/** The diagnostics panel registers here to see the last error of every failed tool call. */
+export function onToolError(fn: (tool: string, text: string) => void): void {
+  toolErrorListener = fn;
+}
+
+/** ui/update-model-context, only if the host advertises the updateModelContext capability. */
+export async function sendModelContext(structured: Record<string, unknown>): Promise<string> {
+  const caps = app.getHostCapabilities() as { updateModelContext?: unknown } | undefined;
+  if (!caps?.updateModelContext) return 'skipped: host does not advertise updateModelContext';
+  try {
+    await app.updateModelContext({
+      content: [{ type: 'text', text: JSON.stringify(structured) }],
+      structuredContent: structured,
+    });
+    return 'ok';
+  } catch (e) {
+    const t = String(e);
+    toolErrorListener?.('ui/update-model-context', t);
+    return 'failed: ' + t;
+  }
 }
 
 /** Ask the host for a display mode (ui/request-display-mode). */

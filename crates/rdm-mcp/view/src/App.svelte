@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { app, connect, callAppTool, requestDisplayMode, type HostInfo } from './bridge';
-  import { recordFirstPaint, recordFullView, nextFrameMs, type DisplayModeRan } from './probe';
+  import { app, connect, callAppTool, requestDisplayMode, onToolError, sendModelContext, type HostInfo } from './bridge';
+  import { buildProbe, recordFirstPaint, recordFullView, nextFrameMs, type DisplayModeRan } from './probe';
   import Graph from './Graph.svelte';
   import LeafPane from './LeafPane.svelte';
   import Outline from './Outline.svelte';
+  import Diagnostics from './Diagnostics.svelte';
   import type { RoadmapView } from './types';
 
   let view = $state.raw<RoadmapView | null>(null);
@@ -16,7 +17,22 @@
   let loading = $state(false);
   let outline = $state(false);
   let ran = $state<DisplayModeRan | null>(null);
-  let tView = 0;
+  let tView = $state(0);
+  let errors = $state<Record<string, string>>({});
+  let modelContext = $state('not attempted');
+  let callResult = $state('not run');
+  onToolError((tool, text) => (errors[tool] = text));
+
+  // Discriminating test: the MODEL-VISIBLE tool through the same view-to-server path.
+  async function callRoadmapView() {
+    callResult = 'running...';
+    try {
+      const r = await callAppTool<RoadmapView>('roadmap_view');
+      callResult = `success, ${r?.nodes?.length ?? '?'} nodes`;
+    } catch (e) {
+      callResult = 'error: ' + String(e);
+    }
+  }
   let probed = false;
 
   function readTheme(ctx: unknown) {
@@ -48,8 +64,11 @@
       const h = host;
       void nextFrameMs().then((t) => {
         tView = t;
+        const mode = (h.hostContext as { displayMode?: string } | undefined)?.displayMode ?? 'inline';
+        // Second channel, independent of probe_record: ui/update-model-context.
+        void sendModelContext(buildProbe(v, h, t, mode)).then((r) => (modelContext = r));
         return recordFirstPaint(v, h, t);
-      }).catch((e) => (error = String(e)));
+      }).catch((e) => (error = 'probe_record: ' + String(e)));
     }
   });
 
@@ -60,7 +79,7 @@
       const r = await callAppTool<{ path: string; markdown: string }>('leaf_get', { path });
       markdown = r?.markdown ?? null;
     } catch (e) {
-      markdown = 'error: ' + String(e);
+      markdown = 'error: ' + String(e);  // surfaced as is, also listed in Diagnostics
     } finally {
       loading = false;
     }
@@ -105,6 +124,7 @@
       <LeafPane path={selected} {markdown} {loading} />
     </div>
   {/if}
+  <Diagnostics {view} {host} {tView} {errors} {modelContext} {callResult} onCall={callRoadmapView} />
 </main>
 
 <style>
