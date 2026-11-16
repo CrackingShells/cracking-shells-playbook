@@ -1,3 +1,10 @@
+# writing-reports [2.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@2.0.0...writing-reports@2.1.0) (2026-11-16)
+
+
+### Features
+
+* **writing-reports:** ask agents to report plugin problems ([af45dac](https://github.com/CrackingShells/cracking-shells-playbook/commit/af45dac9a1fa555e9c2ea19e111c20aa56fb71a7))
+
 # writing-reports [2.0.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-reports@1.1.3...writing-reports@2.0.0) (2026-11-09)
 
 
