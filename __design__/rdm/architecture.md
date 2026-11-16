@@ -125,8 +125,8 @@ __roadmap__/<campaign>/
 - **Canonical form:** fixed field order, two-space indent, LF, trailing newline. Multi-line prose is
   stored as an array of lines, which git merges far better than one escaped string; the API
   accepts and returns plain strings.
-- **Forward compatibility:** every file carries `schema_version` (`"MAJOR.MINOR"`, first value `"0.1"`); unknown fields round-trip; a
-  reader refuses a newer major version with an upgrade message. JSON Schemas are generated from
+- **Forward compatibility:** every file carries `schema_version` (`"0.X.Y"`, first value `"0.1.0"`); unknown fields round-trip; a
+  reader refuses a different major or a higher X with an upgrade message, and reads a higher Y. JSON Schemas are generated from
   the Rust types and committed; CI fails when they drift.
 
 The stored types are settled in [stored-schema.md](stored-schema.md) and held by the
@@ -134,15 +134,16 @@ The stored types are settled in [stored-schema.md](stored-schema.md) and held by
 
 ```
 _dir.json   { schema_version, id, kind: campaign|directory, title, context, goal, references[],
-              preconditions[Criterion], success_gates[Criterion], gotchas, notes }
+              preconditions[Criterion], success_gates[Criterion], gotchas, notes, marks[] }
 <leaf>.json { schema_version, id, kind: leaf, title, status, status_reason?, goal,
               preconditions[Criterion], success_gates[Criterion], references[], steps[1..5],
-              progress{branch?, commits?, notes}, history[] }
+              progress{branch?, commits?, notes}, history[], marks[] }
 step        { id, title, goal, implementation_logic, deliverables, references[],
               checks[{text, expected, command?}], commit{type, scope?, breaking, summary},
               requires?, done, commit_sha?, done_at? }
-Criterion   { text, met }          Reference { label?, title, target?, note? }
+Criterion   { text, met }  (enforced: see I8)   Reference { label?, title, target?, note? }
 history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id? }
+mark        { ts, actor, kind: pre|gate, index, met, evidence? }   (trace of every criterion mark)
 comment     { schema_version, id, node_id, ts, actor, text }
 amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?,
               changes[{node_id, op, path_before?, path_after?, field?, old?, new?}], snapshot? }
@@ -297,7 +298,7 @@ receives the same data as text and structured content.
 | I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A sealed node accepts no content edit. |
 | I6 | Derived data is never stored. |
 | I7 | A node's `id` never changes; a rename or move changes only its path. |
-| I8 | The move to `done` is allowed only when every step is done with its commit recorded; it is checked at that move. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). |
+| I8 | The move to `done` is allowed only when every step is done with its commit recorded and every success gate is `met`; the move to `ongoing` needs every pre-condition `met`, an override of the ready set included. Both are checked at the move, and every change of a criterion mark leaves a `mark` record. A directory is `done` only when its leaves are finished and its own gates are met. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). A legacy `done` node with an unmet criterion is imported as it is, and `validate` reports it as an error to reconcile. |
 | I9 | Deleting sealed work, or moving ongoing work, needs an explicit acknowledgement. Nothing reopens done work: new work is a new node. |
 | I10 | The server keeps no state between calls; every call names its campaign. |
 | I11 | No tool requires user interaction, and no read tool writes. |
@@ -306,8 +307,8 @@ receives the same data as text and structured content.
 ## Launch and distribution (*provisional*, owned by M7)
 
 - **Publication:** the four crates on crates.io, released by CI after a merge to `main`
-  (`release-plz`; `rdm-schema` on its own version line, the other three on one product version; a format or
-  read-model major forces an `rdm-schema` major and a minor a minor, as in [read-model.md](read-model.md) §Versions), beside the existing skill releases. In one workflow run:
+  (`rdm-schema` on its own `0.X.Y` version line, the other three on one product version; a breaking format or
+  read-model change forces an `rdm-schema` X bump and a compatible one at least a Y bump, as in [read-model.md](read-model.md) §Versions). Bumps come from commit types and scopes through the existing multi-semantic-release setup (`@semantic-release/commit-analyzer`, `release-config.js`): a `!` or BREAKING commit gives X, `feat` or `fix` gives Y, and the crate stays `0.x`. M7 wires the crates into that job, with a rule that keeps a breaking change at `0.x`. It runs beside the existing skill releases. In one workflow run:
   crates (schema, core, then server and CLI), then prebuilt binaries and checksums on the GitHub release, then the plugin pinned to
   that version. The plugin never names an unpublished server.
 - **Launch:** the plugin runs `rdm-mcp serve --require-version X.Y.Z`. A binary of another version
