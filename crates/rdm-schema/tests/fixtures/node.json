@@ -23,30 +23,36 @@
       "n_m0",
       "n_m0b"
     ],
-    "sealed": false,
+    "finished": false,
+    "correction_count": 0,
     "goal": "`rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.",
     "preconditions": [
       {
+        "id": "cr_9",
         "text": "`../m0_feasibility_spike.md` is `done` with a go",
         "met": false
       },
       {
+        "id": "cr_10",
         "text": "`../m0b_domain_model_spec.md` is `done`",
         "met": false
       },
       {
+        "id": "cr_11",
         "text": "Reminder `skills-rdm-M1` read",
         "met": false
       }
     ],
     "success_gates": [
       {
+        "id": "cg_12",
         "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message",
         "met": false
       }
     ],
     "references": [
       {
+        "id": "rf_13",
         "label": "R01",
         "title": "§Data Model, §Concurrency, §Contracts & Invariants",
         "target": "../../../__design__/rdm/architecture.md",
@@ -68,6 +74,7 @@
         "references": [],
         "checks": [
           {
+            "id": "ck_14",
             "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
             "expected": "PASS"
           }

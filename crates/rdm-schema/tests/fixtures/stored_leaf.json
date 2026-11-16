@@ -7,26 +7,31 @@
   "goal": "`rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.",
   "preconditions": [
     {
+      "id": "cr_1",
       "text": "`../m0_feasibility_spike.md` is `done` with a go",
       "met": false
     },
     {
+      "id": "cr_2",
       "text": "`../m0b_domain_model_spec.md` is `done`",
       "met": false
     },
     {
+      "id": "cr_3",
       "text": "Reminder `skills-rdm-M1` read",
       "met": false
     }
   ],
   "success_gates": [
     {
+      "id": "cg_4",
       "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message",
       "met": false
     }
   ],
   "references": [
     {
+      "id": "rf_5",
       "label": "R01",
       "title": "§Data Model, §Concurrency, §Contracts & Invariants",
       "target": "../../../__design__/rdm/architecture.md",
@@ -47,6 +52,7 @@
       "references": [],
       "checks": [
         {
+          "id": "ck_6",
           "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
           "expected": "PASS"
         }
@@ -91,6 +97,16 @@
       },
       "reason": "unblocked",
       "override": true
+    },
+    {
+      "ts": "2026-11-17T10:00:00Z",
+      "from": "done",
+      "to": "ongoing",
+      "actor": {
+        "kind": "human"
+      },
+      "reason": "a gate was ticked in error",
+      "correction": true
     }
   ],
   "marks": [
@@ -100,10 +116,20 @@
         "kind": "agent",
         "name": "session-1"
       },
-      "kind": "gate",
-      "index": 0,
+      "criterion_id": "cg_4",
       "met": true,
       "evidence": "cargo test -p rdm-schema --locked: ok"
+    },
+    {
+      "ts": "2026-11-17T09:00:00Z",
+      "actor": {
+        "kind": "human"
+      },
+      "criterion_id": "cg_4",
+      "met": false,
+      "evidence": "the gate was ticked too early",
+      "reason": "a re-run showed a failing test",
+      "correction": true
     }
   ]
 }

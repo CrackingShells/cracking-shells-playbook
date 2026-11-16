@@ -7,6 +7,7 @@
   },
   "description": "Edit a goal and remove a node",
   "source": "__reports__/x.md",
+  "correction": true,
   "changes": [
     {
       "node_id": "n_m1",
@@ -25,10 +26,18 @@
       "op": "move",
       "path_before": "a/m3",
       "path_after": "b/m3"
+    },
+    {
+      "node_id": "n_m1",
+      "op": "set",
+      "item_id": "s_m1_1",
+      "field": "/commit_sha",
+      "old": null,
+      "new": "abc1234"
     }
   ],
   "snapshot": {
-    "core/m2.json": {
+    "n_m2": {
       "id": "n_m2"
     }
   }

@@ -91,6 +91,10 @@
       "description": "An element of `references`.",
       "type": "object",
       "properties": {
+        "id": {
+          "description": "Stable id.",
+          "type": "string"
+        },
         "label": {
           "type": [
             "string",
@@ -111,9 +115,17 @@
             "string",
             "null"
           ]
+        },
+        "node_id": {
+          "description": "The campaign node the reference names, when it names one. Followed over `target`.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
+        "id",
         "title"
       ],
       "additionalProperties": true
@@ -122,6 +134,10 @@
       "description": "An element of `preconditions` or `success_gates`.",
       "type": "object",
       "properties": {
+        "id": {
+          "description": "Stable id, minted at creation, never a position (`Stable identity`).",
+          "type": "string"
+        },
         "text": {
           "type": "string"
         },
@@ -130,6 +146,7 @@
         }
       },
       "required": [
+        "id",
         "text",
         "met"
       ],
@@ -145,14 +162,9 @@
         "actor": {
           "$ref": "#/$defs/Actor"
         },
-        "kind": {
-          "$ref": "#/$defs/CriterionKind"
-        },
-        "index": {
-          "description": "Position of the criterion in its array, from 0.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
+        "criterion_id": {
+          "description": "The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.",
+          "type": "string"
         },
         "met": {
           "description": "The new value of `met`.",
@@ -163,13 +175,26 @@
             "string",
             "null"
           ]
+        },
+        "reason": {
+          "description": "Why the mark was made. Required and not blank when `correction` is `true`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correction": {
+          "description": "`true` when the mark was made on a finished node.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       },
       "required": [
         "ts",
         "actor",
-        "kind",
-        "index",
+        "criterion_id",
         "met"
       ],
       "additionalProperties": true
@@ -200,21 +225,6 @@
         "agent",
         "human",
         "import"
-      ]
-    },
-    "CriterionKind": {
-      "description": "`Mark.kind`: which criterion array a mark refers to.",
-      "oneOf": [
-        {
-          "description": "`preconditions`.",
-          "type": "string",
-          "const": "pre"
-        },
-        {
-          "description": "`success_gates`.",
-          "type": "string",
-          "const": "gate"
-        }
       ]
     }
   }

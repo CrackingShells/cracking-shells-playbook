@@ -100,3 +100,53 @@ fn unknown_keys_keep_their_order_in_the_output_string() {
     let c: Comment = serde_json::from_str(input).unwrap();
     assert_eq!(serde_json::to_string(&c).unwrap(), input);
 }
+
+#[test]
+fn marks_point_by_criterion_id_and_corrections_are_flagged() {
+    let v: Leaf = serde_json::from_value(fixture("stored_leaf.json")).unwrap();
+    let gate = &v.success_gates[0].id;
+    assert!(v.marks.iter().all(|m| &m.criterion_id == gate));
+    assert_eq!(v.marks[0].correction, None);
+    assert_eq!(v.marks[1].correction, Some(true));
+    assert!(v.marks[1].reason.as_deref().is_some_and(|r| !r.trim().is_empty()));
+    let rev = v.history.last().unwrap();
+    assert_eq!((rev.from, rev.to, rev.correction), (Status::Done, Status::Ongoing, Some(true)));
+}
+
+#[test]
+fn a_mark_with_a_position_is_refused() {
+    let mut v = fixture("stored_leaf.json");
+    v["marks"][0].as_object_mut().unwrap().remove("criterion_id");
+    v["marks"][0]["index"] = serde_json::json!(0);
+    assert!(serde_json::from_value::<Leaf>(v).is_err());
+}
+
+#[test]
+fn reordering_criteria_leaves_marks_valid() {
+    let mut v: Leaf = serde_json::from_value(fixture("stored_leaf.json")).unwrap();
+    let extra = Criterion { id: "cg_new".into(), text: "another".into(), met: false, extra: Default::default() };
+    v.success_gates.insert(0, extra);
+    v.preconditions.reverse();
+    for m in &v.marks {
+        assert!(v.success_gates.iter().chain(&v.preconditions).any(|c| c.id == m.criterion_id));
+    }
+}
+
+#[test]
+fn ids_are_unique_and_changes_name_items_by_id() {
+    let v: Leaf = serde_json::from_value(fixture("stored_leaf.json")).unwrap();
+    let mut ids: Vec<&str> = v.preconditions.iter().chain(&v.success_gates).map(|c| c.id.as_str()).collect();
+    ids.extend(v.references.iter().map(|r| r.id.as_str()));
+    for s in &v.steps {
+        ids.push(&s.id);
+        ids.extend(s.checks.iter().map(|c| c.id.as_str()));
+    }
+    let n = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), n);
+    let a: Amendment = serde_json::from_value(fixture("stored_amendment.json")).unwrap();
+    assert_eq!(a.correction, Some(true));
+    assert_eq!(a.changes[3].item_id.as_deref(), Some("s_m1_1"));
+    assert_eq!(a.changes[3].field.as_deref(), Some("/commit_sha"));
+}
