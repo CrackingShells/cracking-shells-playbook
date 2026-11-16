@@ -22,3 +22,4 @@ schemars = "1"
 [dev-dependencies]
 rmcp = { version = "=3.10.0", features = ["client", "transport-child-process"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
+jsonschema = { version = "0.33", default-features = false }
