@@ -20,8 +20,8 @@ A stub `rdm-mcp` that serves the built graph page and passes its stdio integrati
 ## Status
 ```mermaid
 graph TD
-    stub_server[Stub server]:::planned
-    graph_view[Graph view]:::planned
+    stub_server[Stub server]:::inprogress
+    graph_view[Graph view]:::inprogress
     trials[Host trials]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -33,8 +33,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `stub_server.md` | 📄 Leaf Task | ⬜ Planned |
-| `graph_view.md` | 📄 Leaf Task | ⬜ Planned |
+| `stub_server.md` | 📄 Leaf Task | 🔄 In Progress |
+| `graph_view.md` | 📄 Leaf Task | 🔄 In Progress |
 | `trials/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
