@@ -72,6 +72,7 @@ enum Mode {
     Result,
     Chunks,
     Stream,
+    Meta,
 }
 
 impl Mode {
@@ -80,6 +81,7 @@ impl Mode {
             Self::Result => "result",
             Self::Chunks => "chunks",
             Self::Stream => "stream",
+            Self::Meta => "meta",
         }
     }
 }
@@ -192,6 +194,8 @@ fn internal(e: impl std::fmt::Display) -> ErrorData {
 
 /// Largest accepted `scale`.
 const MAX_SCALE: u32 = 100;
+/// Largest `scale` in `meta` mode.
+const META_MAX_SCALE: u32 = 10;
 /// Target size of one chunk, in serialised bytes.
 const CHUNK_BYTES: usize = 64 * 1024;
 /// Port of the localhost SSE listener, set once in `main`.
@@ -367,6 +371,12 @@ impl RdmSpike {
                 None,
             ));
         }
+        if matches!(mode, Mode::Meta) && scale > META_MAX_SCALE {
+            return Err(ErrorData::invalid_params(
+                format!("mode \"meta\" takes scale 1 to {META_MAX_SCALE}"),
+                None,
+            ));
+        }
         if matches!(mode, Mode::Result) && scale > 1 {
             return Err(ErrorData::invalid_params(
                 "mode \"result\" cannot take scale > 1: the result enters the model context; \
@@ -409,14 +419,27 @@ impl RdmSpike {
                 let port = STREAM_PORT.get().ok_or_else(|| internal("stream listener is not bound"))?;
                 view.stream_url = Some(format!("http://127.0.0.1:{port}/stream?scale={scale}"));
             }
+            Mode::Meta => {}
         }
         let summary = format!(
             "Roadmap {} at {}: {} nodes, mode {}, scale {}.",
             view.campaign, view.frozen_at, view.node_count, view.mode, scale
         );
         view.t_server_ms = now_ms();
-        let mut result =
-            CallToolResult::structured(serde_json::to_value(&view).map_err(internal)?);
+        let mut value = serde_json::to_value(&view).map_err(internal)?;
+        let mut result_meta = None;
+        if matches!(mode, Mode::Meta) {
+            // structuredContent keeps only the small summary; the nodes ride
+            // in the result-level `_meta`.
+            if let Value::Object(map) = &mut value {
+                for k in ["frozen_at", "nodes", "chunk_count", "chunk_uri_template", "stream_url"] {
+                    map.remove(k);
+                }
+            }
+            let nodes = serde_json::to_value(&nodes).map_err(internal)?;
+            result_meta = Some(meta_from(json!({ "rdm": { "nodes": nodes } })));
+        }
+        let mut result = CallToolResult::structured(value).with_meta(result_meta);
         result.content = vec![ContentBlock::text(summary)];
         Ok(result)
     }
