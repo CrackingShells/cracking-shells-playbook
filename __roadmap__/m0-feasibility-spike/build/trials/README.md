@@ -19,7 +19,7 @@ Every host-facing gate of M0 is observed on Claude Code Desktop, VS Code Copilot
 ## Status
 ```mermaid
 graph TD
-    host_trials[Host trials]:::planned
+    host_trials[Host trials]:::inprogress
     report[Spike report]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -31,7 +31,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `host_trials.md` | 📄 Leaf Task | ⬜ Planned |
+| `host_trials.md` | 📄 Leaf Task | 🔄 In Progress |
 | `report/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
