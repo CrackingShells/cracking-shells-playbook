@@ -29,3 +29,8 @@ Read the routed reference in full before acting; the table says where a rule liv
 | Writing or changing the CI release job: triggers, concurrency, permissions, branch protection or app tokens, the bump commit, monorepos, re-runs; a PR that shows no checks, or fails the title check or commit-range check | [`references/ci-release-job.md`](references/ci-release-job.md) |
 | Asked for a prerelease, dev or rc channel, or a long-lived development branch | [`references/channels.md`](references/channels.md) |
 | No release appeared, the release job failed, verifying the first run of a new release job, a bump push was rejected, the first release or tags are missing, history was rewritten on `main`, or local `main` is stale | [`references/recovery.md`](references/recovery.md) |
+
+## Reporting problems
+
+`writing-release` is in active development. If any part of it proves wrong or misleads you,
+report it to `CrackingShells/cracking-shells-playbook` by following [CONTRIBUTING.md](CONTRIBUTING.md).
