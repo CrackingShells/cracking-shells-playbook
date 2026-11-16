@@ -4,20 +4,19 @@
 **Pre-conditions**:
 - [ ] R01 read (`__design__/rdm/architecture.md`) and the gap analysis `__reports__/rdm_domain_model_review/01-gap_analysis_v0.md`
 - [ ] Reminder `skills-rdm-M0b` read
-- [ ] The open question `__reports__/rdm_domain_model_review/00-open_question_v0.md` is answered with counts from the legacy campaigns and the meta-roadmap
 **Success Gates**:
 - ⬜ `crates/rdm-schema` holds the stored types, the read-model types, the format version (`MAJOR.MINOR`) and the read-model version as constants, with no store and no I/O; JSON Schemas are generated from the types and committed, and CI fails when they drift
 - ⬜ The meaning of `blocked` and `amendment` is written as a transition table (who sets each move, its preconditions, its effect on the ready set), and R01 is updated in the same merge
 - ⬜ Every production of `leaf.bnf` and `readme.bnf` maps to a stored field, a derived field or a recorded drop, in a committed traceability table
 - ⬜ The read model has one worked example per projection, and reports `level` together with where it comes from
-- ⬜ Eliott has chosen the ordering rule (depth, explicit edges or both) with the counts attached, and the schema and read model reflect it
+- ⬜ Eliott has chosen the ordering rule (depth, explicit edges or both), and the schema and read model reflect it
 **References**: [R01 §Data Model, §Graph operations, §Contracts & Invariants](../../__design__/rdm/architecture.md) — the provisional schema sketch and the status machine this milestone settles; [gap analysis](../../__reports__/rdm_domain_model_review/01-gap_analysis_v0.md) — why the milestone exists and what it owns
 
 ## Step 1: Plan the milestone
 
 **Goal**: The campaign `__roadmap__/m0b-domain-model-spec/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding the details this leaf does not: the transition table and the meaning of `blocked` (terminal in the legacy skill, resumable in R01; whether a blocked leaf satisfies its level) and of `amendment` (a birth state in the skill, a reopened state in R01; whether it stays a status); the stored shape of per-criterion state, step title, step timestamp, the breaking mark of a commit, structured references and amendment display ids (a sequential id collides when two branches mint one); the projections of the read model and what each carries; how the format version relates to the crate version (the files carry `MAJOR.MINOR`, a format major forces a crate major, a format minor a crate minor); how the ordering evidence feeds the choice and what the schema reserves for it; where the work splits into leaves.
+In plan mode, author the campaign with `managing-roadmaps`, deciding the details this leaf does not: the transition table and the meaning of `blocked` (terminal in the legacy skill, resumable in R01; whether a blocked leaf satisfies its level) and of `amendment` (a birth state in the skill, a reopened state in R01; whether it stays a status); the stored shape of per-criterion state, step title, step timestamp, the breaking mark of a commit, structured references and amendment display ids (a sequential id collides when two branches mint one); the projections of the read model and what each carries; how the format version relates to the crate version (the files carry `MAJOR.MINOR`, a format major forces a crate major, a format minor a crate minor); the ordering rule, which Eliott chooses in this milestone (`__reports__/rdm_domain_model_review/00-open_question_v0.md` lays out the options), and what the schema reserves for it; where the work splits into leaves.
 The crate is `rdm-schema`, published at M7 with the other crates and kept at `0.x` until then. Its root manifest uses `members = ["crates/*"]`, agreed with M0, so the two parallel branches never edit the same line.
 No adversarial verification by default: the work is specification and Eliott reviews it. A fresh-session read of the traceability table is optional, with a brief that names what to attack (fields dropped silently).
 **Deliverables**: `__roadmap__/m0b-domain-model-spec/README.md` and its leaves
