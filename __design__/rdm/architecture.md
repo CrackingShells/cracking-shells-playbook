@@ -139,14 +139,15 @@ _dir.json   { schema_version, id, kind: campaign|directory, title, context, goal
               preconditions[Criterion], success_gates[Criterion], references[], steps[1..5],
               progress{branch?, commits?, notes}, history[], marks[] }
 step        { id, title, goal, implementation_logic, deliverables, references[],
-              checks[{text, expected, command?}], commit{type, scope?, breaking, summary},
+              checks[{id, text, expected, command?}], commit{type, scope?, breaking, summary},
               requires?, done, commit_sha?, done_at? }
-Criterion   { text, met }  (enforced: see I8)   Reference { label?, title, target?, note? }
-history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id? }
-mark        { ts, actor, kind: pre|gate, index, met, evidence? }   (trace of every criterion mark)
+Criterion   { id, text, met }  (enforced: see I8)
+Reference   { id, label?, title, target?, note?, node_id? }   (every sub-item id is stable, never a position)
+history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id?, correction? }
+mark        { ts, actor, criterion_id, met, evidence?, reason?, correction? }   (trace of every criterion mark)
 comment     { schema_version, id, node_id, ts, actor, text }
-amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?,
-              changes[{node_id, op, path_before?, path_after?, field?, old?, new?}], snapshot? }
+amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?, correction?,
+              changes[{node_id, op, path_before?, path_after?, item_id?, field?, old?, new?}], snapshot? }
 ```
 
 Every legacy grammar production is stored, derived or dropped with a reason in
@@ -221,18 +222,20 @@ stateDiagram-v2
   cancelled --> planned: undo, to the pre-cancel status
   cancelled --> ongoing: undo
   cancelled --> paused: undo
-  done --> [*]
+  cancelled --> done: undo of a cancel made from done
+  done --> ongoing: reversal, with a reason
+  done --> paused: reversal, with a reason
+  done --> cancelled: reversal, with a reason
 ```
 
   The full table of moves, who may make them and their reasons is in [statuses.md](statuses.md).
-  `done` is the only terminal status. Entering `paused` or `cancelled` needs a reason, and undoing
+  `done` is the normal end state, not a lock: a reversal out of it needs a reason. Entering `paused` or `cancelled` needs a reason, and undoing
   a cancel restores the status before it. Pausing or cancelling a directory applies to every
-  non-terminal leaf under it as one operation, and a directory cancel is undone through its
+  unfinished leaf under it as one operation, and a directory cancel is undone through its
   `op_id`. `done` requires every step recorded done with its commit. Starting a leaf outside the
   ready set is refused unless an override with a reason is given, and the override is recorded.
-  A directory's status is derived from its leaves. **Sealing:** a `done` node's content never
-  changes, and a `cancelled` node's content is sealed while it is cancelled; both accept only
-  appended comments. Every content edit to a `planned`, `ongoing` or `paused` node carries an
+  A directory's status is derived from its leaves. **Finished nodes:** a `done` or `cancelled` node
+  accepts every edit, with a non-blank reason; each is flagged as a correction and counted. Every content edit to a `planned`, `ongoing` or `paused` node carries an
   amendment description.
 - **Primitives:** add, remove (subtree), set field, rename, move to another parent.
 - **Composites,** each expanding to primitives: wrap siblings in a new level, unwrap a level, split
@@ -295,11 +298,11 @@ receives the same data as text and structured content.
 | I2 | A consumer holds no roadmap logic; the CLI and the MCP tools give the same result on the same input. |
 | I3 | No write leaves a campaign in a state `validate` rejects, including after a crash at any point. |
 | I4 | A write based on a stale revision is refused and changes nothing. |
-| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A sealed node accepts no content edit. |
+| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A content edit of a finished node needs a reason and is a correction. |
 | I6 | Derived data is never stored. |
 | I7 | A node's `id` never changes; a rename or move changes only its path. |
 | I8 | The move to `done` is allowed only when every step is done with its commit recorded and every success gate is `met`; the move to `ongoing` needs every pre-condition `met`, an override of the ready set included. Both are checked at the move, and every change of a criterion mark leaves a `mark` record. A directory is `done` only when its leaves are finished and its own gates are met. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). A legacy `done` node with an unmet criterion is imported as it is, and `validate` reports it as an error to reconcile. |
-| I9 | Deleting sealed work, or moving ongoing work, needs an explicit acknowledgement. Nothing reopens done work: new work is a new node. |
+| I9 | Deleting finished work, or moving ongoing work, needs an explicit acknowledgement. Reopening done work needs a reason and is counted as a correction. |
 | I10 | The server keeps no state between calls; every call names its campaign. |
 | I11 | No tool requires user interaction, and no read tool writes. |
 | I12 | A reader never drops a field it does not know. |
@@ -328,7 +331,7 @@ receives the same data as text and structured content.
 | Revisions | Counter / **content hash** | hash | No base to merge from, so a conflict is refused, never merged |
 | Lock | Lock file as existence / per file / **one OS lock per campaign** | per campaign | Writers on one campaign are serialised, for milliseconds |
 | Amendment scope | Every write / **content and structure** | content and structure | Status history is kept apart from the amendment log |
-| Mutation policy | Additive only / **full CRUD, with done and cancelled nodes sealed** | full CRUD | History lives in amendments, not in undeletable nodes |
+| Mutation policy | Additive only / **full CRUD, finished nodes edited with a reason** | full CRUD | History lives in amendments, not in undeletable nodes |
 | Consumers | MCP only / **MCP and CLI over one core** | both | A second surface to keep thin |
 | UI | None / server-rendered image / **Svelte page as an MCP App** | Svelte | A Node build in CI and a committed artefact |
 | Registry | PyPI wheels / npm / **crates.io** | crates.io | No pinned-run launcher, hence the self-provisioning launch |
