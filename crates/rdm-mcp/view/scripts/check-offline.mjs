@@ -23,17 +23,21 @@ const ALLOWED_URLS = new Map([
   ['http://[${e}]', 'zod hostname-validation template literal, used to parse an IPv6 host, not to fetch'],
   ['https://github.com/cfworker', 'attribution string in the bundled cfworker JSON-schema validator'],
   ['https://*.example.com', 'zod doc/example string'],
+  ['http://www.w3.org/1999/xhtml', 'XHTML namespace constant in the svelte runtime, passed to createElementNS, never fetched'],
 ]);
+
+// Allowed by prefix: svelte runtime error messages carry a docs link as text, shown in a thrown Error, never fetched.
+const ALLOWED_PREFIXES = [['https://svelte.dev/e/', 'svelte runtime error-message docs links']];
 
 const problems = [];
 if (/<script\b[^>]*\bsrc\s*=/i.test(html)) problems.push('<script src>');
 if (/<link\b[^>]*\bhref\s*=/i.test(html)) problems.push('<link href>');
 if (/\bimport\s*\(/.test(html)) problems.push('import(');
 for (const m of new Set(html.match(/https?:\/\/[^\s"'`)<>\\]*/g) ?? [])) {
-  if (!ALLOWED_URLS.has(m)) problems.push(`URL string: ${m}`);
+  if (!ALLOWED_URLS.has(m) && !ALLOWED_PREFIXES.some(([p]) => m.startsWith(p))) problems.push(`URL string: ${m}`);
 }
 if (problems.length) {
   console.error('check:offline FAIL:\n  ' + problems.join('\n  '));
   process.exit(1);
 }
-console.log(`check:offline PASS (${ALLOWED_URLS.size} allowed URL strings)`);
+console.log(`check:offline PASS (${ALLOWED_URLS.size} exact + ${ALLOWED_PREFIXES.length} prefix URL allowances)`);
