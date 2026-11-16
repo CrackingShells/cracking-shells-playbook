@@ -31,10 +31,10 @@ Source: [desktop.md](trials/desktop.md), [vscode.md](trials/vscode.md), [cli.md]
 | 1 | Stub lists and calls its tool in Desktop, VS Code, CLI | PASS | Desktop: tool listed, called, page renders [desktop.md, Trial 1]. VS Code: connected and called [vscode.md, header]. CLI: `roadmap_view` found and called, `node_count` 16 [cli.md] |
 | 2a | Page renders in Desktop and VS Code | PASS | Desktop 16 of 16 nodes and 160 of 160 from `_meta` [desktop.md, Trial 4]. VS Code 16 of 16 [vscode.md, Trial 1] |
 | 2b | Leaf content through an app-only tool | DEVIATION | Desktop: BLOCKED, `IPC not available for MCP tool call`, no `serverTools` [desktop.md, Trial 1, Trial 2]. Leaf content reaches the page through the result `_meta` instead [desktop.md, Trial 4]. VS Code: PASS, `serverTools` advertised, no tool errors [vscode.md, Trial 1, Trial 2] |
-| 2c | Full view | DEVIATION | Desktop offers `inline` and `fullscreen` [desktop.md, Trial 2]. The notes do not record that fullscreen was opened. VS Code offers `inline` only and fell back to the inline outline [vscode.md, Trial 1, Trial 2] |
+| 2c | Full view | PASS (Desktop), DEVIATION (VS Code) | Desktop offers `inline` and `fullscreen` [desktop.md, Trial 2]; Eliott confirmed fullscreen works (2026-11-16, steering answer 3). VS Code offers `inline` only and fell back to the inline outline [vscode.md, Trial 1, Trial 2] |
 | 2d | Zero network requests | PASS | `check:offline` passes for the built page (coordinator brief; the command output is not in a trial note). The only request is the deliberate localhost stream test [vscode.md, Trial 2; desktop.md, Trial 3: CSP-blocked] |
 | 3 | Host dumps as raw JSON, protocol versions | DEVIATION | Capabilities and context are summarised per host [desktop.md, Trial 2; vscode.md, Trial 1]. Desktop's raw dump `desktop-host.json` is referenced but is not in the committed trial folder. No raw JSON for VS Code or CLI. Versions: PASS (see Protocol table) |
-| 4 | Time to display, cold and warm, median and worst | DEVIATION | Single samples, no series. See Timing |
+| 4 | Time to display, cold and warm, median and worst | PASS | Single runs accepted by Eliott (2026-11-16, steering answer 2). See Timing |
 | 5 | Allow-rule string from a real session | PASS | Both forms read from `claude -p` 2.1.316 [allow-rule.md]. Desktop agrees for the project form [desktop.md, Trial 2] |
 | 6 | Crate names free | DEVIATION | `rdm-core` was taken; Eliott chose `rdm-engine` on 2026-11-16 [milestone gate text; R01 commit af8ad04]. The availability check of the other three names is not in a trial note |
 | 7 | Go or no-go per host | PASS | Next table |
@@ -195,3 +195,27 @@ Caption: on Desktop the solid arrows work and the dashed arrow fails (no `server
 - [README.md](README.md)
 - `__design__/rdm/architecture.md`
 - `__roadmap__/roadmap-mcp-rework/m0_feasibility_spike.md`
+
+## Steering answers (Eliott, 2026-11-16)
+
+| # | Topic | Answer |
+|:--|:--|:--|
+| 1 | M6 | The inline view fed from the result `_meta` is the direction: it is the only path working on two hosts (Desktop and VS Code) |
+| 2 | Timing | Single runs are accepted for these probes. The timing gate is PASS |
+| 3 | Desktop fullscreen | Eliott confirmed it works. The full-view gate is PASS for Desktop (gate table row 2c updated) |
+| 4 | Bundle size | Measured below. Untested on any host. The page never enters the model context, so the choice is left to M6 |
+
+Context for answer 1:
+
+- No new dated MCP Apps spec is announced. The only dated version is 2026-01-26. The draft keeps moving, most recently on 2026-11-04, when the double-sandboxed iframe requirements were relaxed.
+- The spec deprecates the flat `_meta["ui/resourceUri"]` key "before general availability". We use the nested `_meta.ui.resourceUri`.
+- ext-apps v2.1.0 shipped on 2026-11-10. We pin 2.0.4.
+
+Bundle size, measured on 2026-11-16 by the coordinator. ext-apps was swapped for a 73-line hand-written bridge making the same calls.
+
+| Build | Raw | Gzip |
+|:--|:--|:--|
+| With ext-apps 2.0.4 | 286,141 B | 78,949 B |
+| Hand-written bridge | 54,487 B (-81%) | 20,415 B |
+
+The bridge is about 2.1 KB minified.
