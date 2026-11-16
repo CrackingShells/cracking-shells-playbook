@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "id": "01JD0000000000000000000001",
+  "node_id": "n_m1",
+  "ts": "2026-11-16T12:00:00Z",
+  "actor": {
+    "kind": "human",
+    "name": "eliott"
+  },
+  "text": [
+    "A comment.",
+    "Second line."
+  ],
+  "op_id": "op2"
+}
