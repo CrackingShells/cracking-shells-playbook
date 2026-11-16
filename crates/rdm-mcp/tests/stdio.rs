@@ -438,7 +438,7 @@ async fn meta_mode_carries_nodes_in_result_meta() {
     let sc = result.structured_content.expect("structuredContent");
     assert_eq!(
         keys(&sc),
-        ["campaign", "mode", "node_count", "payload_bytes", "scale", "t_server_ms"]
+        ["campaign", "frozen_at", "mode", "node_count", "payload_bytes", "scale", "t_server_ms"]
     );
     assert_eq!(sc["mode"], "meta");
     let meta = serde_json::to_value(result.meta.as_ref().expect("result _meta")).expect("ser");

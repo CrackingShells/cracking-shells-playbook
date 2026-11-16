@@ -432,7 +432,7 @@ impl RdmSpike {
             // structuredContent keeps only the small summary; the nodes ride
             // in the result-level `_meta`.
             if let Value::Object(map) = &mut value {
-                for k in ["frozen_at", "nodes", "chunk_count", "chunk_uri_template", "stream_url"] {
+                for k in ["nodes", "chunk_count", "chunk_uri_template", "stream_url"] {
                     map.remove(k);
                 }
             }
