@@ -1,3 +1,10 @@
+# writing-history [1.3.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.2.1...writing-history@1.3.0) (2026-11-16)
+
+
+### Features
+
+* **writing-history:** ask agents to report plugin problems ([ec78a6c](https://github.com/CrackingShells/cracking-shells-playbook/commit/ec78a6c3ecd29f9068e94ee765cfc0fc9b74e0e2))
+
 ## writing-history [1.2.1](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-history@1.2.0...writing-history@1.2.1) (2026-11-04)
 
 
