@@ -7,15 +7,32 @@ export interface RoadmapNode {
   title: string;
   status: Status;
   depth: number;
+  /** Present only in result mode at scale 1. */
+  markdown?: string;
 }
 
-/** structuredContent of roadmap_view: the fixture plus the server's own numbers. */
+export type Mode = 'result' | 'chunks' | 'stream';
+
+/** structuredContent of roadmap_view (round 2 contract). nodes is present in result mode only. */
 export interface RoadmapView {
-  campaign: string;
-  frozen_at: string;
-  nodes: RoadmapNode[];
+  mode: Mode;
+  scale: number;
   t_server_ms: number;
   payload_bytes: number;
+  node_count: number;
+  nodes?: RoadmapNode[];
+  chunk_count?: number;
+  chunk_uri_template?: string;
+  stream_url?: string;
+}
+
+export interface Stamps {
+  t_result_ms: number;
+  t_first_data_ms: number;
+  t_first_paint_ms: number;
+  t_complete_ms: number;
+  bytes_received: number;
+  nodes_received: number;
 }
 
 /** The five legacy classDef colours of the roadmap READMEs. */

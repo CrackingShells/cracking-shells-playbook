@@ -84,3 +84,30 @@ export async function requestDisplayMode(mode: 'inline' | 'fullscreen' | 'pip'):
   const r = await app.requestDisplayMode({ mode });
   return r.mode;
 }
+
+/** resources/read through the host: app.readServerResource({uri}). Returns the first content's text. */
+export async function readResourceText(uri: string): Promise<string> {
+  try {
+    const r = await app.readServerResource({ uri });
+    const c = r.contents?.[0] as { text?: string } | undefined;
+    if (typeof c?.text !== 'string') throw new Error('resource has no text content: ' + uri);
+    return c.text;
+  } catch (e) {
+    toolErrorListener?.('resources/read ' + uri, String(e));
+    throw e;
+  }
+}
+
+/** ui/message: one user chat message, only if the host advertises the message capability. */
+export async function sendChatMessage(text: string): Promise<string> {
+  const caps = app.getHostCapabilities() as { message?: unknown } | undefined;
+  if (!caps?.message) return 'skipped: host does not advertise message';
+  try {
+    await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
+    return 'ok';
+  } catch (e) {
+    const t = String(e);
+    toolErrorListener?.('ui/message', t);
+    return 'failed: ' + t;
+  }
+}

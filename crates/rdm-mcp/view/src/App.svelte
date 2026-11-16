@@ -1,50 +1,77 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { app, connect, callAppTool, requestDisplayMode, onToolError, sendModelContext, type HostInfo } from './bridge';
-  import { buildProbe, recordFirstPaint, recordFullView, nextFrameMs, type DisplayModeRan } from './probe';
+  import { app, connect, callAppTool, requestDisplayMode, readResourceText, onToolError, sendModelContext, sendChatMessage, type HostInfo } from './bridge';
+  import { buildProbe, probeLine } from './probe';
+  import { ingest } from './ingest';
   import Graph from './Graph.svelte';
   import LeafPane from './LeafPane.svelte';
   import Outline from './Outline.svelte';
   import Diagnostics from './Diagnostics.svelte';
-  import type { RoadmapView } from './types';
+  import type { RoadmapNode, RoadmapView, Stamps } from './types';
 
   let view = $state.raw<RoadmapView | null>(null);
   let host = $state.raw<HostInfo | null>(null);
+  let nodes = $state.raw<RoadmapNode[]>([]);
   let error = $state<string | null>(null);
   let theme = $state<'light' | 'dark'>('light');
   let selected = $state<string | null>(null);
   let markdown = $state<string | null>(null);
-  let loading = $state(false);
+  let leafStatus = $state('');
+  let leafRead = $state.raw<unknown>(null);
   let outline = $state(false);
-  let ran = $state<DisplayModeRan | null>(null);
-  let tView = $state(0);
+  let ran = $state<string | null>(null);
   let errors = $state<Record<string, string>>({});
   let modelContext = $state('not attempted');
-  let callResult = $state('not run');
+  let messageStatus = $state('not attempted');
+  let stamps = $state<Stamps>({
+    t_result_ms: 0, t_first_data_ms: 0, t_first_paint_ms: 0, t_complete_ms: 0, bytes_received: 0, nodes_received: 0,
+  });
+  let started = false;
   onToolError((tool, text) => (errors[tool] = text));
-
-  // Discriminating test: the MODEL-VISIBLE tool through the same view-to-server path.
-  async function callRoadmapView() {
-    callResult = 'running...';
-    try {
-      const r = await callAppTool<RoadmapView>('roadmap_view');
-      callResult = `success, ${r?.nodes?.length ?? '?'} nodes`;
-    } catch (e) {
-      callResult = 'error: ' + String(e);
-    }
-  }
-  let probed = false;
 
   function readTheme(ctx: unknown) {
     const t = (ctx as { theme?: string } | undefined)?.theme;
     if (t === 'light' || t === 'dark') theme = t;
   }
 
+  function displayMode(): string {
+    return ran ?? (host?.hostContext as { displayMode?: string } | undefined)?.displayMode ?? 'inline';
+  }
+
+  async function run(sc: RoadmapView) {
+    try {
+      await ingest(sc, stamps, (n) => (nodes = n));
+    } catch (e) {
+      error = String(e);
+      return;
+    }
+    // Complete: ONE ui/message probe, plus ui/update-model-context.
+    const h = host ?? (await waitHost());
+    const probe = buildProbe(sc, stamps, h, displayMode(), leafRead);
+    sendModelContext(probe).then((r) => (modelContext = r));
+    sendChatMessage(probeLine(probe)).then((r) => (messageStatus = r));
+  }
+
+  function waitHost(): Promise<HostInfo> {
+    return new Promise((resolve) => {
+      const t = setInterval(() => {
+        if (host) {
+          clearInterval(t);
+          resolve(host);
+        }
+      }, 20);
+    });
+  }
+
   onMount(() => {
     connect(
       (p) => {
         const sc = p.structuredContent as unknown as RoadmapView | undefined;
-        if (sc && Array.isArray(sc.nodes)) view = sc;
+        if (!sc || !sc.mode || started) return;
+        started = true;
+        stamps.t_result_ms = Date.now();
+        view = sc;
+        void run(sc);
       },
       readTheme,
     ).then(
@@ -56,37 +83,39 @@
     );
   });
 
-  // First paint: once the graph is in the DOM, take t_view_ms in the next frame and probe once.
-  $effect(() => {
-    if (view && host && !probed) {
-      probed = true;
-      const v = view;
-      const h = host;
-      void nextFrameMs().then((t) => {
-        tView = t;
-        const mode = (h.hostContext as { displayMode?: string } | undefined)?.displayMode ?? 'inline';
-        // Second channel, independent of probe_record: ui/update-model-context.
-        void sendModelContext(buildProbe(v, h, t, mode)).then((r) => (modelContext = r));
-        return recordFirstPaint(v, h, t);
-      }).catch((e) => (error = 'probe_record: ' + String(e)));
-    }
-  });
-
-  async function openLeaf(path: string) {
+  function openLeaf(path: string) {
     selected = path;
-    loading = true;
+    leafStatus = '';
+    markdown = nodes.find((n) => n.path === path)?.markdown ?? null;
+  }
+
+  async function readLeaf() {
+    if (!selected) return;
+    const uri = 'rdm://leaf/' + selected;
+    const t0 = Date.now();
     try {
-      const r = await callAppTool<{ path: string; markdown: string }>('leaf_get', { path });
-      markdown = r?.markdown ?? null;
+      markdown = await readResourceText(uri);
+      const ms = Date.now() - t0;
+      leafStatus = `resources/read ok in ${ms} ms`;
+      leafRead = { path: selected, ok: true, ms };
     } catch (e) {
-      markdown = 'error: ' + String(e);  // surfaced as is, also listed in Diagnostics
-    } finally {
-      loading = false;
+      leafStatus = 'resources/read error: ' + String(e);
+      leafRead = { path: selected, ok: false, error: String(e) };
+    }
+  }
+
+  async function tryTool() {
+    if (!selected) return;
+    try {
+      const r = await callAppTool<{ markdown: string }>('leaf_get', { path: selected });
+      markdown = r?.markdown ?? null;
+      leafStatus = 'tool call ok';
+    } catch (e) {
+      leafStatus = 'tool call error: ' + String(e);
     }
   }
 
   async function fullView() {
-    if (!view || !host) return;
     const ctx = app.getHostContext() as { availableDisplayModes?: string[] } | undefined;
     if (ctx?.availableDisplayModes?.includes('fullscreen')) {
       try {
@@ -94,20 +123,18 @@
         ran = mode === 'fullscreen' ? 'fullscreen' : 'inline';
       } catch (e) {
         error = String(e);
-        return;
       }
     } else {
       outline = true;
       ran = 'outline';
     }
-    await recordFullView(view, host, tView || Date.now(), ran).catch((e) => (error = String(e)));
   }
 </script>
 
 <main class:dark={theme === 'dark'}>
   <header>
-    <strong>{view?.campaign ?? 'roadmap'}</strong>
-    {#if view}<span class="meta">{view.nodes.length} nodes</span>{/if}
+    <strong>roadmap {view ? `(${view.mode} x${view.scale})` : ''}</strong>
+    {#if view}<span class="meta">{nodes.length}/{view.node_count} nodes</span>{/if}
     <button onclick={fullView} disabled={!view}>Full view</button>
     {#if ran}<span class="meta">ran: {ran}</span>{/if}
     {#if outline}<button onclick={() => (outline = false)}>Back to graph</button>{/if}
@@ -116,15 +143,15 @@
   {#if !view}
     <p class="meta">{host ? 'waiting for the tool result...' : 'connecting...'}</p>
   {:else if outline}
-    <Outline nodes={view.nodes} onselect={openLeaf} />
-    {#if selected}<LeafPane path={selected} {markdown} {loading} />{/if}
+    <Outline {nodes} onselect={openLeaf} />
+    {#if selected}<LeafPane path={selected} {markdown} loading={false} status={leafStatus} onread={readLeaf} ontool={tryTool} />{/if}
   {:else}
     <div class="body">
-      <Graph nodes={view.nodes} {selected} onselect={openLeaf} />
-      <LeafPane path={selected} {markdown} {loading} />
+      <Graph {nodes} {selected} onselect={openLeaf} />
+      <LeafPane path={selected} {markdown} loading={false} status={leafStatus} onread={readLeaf} ontool={tryTool} />
     </div>
   {/if}
-  <Diagnostics {view} {host} {tView} {errors} {modelContext} {callResult} onCall={callRoadmapView} />
+  <Diagnostics {view} {host} {stamps} {errors} {modelContext} {messageStatus} {displayMode} />
 </main>
 
 <style>
