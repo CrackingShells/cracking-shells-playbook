@@ -44,6 +44,15 @@ Unlike `dist/`, **`plugins/` is committed.** These trees are installed by git so
 
 **Releases are meant to run in CI, not locally.** The release job checks out a fresh clone and never sets `core.hooksPath`, so the pre-commit hook cannot fire there. Running a release locally is a different story: the hook *will* fire on the release commit, and separately, `@semantic-release/git` commits with a plain `git commit -m` — no pathspec — which sweeps in everything already staged, not just this release's files. Do not run a release from a working copy that has other staged or hook-triggering changes sitting around.
 
+## Reporting footer
+
+Every shipped skill ends with a "Reporting problems" footer that points to a `CONTRIBUTING.md` at the root of the skill. That file tells an agent how to report a problem with the plugin, and it is identical in every skill of every CrackingShells plugin repository (this one, Pinion, Plumage and colgrep-mcp). The canonical copies live in `templates/plugin-reporting/`:
+
+- `CONTRIBUTING.md`: copy it verbatim to `skills/<name>/CONTRIBUTING.md`. Change it here first, then copy it to every skill in every repository, so the copies never diverge.
+- `footer.md`: append it to the end of `skills/<name>/SKILL.md`, with `{{plugin}}` replaced by the plugin's name and `{{repo}}` by the repository's name.
+
+A new skill gets both before its first release.
+
 ## Building a skill locally
 
 To package a skill from source, for example to try a change before it is released:
