@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Query flags: mode=result|chunks|stream, scale=1..100, serverTools=1, mc=0, msg=0, modes=inline, theme=dark.
+<!-- Query flags: mode=result|chunks|stream|meta (nometa=1 omits _meta.rdm), scale=1..100, serverTools=1, mc=0, msg=0, modes=inline, theme=dark.
      Dev only: not built, not shipped. Serve crates/rdm-mcp/view with `python3 dev/mock-server.py 8765`
      (static files + the SSE endpoint) and open /dev/mock-host.html?run=cold&mode=stream  (add &modes=inline to hide fullscreen). -->
 <html lang="en">
@@ -55,18 +55,22 @@ async function allNodes() {
 
 async function toolResult() {
   const nodes = await allNodes();
+  let meta;
   const sc = { mode, scale, t_server_ms: Date.now(), payload_bytes: JSON.stringify(nodes).length, node_count: nodes.length };
   if (mode === 'result') {
     sc.nodes = nodes.map((n) => n.kind === 'leaf' && scale === 1 ? { ...n, markdown: '# ' + n.title + '\n(inline markdown)' } : n);
   } else if (mode === 'chunks') {
     sc.chunk_count = Math.ceil(nodes.length / CHUNK);
     sc.chunk_uri_template = 'rdm://chunk/{n}?scale=S';
+  } else if (mode === 'meta') {
+    sc.campaign = 'sample';
+    meta = { rdm: q.get('nometa') ? undefined : { nodes: nodes.map((n) => n.kind === 'leaf' ? { ...n, markdown: '# ' + n.title + '\n(from _meta)' } : n) } };
   } else {
     sc.stream_url = location.origin + '/stream?scale=' + scale;
   }
   post({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { mode, scale } } });
   post({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: {
-    content: [{ type: 'text', text: `${nodes.length} nodes (${mode})` }], structuredContent: sc } });
+    content: [{ type: 'text', text: `${nodes.length} nodes (${mode})` }], structuredContent: sc, ...(meta ? { _meta: meta } : {}) } });
 }
 
 async function readResource(id, uri) {

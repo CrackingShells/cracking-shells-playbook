@@ -2,7 +2,7 @@
   import type { HostInfo } from './bridge';
   import type { RoadmapView, Stamps } from './types';
 
-  let { view, host, stamps, errors, modelContext, messageStatus, displayMode }: {
+  let { view, host, stamps, errors, modelContext, messageStatus, displayMode, metaLine }: {
     view: RoadmapView | null;
     host: HostInfo | null;
     stamps: Stamps;
@@ -10,6 +10,7 @@
     modelContext: string;
     messageStatus: string;
     displayMode: () => string;
+    metaLine: string;
   } = $props();
 
   let pre: HTMLPreElement | undefined = $state();
@@ -20,6 +21,7 @@
   const text = $derived(
     [
       `mode: ${view?.mode ?? 'n/a'}  scale: ${view?.scale ?? 'n/a'}  node_count: ${view?.node_count ?? 'n/a'}`,
+      ...(metaLine ? [metaLine] : []),
       `t_server_ms: ${view?.t_server_ms ?? 'n/a'}  payload_bytes: ${view?.payload_bytes ?? 'n/a'}`,
       `t_result - t_server:      ${rel(stamps.t_result_ms)}`,
       `t_first_data - t_server:  ${rel(stamps.t_first_data_ms)}`,
