@@ -1,3 +1,10 @@
+# writing-release [2.1.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-release@2.0.0...writing-release@2.1.0) (2026-11-16)
+
+
+### Features
+
+* **writing-release:** ask agents to report plugin problems ([1b97519](https://github.com/CrackingShells/cracking-shells-playbook/commit/1b975193f81b84cce79ce8549ac2a937808afd19))
+
 # writing-release [2.0.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/writing-release@1.0.0...writing-release@2.0.0) (2026-10-29)
 
 
