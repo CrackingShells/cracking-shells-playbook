@@ -48,9 +48,9 @@ The status meanings, the stored schema with its traceability table, and the read
 ## Status
 ```mermaid
 graph TD
-    status_semantics[Status semantics]:::inprogress
-    stored_schema[Stored schema]:::inprogress
-    read[Read model]:::planned
+    status_semantics[Status semantics]:::done
+    stored_schema[Stored schema]:::done
+    read[Read model]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -61,9 +61,9 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `status_semantics.md` | 📄 Leaf Task | 🔄 In Progress |
-| `stored_schema.md` | 📄 Leaf Task | 🔄 In Progress |
-| `read/` | 📁 Directory | ⬜ Planned |
+| `status_semantics.md` | 📄 Leaf Task | ✅ Done |
+| `stored_schema.md` | 📄 Leaf Task | ✅ Done |
+| `read/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
