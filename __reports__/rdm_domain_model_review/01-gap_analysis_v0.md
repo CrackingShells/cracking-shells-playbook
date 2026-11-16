@@ -22,7 +22,7 @@ The plan was cut by consumers and layers (store, engine, interchange, consumers,
 ## Impact Assessment
 
 - Scope: one new milestone before M1, one new crate, and scope edits to M0, M1, M2, M4, M6, M7 and the meta-roadmap README.
-- Dependencies: M1 now needs the new leaf done. The ordering rule (open question) is not decided here; M0b records Eliott's choice.
+- Dependencies: M1 now needs the new leaf done. The ordering rule stays depth for now (Eliott, 2026-11-16); the open question stays open for a later revisit.
 - Risk if not addressed: M1 freezes field names while status semantics are open, and the views get built on a read model that nobody specified.
 
 ## Proposed Solution
@@ -44,6 +44,6 @@ Decisions taken by Eliott: amend; the crate is `rdm-schema`; publish at M7 with 
 ## Recommendations
 
 1. Land A1 on the meta-roadmap with this report as its source.
-2. Eliott chooses the ordering rule inside M0b. The open question's count of forced nestings is not required first (his call, 2026-11-16).
+2. Depth stays the ordering rule for now (Eliott, 2026-11-16), so M0b stores no edge field. The open question's count of forced nestings is not required first.
 3. Add a reminder for M0b and add it to the `after:` field of `skills-rdm-M1`. Reminder notes are append-only and change only on Eliott's yes, so this report does not do it.
 4. Treat the legacy tool's lack of an amendment writer as a known gap: the Amendment Log row of A1 is written by hand and checked by `dirtree-rdm validate`.

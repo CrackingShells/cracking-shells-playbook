@@ -12,6 +12,6 @@ Review of the `rdm` rework plan against what a brainstorm of the MCP Apps views 
 
 ## Status
 
-The ordering rule is not decided. Amendment A1 (2026-11-16) adds M0b and edits the planned leaves; see the gap analysis. The UI sketches that triggered the review are explorations only (private artifact: https://claude.ai/artifact/SJ15C4PxNjXWrKKbWuVwn5).
+Depth stays the ordering rule for now (Eliott, 2026-11-16); the open question stays open. Amendment A1 (2026-11-16) adds M0b and edits the planned leaves; see the gap analysis. The UI sketches that triggered the review are explorations only (private artifact: https://claude.ai/artifact/SJ15C4PxNjXWrKKbWuVwn5).
 
-Next entry point: M0b's own session plans its campaign; Eliott chooses the ordering rule there. The open question's count is not required first.
+Next entry point: M0b's own session plans its campaign with depth as the ordering rule. The open question's count is not required first.
