@@ -18,8 +18,8 @@ The read model's projections are specified with worked examples, and the crate a
 ## Status
 ```mermaid
 graph TD
-    read_model[Read model]:::planned
-    crate[Schema crate and R01]:::planned
+    read_model[Read model]:::done
+    crate[Schema crate and R01]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -30,8 +30,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `read_model.md` | 📄 Leaf Task | ⬜ Planned |
-| `crate/` | 📁 Directory | ⬜ Planned |
+| `read_model.md` | 📄 Leaf Task | ✅ Done |
+| `crate/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

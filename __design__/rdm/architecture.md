@@ -6,7 +6,10 @@ once code meets real hosts; points marked *suggestion* are left to the milestone
 rest stand unless implementation proves them wrong, and then this document changes together with
 the code. Decisions were taken with the maintainer on 2026-11-11. Amended on 2026-11-16 (A1 of the
 meta-roadmap): the domain model and the stored types move to a fourth crate, `rdm-schema`, owned by a
-spec-first milestone M0b.
+spec-first milestone M0b. M0b settled it on 2026-11-16: status meanings in
+[statuses.md](statuses.md), the stored schema in [stored-schema.md](stored-schema.md) with its
+[traceability.md](traceability.md), and the read model in [read-model.md](read-model.md). Where
+this document and those four differ, they win.
 
 ## Executive Summary
 
@@ -102,6 +105,7 @@ defect.
 __roadmap__/<campaign>/
   _dir.json                 campaign root
   _amendments/<ulid>.json   one file per amendment, append-only
+  _comments/<ulid>.json     one file per comment, append-only
   <leaf>.json               leaf node
   <dir>/_dir.json           directory node
   <dir>/<leaf>.json
@@ -121,32 +125,34 @@ __roadmap__/<campaign>/
 - **Canonical form:** fixed field order, two-space indent, LF, trailing newline. Multi-line prose is
   stored as an array of lines, which git merges far better than one escaped string; the API
   accepts and returns plain strings.
-- **Forward compatibility:** every file carries `schema_version`; unknown fields round-trip; a
-  reader refuses a newer major version with an upgrade message. JSON Schemas are generated from
+- **Forward compatibility:** every file carries `schema_version` (`"0.X.Y"`, first value `"0.1.0"`); unknown fields round-trip; a
+  reader refuses a different major or a higher X with an upgrade message, and reads a higher Y. JSON Schemas are generated from
   the Rust types and committed; CI fails when they drift.
 
-Schema sketch (field names *provisional*, owned by M0b, which holds them as types in `rdm-schema`):
+The stored types are settled in [stored-schema.md](stored-schema.md) and held by the
+`rdm-schema` crate, whose JSON Schemas are generated and checked for drift. In outline:
 
 ```
-_dir.json   { schema_version, id, kind: campaign|directory, title, context, goal,
-              references[], preconditions[], success_gates[], gotchas[] }
-
-<leaf>.json { schema_version, id, kind: leaf, title, status, blocked_reason?,
-              goal, preconditions[], success_gates[], references[],
-              steps[1..5], progress{branch?, notes}, history[] }
-
-step        { id, goal, implementation_logic, deliverables[], checks[{command, expected}],
-              commit{type, scope, summary}, references[], requires[], done, commit_sha? }
-
-history     { ts, from, to, actor, note?, override? }
-
-amendment   { schema_version, id, ts, actor, description, source?, op_id?,
-              changes[{node_id, op, path_before?, path_after?, field?, old?, new?}],
-              snapshot? }
+_dir.json   { schema_version, id, kind: campaign|directory, title, context, goal, references[],
+              preconditions[Criterion], success_gates[Criterion], gotchas, notes, marks[] }
+<leaf>.json { schema_version, id, kind: leaf, title, status, status_reason?, goal,
+              preconditions[Criterion], success_gates[Criterion], references[], steps[1..5],
+              progress{branch?, commits?, notes}, history[], marks[] }
+step        { id, title, goal, implementation_logic, deliverables, references[],
+              checks[{text, expected, command?}], commit{type, scope?, breaking, summary},
+              requires?, done, commit_sha?, done_at? }
+Criterion   { text, met }  (enforced: see I8)   Reference { label?, title, target?, note? }
+history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id? }
+mark        { ts, actor, kind: pre|gate, index, met, evidence? }   (trace of every criterion mark)
+comment     { schema_version, id, node_id, ts, actor, text }
+amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?,
+              changes[{node_id, op, path_before?, path_after?, field?, old?, new?}], snapshot? }
 ```
 
-The sketch omits facts the legacy grammars carry (per-criterion state, step title, the breaking mark of a
-commit, a reference shape, a step timestamp, a readable amendment id). M0b decides whether each is stored.
+Every legacy grammar production is stored, derived or dropped with a reason in
+[traceability.md](traceability.md). The read model that every consumer receives (MCP outputs,
+CLI `--json`, the view) is four projections in [read-model.md](read-model.md); each leaf there
+reports its `level` together with `level_source: depth`.
 
 The amendment log of a node is the set of amendment files whose `changes` name its id. A delete
 stores the removed subtree in `snapshot`, so it can be restored.
@@ -187,39 +193,53 @@ sequenceDiagram
 - **Retries:** a write may carry an `op_id`; replaying it returns the first result.
 - **Worktrees are separate copies.** A lock in one worktree does not coordinate with another.
   Status written on a task branch reaches the coordinator when that branch merges. The coordinator
-  records `inprogress` in its own tree when it dispatches a leaf.
+  records `ongoing` in its own tree when it dispatches a leaf.
 
 ## Graph operations
 
 - **Load and validate** a whole campaign, returning diagnostics with a stable code, a severity, a
   path and a JSON pointer.
-- **Order.** The wave of a leaf is its depth. A leaf is ready when it is not done and every leaf of
-  smaller depth is done. Leaves before sibling directories follows from depth. Wave semantics are
-  global: a leaf also waits for shallower leaves in unrelated branches.
+- **Order.** The wave of a leaf is its depth, shown as `level`. A leaf is ready when it is
+  `planned` and every leaf that holds it back is `done` or `cancelled`. The rule is scoped
+  (Eliott, 2026-11-16): an unfinished leaf holds back only the deeper leaves under its own
+  parent, never a leaf in an unrelated branch. Waves are a display of depth, not a readiness
+  fact. Details and examples in [statuses.md](statuses.md) §Ready set.
 - **Status FSM.**
 
 ```mermaid
 stateDiagram-v2
   [*] --> planned
-  planned --> inprogress
-  inprogress --> done
-  planned --> blocked
-  inprogress --> blocked
-  blocked --> inprogress
-  done --> amendment: content edit
-  amendment --> inprogress
-  amendment --> done: re-verified
+  planned --> ongoing
+  planned --> paused
+  planned --> cancelled
+  ongoing --> paused
+  ongoing --> cancelled
+  ongoing --> done
+  paused --> planned
+  paused --> ongoing
+  paused --> cancelled
+  cancelled --> planned: undo, to the pre-cancel status
+  cancelled --> ongoing: undo
+  cancelled --> paused: undo
+  done --> [*]
 ```
 
-  `done` requires every step recorded done with its commit. Starting a leaf outside the ready set
-  is refused unless an override with a reason is given, and the override is recorded. A directory's
-  status is derived from its descendants.
+  The full table of moves, who may make them and their reasons is in [statuses.md](statuses.md).
+  `done` is the only terminal status. Entering `paused` or `cancelled` needs a reason, and undoing
+  a cancel restores the status before it. Pausing or cancelling a directory applies to every
+  non-terminal leaf under it as one operation, and a directory cancel is undone through its
+  `op_id`. `done` requires every step recorded done with its commit. Starting a leaf outside the
+  ready set is refused unless an override with a reason is given, and the override is recorded.
+  A directory's status is derived from its leaves. **Sealing:** a `done` node's content never
+  changes, and a `cancelled` node's content is sealed while it is cancelled; both accept only
+  appended comments. Every content edit to a `planned`, `ongoing` or `paused` node carries an
+  amendment description.
 - **Primitives:** add, remove (subtree), set field, rename, move to another parent.
 - **Composites,** each expanding to primitives: wrap siblings in a new level, unwrap a level, split
   a leaf, merge leaves, promote a leaf to a directory, reorder steps, "run X after Y" (expressed as
   depth edits, with candidate plans ranked by nodes moved).
-- **Impact analysis** on every structural edit: wave changes per node, done work reopened, progress
-  destroyed, in-progress leaves moved. A destructive effect needs an explicit acknowledgement.
+- **Impact analysis** on every structural edit: wave changes per node, leaves made ready by a cancel,
+  progress destroyed, ongoing leaves moved. A destructive effect needs an explicit acknowledgement.
 - **Batch:** an ordered list of operations, validated one by one and as a whole, applied
   atomically, with a dry-run. Later operations may refer to nodes created earlier in the batch.
 
@@ -261,7 +281,7 @@ receives the same data as text and structured content.
 | Flow | Sequence |
 |:--|:--|
 | Author a campaign | `init` with a nested tree, then `validate`. |
-| Execute | `next` → `transition` to `inprogress` → work → `transition` recording each step's commit → `transition` to `done`. |
+| Execute | `next` → `transition` to `ongoing` → work → `transition` recording each step's commit → `transition` to `done`. |
 | Edit a field | `get` (revision) → `update` with the new value and the amendment description. |
 | Re-plan | `apply` with dry-run → read the impact report → `apply` with acknowledgements. |
 | Read as a human | `rdm export <node>` or `roadmap_export`. |
@@ -275,11 +295,11 @@ receives the same data as text and structured content.
 | I2 | A consumer holds no roadmap logic; the CLI and the MCP tools give the same result on the same input. |
 | I3 | No write leaves a campaign in a state `validate` rejects, including after a crash at any point. |
 | I4 | A write based on a stale revision is refused and changes nothing. |
-| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status and progress never do. |
+| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A sealed node accepts no content edit. |
 | I6 | Derived data is never stored. |
 | I7 | A node's `id` never changes; a rename or move changes only its path. |
-| I8 | A leaf is `done` only when every step is done with its commit recorded. |
-| I9 | Deleting or reopening done work, or moving work in progress, needs an explicit acknowledgement. |
+| I8 | The move to `done` is allowed only when every step is done with its commit recorded and every success gate is `met`; the move to `ongoing` needs every pre-condition `met`, an override of the ready set included. Both are checked at the move, and every change of a criterion mark leaves a `mark` record. A directory is `done` only when its leaves are finished and its own gates are met. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). A legacy `done` node with an unmet criterion is imported as it is, and `validate` reports it as an error to reconcile. |
+| I9 | Deleting sealed work, or moving ongoing work, needs an explicit acknowledgement. Nothing reopens done work: new work is a new node. |
 | I10 | The server keeps no state between calls; every call names its campaign. |
 | I11 | No tool requires user interaction, and no read tool writes. |
 | I12 | A reader never drops a field it does not know. |
@@ -287,7 +307,8 @@ receives the same data as text and structured content.
 ## Launch and distribution (*provisional*, owned by M7)
 
 - **Publication:** the four crates on crates.io, released by CI after a merge to `main`
-  (`release-plz`; `rdm-schema` on its own version line, the other three on one product version), beside the existing skill releases. In one workflow run:
+  (`rdm-schema` on its own `0.X.Y` version line, the other three on one product version; a breaking format or
+  read-model change forces an `rdm-schema` X bump and a compatible one at least a Y bump, as in [read-model.md](read-model.md) §Versions). Bumps come from commit types and scopes through the existing multi-semantic-release setup (`@semantic-release/commit-analyzer`, `release-config.js`): a `!` or BREAKING commit gives X, `feat` or `fix` gives Y, and the crate stays `0.x`. M7 wires the crates into that job, with a rule that keeps a breaking change at `0.x`. It runs beside the existing skill releases. In one workflow run:
   crates (schema, core, then server and CLI), then prebuilt binaries and checksums on the GitHub release, then the plugin pinned to
   that version. The plugin never names an unpublished server.
 - **Launch:** the plugin runs `rdm-mcp serve --require-version X.Y.Z`. A binary of another version
@@ -307,7 +328,7 @@ receives the same data as text and structured content.
 | Revisions | Counter / **content hash** | hash | No base to merge from, so a conflict is refused, never merged |
 | Lock | Lock file as existence / per file / **one OS lock per campaign** | per campaign | Writers on one campaign are serialised, for milliseconds |
 | Amendment scope | Every write / **content and structure** | content and structure | Status history is kept apart from the amendment log |
-| Mutation policy | Additive only / **full CRUD with guards on done work** | full CRUD | History lives in amendments, not in undeletable nodes |
+| Mutation policy | Additive only / **full CRUD, with done and cancelled nodes sealed** | full CRUD | History lives in amendments, not in undeletable nodes |
 | Consumers | MCP only / **MCP and CLI over one core** | both | A second surface to keep thin |
 | UI | None / server-rendered image / **Svelte page as an MCP App** | Svelte | A Node build in CI and a committed artefact |
 | Registry | PyPI wheels / npm / **crates.io** | crates.io | No pinned-run launcher, hence the self-provisioning launch |
@@ -332,7 +353,7 @@ receives the same data as text and structured content.
 
 ## Deliberately open
 
-Decided by the milestone that owns it: field names, status meanings, the read model and the format version (M0b); the id minting and the journal format (M1); the
+Decided by the milestone that owns it: the id minting and the journal format (M1); the
 exact operation set and its error codes (M2); whether a cross-worktree claim hint is worth having
 (M2); markdown layout of the export and what the importer does with invalid input (M3); tool names,
 count and output budgets (M4); CLI verbs and output style (M5); layout and refresh of the view

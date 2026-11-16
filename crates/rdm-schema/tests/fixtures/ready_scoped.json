@@ -1,0 +1,40 @@
+{
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
+  "projection": "ready",
+  "campaign": {
+    "id": "c_hyp",
+    "path": "__roadmap__/hypothetical",
+    "title": "Two branches"
+  },
+  "tree_rev": "tree-h",
+  "ready": [
+    {
+      "id": "n_g1",
+      "path": "docs/guide/g1_guide",
+      "title": "G1 Guide",
+      "level": 2,
+      "level_source": "depth"
+    }
+  ],
+  "stalled": [
+    {
+      "id": "n_m2",
+      "path": "core/engine/m2_engine",
+      "title": "M2 Engine",
+      "level": 2,
+      "level_source": "depth",
+      "held_by": [
+        "n_m1"
+      ]
+    }
+  ],
+  "holders": {
+    "n_m1": {
+      "path": "core/m1_core",
+      "title": "M1 Core",
+      "status": "paused",
+      "status_reason": "waiting for the schema review"
+    }
+  }
+}

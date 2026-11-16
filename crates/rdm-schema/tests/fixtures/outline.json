@@ -1,0 +1,393 @@
+{
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
+  "projection": "outline",
+  "campaign": {
+    "id": "c_rework",
+    "path": "__roadmap__/roadmap-mcp-rework",
+    "title": "rdm rework — meta-roadmap"
+  },
+  "tree_rev": "tree-1",
+  "root": {
+    "id": "c_rework",
+    "path": "",
+    "kind": "directory",
+    "is_campaign": true,
+    "title": "rdm rework — meta-roadmap",
+    "goal": "`managing-roadmaps` ships as a plugin whose tools are a published Rust MCP server and CLI over one core, with JSON roadmaps, full CRUD under an amendment log, and a graph view.",
+    "status": "ongoing",
+    "counts": {
+      "planned": 8,
+      "ongoing": 2,
+      "paused": 0,
+      "cancelled": 0,
+      "done": 0
+    },
+    "amendment_count": 1,
+    "rev": "rev-root",
+    "children": [
+      {
+        "id": "n_m0",
+        "path": "m0_feasibility_spike",
+        "kind": "leaf",
+        "title": "M0 Feasibility spike",
+        "status": "ongoing",
+        "level": 0,
+        "level_source": "depth",
+        "ready": false,
+        "steps": {
+          "done": 0,
+          "total": 3
+        },
+        "rev": "rev-m0"
+      },
+      {
+        "id": "n_m0b",
+        "path": "m0b_domain_model_spec",
+        "kind": "leaf",
+        "title": "M0b Domain model spec",
+        "status": "ongoing",
+        "level": 0,
+        "level_source": "depth",
+        "ready": false,
+        "steps": {
+          "done": 0,
+          "total": 3
+        },
+        "added_by": "A1",
+        "rev": "rev-m0b"
+      },
+      {
+        "id": "d_core",
+        "path": "core",
+        "kind": "directory",
+        "is_campaign": false,
+        "title": "Core",
+        "status": "planned",
+        "counts": {
+          "planned": 8,
+          "ongoing": 0,
+          "paused": 0,
+          "cancelled": 0,
+          "done": 0
+        },
+        "rev": "rev-core",
+        "children": [
+          {
+            "id": "n_m1",
+            "path": "core/m1_core_foundation",
+            "kind": "leaf",
+            "title": "M1 Core foundation",
+            "status": "planned",
+            "level": 1,
+            "level_source": "depth",
+            "ready": false,
+            "steps": {
+              "done": 0,
+              "total": 3
+            },
+            "rev": "rev-m1"
+          },
+          {
+            "id": "d_engine",
+            "path": "core/engine",
+            "kind": "directory",
+            "is_campaign": false,
+            "title": "Engine",
+            "status": "planned",
+            "counts": {
+              "planned": 7,
+              "ongoing": 0,
+              "paused": 0,
+              "cancelled": 0,
+              "done": 0
+            },
+            "rev": "rev-engine",
+            "children": [
+              {
+                "id": "n_m2",
+                "path": "core/engine/m2_graph_engine",
+                "kind": "leaf",
+                "title": "M2 Graph engine",
+                "status": "planned",
+                "level": 2,
+                "level_source": "depth",
+                "ready": false,
+                "steps": {
+                  "done": 0,
+                  "total": 3
+                },
+                "rev": "rev-m2"
+              },
+              {
+                "id": "d_interchange",
+                "path": "core/engine/interchange",
+                "kind": "directory",
+                "is_campaign": false,
+                "title": "Interchange",
+                "status": "planned",
+                "counts": {
+                  "planned": 6,
+                  "ongoing": 0,
+                  "paused": 0,
+                  "cancelled": 0,
+                  "done": 0
+                },
+                "rev": "rev-interchange",
+                "children": [
+                  {
+                    "id": "n_m3",
+                    "path": "core/engine/interchange/m3_interchange",
+                    "kind": "leaf",
+                    "title": "M3 Interchange",
+                    "status": "planned",
+                    "level": 3,
+                    "level_source": "depth",
+                    "ready": false,
+                    "steps": {
+                      "done": 0,
+                      "total": 3
+                    },
+                    "rev": "rev-m3"
+                  },
+                  {
+                    "id": "d_consumers",
+                    "path": "core/engine/interchange/consumers",
+                    "kind": "directory",
+                    "is_campaign": false,
+                    "title": "Consumers",
+                    "status": "planned",
+                    "counts": {
+                      "planned": 5,
+                      "ongoing": 0,
+                      "paused": 0,
+                      "cancelled": 0,
+                      "done": 0
+                    },
+                    "rev": "rev-consumers",
+                    "children": [
+                      {
+                        "id": "n_m4",
+                        "path": "core/engine/interchange/consumers/m4_mcp_server",
+                        "kind": "leaf",
+                        "title": "M4 MCP server",
+                        "status": "planned",
+                        "level": 4,
+                        "level_source": "depth",
+                        "ready": false,
+                        "steps": {
+                          "done": 0,
+                          "total": 3
+                        },
+                        "rev": "rev-m4"
+                      },
+                      {
+                        "id": "n_m5",
+                        "path": "core/engine/interchange/consumers/m5_cli",
+                        "kind": "leaf",
+                        "title": "M5 CLI",
+                        "status": "planned",
+                        "level": 4,
+                        "level_source": "depth",
+                        "ready": false,
+                        "steps": {
+                          "done": 0,
+                          "total": 3
+                        },
+                        "rev": "rev-m5"
+                      },
+                      {
+                        "id": "d_delivery",
+                        "path": "core/engine/interchange/consumers/delivery",
+                        "kind": "directory",
+                        "is_campaign": false,
+                        "title": "Delivery",
+                        "status": "planned",
+                        "counts": {
+                          "planned": 3,
+                          "ongoing": 0,
+                          "paused": 0,
+                          "cancelled": 0,
+                          "done": 0
+                        },
+                        "rev": "rev-delivery",
+                        "children": [
+                          {
+                            "id": "n_m6",
+                            "path": "core/engine/interchange/consumers/delivery/m6_apps_view",
+                            "kind": "leaf",
+                            "title": "M6 Apps view",
+                            "status": "planned",
+                            "level": 5,
+                            "level_source": "depth",
+                            "ready": false,
+                            "steps": {
+                              "done": 0,
+                              "total": 3
+                            },
+                            "rev": "rev-m6"
+                          },
+                          {
+                            "id": "n_m7",
+                            "path": "core/engine/interchange/consumers/delivery/m7_distribution",
+                            "kind": "leaf",
+                            "title": "M7 Distribution",
+                            "status": "planned",
+                            "level": 5,
+                            "level_source": "depth",
+                            "ready": false,
+                            "steps": {
+                              "done": 0,
+                              "total": 3
+                            },
+                            "rev": "rev-m7"
+                          },
+                          {
+                            "id": "d_cutover",
+                            "path": "core/engine/interchange/consumers/delivery/cutover",
+                            "kind": "directory",
+                            "is_campaign": false,
+                            "title": "Cutover",
+                            "status": "planned",
+                            "counts": {
+                              "planned": 1,
+                              "ongoing": 0,
+                              "paused": 0,
+                              "cancelled": 0,
+                              "done": 0
+                            },
+                            "rev": "rev-cutover",
+                            "children": [
+                              {
+                                "id": "n_m8",
+                                "path": "core/engine/interchange/consumers/delivery/cutover/m8_cutover",
+                                "kind": "leaf",
+                                "title": "M8 Cutover",
+                                "status": "planned",
+                                "level": 6,
+                                "level_source": "depth",
+                                "ready": false,
+                                "steps": {
+                                  "done": 0,
+                                  "total": 3
+                                },
+                                "rev": "rev-m8"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "waves": [
+    {
+      "level": 0,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m0",
+        "n_m0b"
+      ],
+      "counts": {
+        "planned": 0,
+        "ongoing": 2,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 1,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m1"
+      ],
+      "counts": {
+        "planned": 1,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 2,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m2"
+      ],
+      "counts": {
+        "planned": 1,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 3,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m3"
+      ],
+      "counts": {
+        "planned": 1,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 4,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m4",
+        "n_m5"
+      ],
+      "counts": {
+        "planned": 2,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 5,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m6",
+        "n_m7"
+      ],
+      "counts": {
+        "planned": 2,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    },
+    {
+      "level": 6,
+      "level_source": "depth",
+      "leaf_ids": [
+        "n_m8"
+      ],
+      "counts": {
+        "planned": 1,
+        "ongoing": 0,
+        "paused": 0,
+        "cancelled": 0,
+        "done": 0
+      }
+    }
+  ]
+}
