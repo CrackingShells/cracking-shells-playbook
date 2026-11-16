@@ -28,3 +28,15 @@ Host: Claude Code Desktop. The user agent reports `Claude/5.11492.5`, Electron 4
 
 ## What this means
 In this host the inline page can only show what the tool result carries, and the model's context pays for every byte of it. Leaf content, large roadmaps, streaming and live refresh cannot reach an inline page here. A standalone viewer has none of these limits: Svelte in Tauri, or in a local browser page, talking to the Rust core over IPC or RPC (Eliott's suggestion).
+
+## Trial 4: `meta` mode (data in the tool result's `_meta`)
+Run on 2026-11-16 after the fix that keeps `frozen_at` (commit `7981e5c`). The first attempt failed because the host validates `structuredContent` against the tool's `outputSchema`, and the summary lacked the required `frozen_at`.
+
+| Scale | Model saw (transcript tool_result) | Page got | t_result − t_server | first paint | complete |
+|:--|:--|:--|:--|:--|:--|
+| 1 (43,715 B) | 200 chars (the summary only) | 16 of 16 nodes from `_meta` | 318 ms | 371 ms | 372 ms |
+| 10 (~439 KB) | 203 chars (the summary only) | panel not captured yet | | | |
+
+- **The finding:** Claude Code Desktop hands the result-level `_meta` to the page and does NOT put it in the model context. It does put `structuredContent` in the model context, contrary to the Apps spec's "not added to model context". So the full roadmap can reach the inline page at no token cost, if it travels in `_meta`.
+- **The host validates `structuredContent` against `outputSchema`,** so every required field must be present in every mode.
+- **Capabilities that changed on this run:** `ui/message` returned ok this time, but no `RDM_PROBE` text was found in the transcript. `hostCapabilities.sandbox.csp.connectDomains` now lists the declared `http://127.0.0.1:<port>`, yet Trial 3's stream was CSP-blocked. Re-test the stream before concluding.
