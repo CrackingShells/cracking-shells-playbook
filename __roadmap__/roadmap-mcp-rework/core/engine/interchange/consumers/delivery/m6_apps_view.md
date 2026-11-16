@@ -16,7 +16,7 @@
 
 **Goal**: The campaign `__roadmap__/m6-apps-view/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding: the layout (waves as columns, directories as groups, the detail pane, the amendment timeline) and how it reads on a narrow panel; the data contract of the app-only tool and how TypeScript types are generated from the core's schema; refresh (polling interval, manual refresh); theming from the host; the Svelte and Vite setup producing one inlined file, the pinned Node version and a deterministic build; the size budget; the headless smoke test.
+In plan mode, author the campaign with `managing-roadmaps`, deciding: the layout (waves as columns, directories as groups, the detail pane, the amendment timeline) and how it reads on a narrow panel; the data contract of the app-only tool and how TypeScript types are generated from the `rdm-schema` JSON Schemas (the app-only tool returns the read model); refresh (polling interval, manual refresh); theming from the host; the Svelte and Vite setup producing one inlined file, the pinned Node version and a deterministic build; the size budget; the headless smoke test.
 No adversarial verification; Eliott reviews the view by eye.
 **Deliverables**: `__roadmap__/m6-apps-view/README.md` and its leaves
 **Consistency Checks**: `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m6-apps-view/` (expected: PASS)

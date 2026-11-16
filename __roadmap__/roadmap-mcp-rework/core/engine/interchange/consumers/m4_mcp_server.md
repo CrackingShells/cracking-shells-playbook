@@ -6,7 +6,7 @@
 - [ ] Reminder `skills-rdm-M4` read
 **Success Gates**:
 - ⬜ The server passes the MCP 2026-07-28 conformance suite over stdio
-- ⬜ Every tool returns a text summary and `structuredContent` matching its `outputSchema`; read tools are marked read-only; no tool requires user interaction (I11)
+- ⬜ Every tool returns a text summary and `structuredContent` matching its `outputSchema`, which is the read-model type of `rdm-schema` wherever one exists; read tools are marked read-only; no tool requires user interaction (I11)
 - ⬜ An author, execute, amend cycle on a campaign runs from an agent session with no shell call
 - ⬜ Every tool handler maps to one core call (I2), and every call names its campaign (I10)
 - ⬜ Tool results stay within a stated size budget on the largest existing campaign
@@ -16,7 +16,7 @@
 
 **Goal**: The campaign `__roadmap__/m4-mcp-server/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding: the final tool list, names and order (R01's table is a suggestion: keep it small, and keep one tool for every re-branching and move and one for status including `done`); input and output schemas; the error mapping from core errors to tool errors; output size budgets and pagination; which tools are safe to allow-list for unattended runs; how conformance is run in CI; what the server answers a host that lacks MCP Apps.
+In plan mode, author the campaign with `managing-roadmaps`, deciding: the final tool list, names and order (R01's table is a suggestion: keep it small, and keep one tool for every re-branching and move and one for status including `done`); input schemas and the envelope around the read-model types; the error mapping from core errors to tool errors; output size budgets and pagination; which tools are safe to allow-list for unattended runs; how conformance is run in CI; what the server answers a host that lacks MCP Apps.
 Adversarial verification is required for the error mapping and the stale-revision path only; the rest is checked by conformance.
 **Deliverables**: `__roadmap__/m4-mcp-server/README.md` and its leaves
 **Consistency Checks**: `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m4-mcp-server/` (expected: PASS)
