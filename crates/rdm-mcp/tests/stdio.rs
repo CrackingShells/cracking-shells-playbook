@@ -423,3 +423,38 @@ async fn payload_sizes_by_scale() {
     assert!(sizes[0].1 < sizes[1].1 && sizes[1].1 < sizes[2].1);
     client.cancel().await.expect("close");
 }
+
+#[tokio::test]
+async fn meta_mode_carries_nodes_in_result_meta() {
+    let client = connect(None).await;
+    let args = json!({ "mode": "meta", "scale": 3 });
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("roadmap_view")
+                .with_arguments(args.as_object().expect("object").clone()),
+        )
+        .await
+        .expect("call roadmap_view");
+    let sc = result.structured_content.expect("structuredContent");
+    assert_eq!(
+        keys(&sc),
+        ["campaign", "mode", "node_count", "payload_bytes", "scale", "t_server_ms"]
+    );
+    assert_eq!(sc["mode"], "meta");
+    let meta = serde_json::to_value(result.meta.as_ref().expect("result _meta")).expect("ser");
+    let nodes = meta["rdm"]["nodes"].as_array().expect("_meta.rdm.nodes");
+    assert_eq!(nodes.len() as u64, sc["node_count"].as_u64().expect("node_count"));
+    assert_eq!(nodes.len(), 48);
+    assert!(nodes.iter().any(|n| n["markdown"].is_string()));
+    assert_eq!(result.content.len(), 1);
+
+    let args = json!({ "mode": "meta", "scale": 11 });
+    client
+        .call_tool(
+            CallToolRequestParams::new("roadmap_view")
+                .with_arguments(args.as_object().expect("object").clone()),
+        )
+        .await
+        .expect_err("scale 11 refused in meta mode");
+    client.cancel().await.expect("close");
+}
