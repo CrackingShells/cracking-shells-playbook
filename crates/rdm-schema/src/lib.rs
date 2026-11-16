@@ -3,6 +3,7 @@
 //! This crate holds types only. It has no I/O and no store. Canonical serialisation
 //! and the store belong to M1.
 
+pub mod read;
 pub mod stored;
 
 /// A `(major, minor)` pair, comparable field by field.
