@@ -17,3 +17,16 @@ Host: VS Code Copilot, observed by Eliott on 2026-11-16. The server is the same 
 
 ## What this means
 VS Code advertises every channel that Claude Code Desktop lacks: tool calls from the page, resource reads and the localhost stream. It does not offer fullscreen or `ui/message`.
+
+## Trial 2: every channel (2026-11-16, Eliott, one session, in order)
+| Mode | Payload | Data reached page | First paint | Complete |
+|:--|:--|:--|:--|:--|
+| `result` ×1 | 43,715 B, 16 nodes | 24 ms | 41 ms | 41 ms |
+| `chunks` ×100 | 4,391,237 B, 1,600 nodes (65 resources/read) | 39 ms | 64 ms | 597 ms |
+| `stream` ×100 (SSE from `rdm-mcp` on 127.0.0.1) | 4,391,237 B, 1,600 nodes | 28 ms | 70 ms | 157 ms |
+| `meta` ×1 (`_meta`) | 43,715 B, 16 nodes from `_meta` | 23 ms | 39 ms | 40 ms |
+
+- All times are measured from the server's stamp to the page, on one sample each.
+- No tool errors. The full view fell back to the inline outline (`display mode: outline`), because VS Code offers no fullscreen.
+- The 73.7 s of Trial 1 did not recur: every result reached the page within 18 to 24 ms.
+- In VS Code all three channels work, and painting starts before the data is complete: 1,600 nodes paint first at 64 to 70 ms.
