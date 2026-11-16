@@ -74,3 +74,8 @@ Read [graph-model.md § Edge Semantics](references/graph-model.md) before design
 | `blocked` | 🚫 | Terminal — work cannot proceed; never delete, mark blocked instead |
 
 Full FSM with all valid transitions: [graph-model.md § Status State Machine](references/graph-model.md).
+
+## Reporting problems
+
+`managing-roadmaps` is in active development. If any part of it proves wrong or misleads you,
+report it to `CrackingShells/cracking-shells-playbook` by following [CONTRIBUTING.md](CONTRIBUTING.md).
