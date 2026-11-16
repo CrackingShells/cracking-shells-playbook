@@ -27,6 +27,7 @@
     t_result_ms: 0, t_first_data_ms: 0, t_first_paint_ms: 0, t_complete_ms: 0, bytes_received: 0, nodes_received: 0,
   });
   let started = false;
+  let metaLine = $state('');
   onToolError((tool, text) => (errors[tool] = text));
 
   function readTheme(ctx: unknown) {
@@ -69,6 +70,17 @@
         const sc = p.structuredContent as unknown as RoadmapView | undefined;
         if (!sc || !sc.mode || started) return;
         started = true;
+        if (sc.mode === 'meta') {
+          // CallToolResult._meta arrives on the ontoolresult params as-is.
+          const meta = (p as { _meta?: { rdm?: { nodes?: RoadmapNode[] } } })._meta;
+          const n = meta?.rdm?.nodes;
+          if (Array.isArray(n)) {
+            sc.nodes = n;
+            metaLine = `nodes from _meta: ${n.length} of ${sc.node_count}`;
+          } else {
+            metaLine = `_meta.rdm missing; result keys: ${Object.keys(p).join(', ')}; _meta keys: ${meta ? Object.keys(meta).join(', ') || '(empty)' : '(no _meta)'}`;
+          }
+        }
         stamps.t_result_ms = Date.now();
         view = sc;
         void run(sc);
@@ -151,7 +163,7 @@
       <LeafPane path={selected} {markdown} loading={false} status={leafStatus} onread={readLeaf} ontool={tryTool} />
     </div>
   {/if}
-  <Diagnostics {view} {host} {stamps} {errors} {modelContext} {messageStatus} {displayMode} />
+  <Diagnostics {view} {host} {stamps} {errors} {modelContext} {messageStatus} {displayMode} {metaLine} />
 </main>
 
 <style>

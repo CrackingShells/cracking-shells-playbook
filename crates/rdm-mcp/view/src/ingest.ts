@@ -54,7 +54,7 @@ export async function ingest(
   setNodes: (n: RoadmapNode[]) => void,
 ): Promise<void> {
   const painter = new Painter(setNodes, stamps);
-  if (sc.mode === 'result') {
+  if (sc.mode === 'result' || sc.mode === 'meta') {
     stamps.bytes_received = utf8(JSON.stringify(sc.nodes ?? []));
     painter.push(sc.nodes ?? []);
   } else if (sc.mode === 'chunks') {

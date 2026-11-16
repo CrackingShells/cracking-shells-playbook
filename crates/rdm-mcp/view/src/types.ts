@@ -11,10 +11,11 @@ export interface RoadmapNode {
   markdown?: string;
 }
 
-export type Mode = 'result' | 'chunks' | 'stream';
+export type Mode = 'result' | 'chunks' | 'stream' | 'meta';
 
 /** structuredContent of roadmap_view (round 2 contract). nodes is present in result mode only. */
 export interface RoadmapView {
+  campaign?: string;
   mode: Mode;
   scale: number;
   t_server_ms: number;
