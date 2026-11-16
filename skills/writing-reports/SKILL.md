@@ -70,3 +70,8 @@ __reports__/<topic>/
 **Auto-create**: auto-create `__reports__/<topic>/` if it does not exist.
 
 **README convention**: each `__reports__/<topic>/` should include a `README.md` listing documents grouped by `<round>` in chronological order, marking the latest versions, and providing a short status section.
+
+## Reporting problems
+
+`writing-reports` is in active development. If any part of it proves wrong or misleads you,
+report it to `CrackingShells/cracking-shells-playbook` by following [CONTRIBUTING.md](CONTRIBUTING.md).
