@@ -73,7 +73,7 @@ graph TD
   end
   MCP --> OPS
   CLI --> OPS
-  UI -->|app-only tool| MCP
+  UI -->|result _meta; app-only tool where the host has serverTools| MCP
   OPS --> ORD
   OPS --> VAL
   OPS --> ST
@@ -87,8 +87,8 @@ graph TD
 | Stored format | JSON, one file per node, under `__roadmap__/<campaign>/`. Markdown is export only. |
 | Transport | stdio only. Concurrency safety comes from the filesystem. |
 | Mutations | Full CRUD, single or batch. Content and structure edits carry a mandatory amendment description and are logged. Status and progress go to a per-leaf history, with no description. |
-| Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly (3.9.0 at design time, MSRV 1.88). |
-| UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. |
+| Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly: `=3.10.0` with features `server`, `macros`, `transport-io` (3.9.0 at design time, MSRV 1.88). rmcp has no typed Apps API: the tool `_meta.ui`, the capability `io.modelcontextprotocol/ui` and the MIME type `text/html;profile=mcp-app` are built by hand. All three hosts tested speak 2026-07-28. |
+| UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. M0 proved the host split: Claude Code Desktop has no `serverTools`, so its inline page is fed once from the tool result `_meta`; VS Code Copilot offers tool calls, resource reads and a localhost stream; the Claude Code CLI renders no Apps. `structuredContent` stays a minimal summary valid against `outputSchema`, because Claude Code puts it in the model context. |
 | Home | A Cargo workspace in this repository under `crates/`, outside `skills/`. |
 | Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-engine` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
 
@@ -317,15 +317,17 @@ receives the same data as text and structured content.
 
 | Risk | Mitigation |
 |:--|:--|
-| A host does not speak 2026-07-28 | M0 tests the real hosts first; the transport stays isolated in `rdm-mcp` |
-| rmcp API churn, untyped Apps support, a wrong extension id in its documentation | Exact pin; M0 fixes the calls; one module owns the Apps metadata |
+| A host does not speak 2026-07-28 | Settled by M0: Desktop, VS Code and the CLI all connect to a server that refuses other versions. The transport stays isolated in `rdm-mcp` |
+| A host cannot take page-to-server calls, resource reads or a stream (Claude Code Desktop) | Feed the inline page once from the result `_meta`; use polling or streaming only where the host advertises `serverTools` or the stream domain; a standalone viewer for large or live views (M6 decides) |
+| rmcp API churn, untyped Apps support, a wrong extension id in its documentation | Exact pin `=3.10.0`; M0 fixed the calls; one module owns the Apps metadata |
 | Lost or torn writes under concurrency | Lock, journal, revisions; a multi-process test with kill injection on three operating systems |
 | Directory renames fail on Windows while a handle is open | Retry with backoff; a Windows test job |
 | A consumer grows logic | I2 as a test: the same input through both consumers |
-| The graph view grows past a small bundle | Size budget in CI; a hand-written bridge if the Apps client library is heavy |
+| The graph view grows past a small bundle | M0 measured 279 to 286 KB, about 234 KB of it ext-apps with zod. Size budget in CI; a hand-written bridge if the Apps client library is heavy |
+| A binary is overwritten in place on macOS | The kernel kills it with SIGKILL. Install to a new inode (`rm` then `cp`) |
 | A restructure silently reorders work | Impact analysis and acknowledgements (I9) |
 | The launch cannot reach the release | Same-major fallback; a loud failure with the install command |
-| The allow-rule string for a hyphenated plugin name is guessed wrong | Read from a real session in M0, never hard-coded from a guess |
+| The allow-rule string for a hyphenated plugin name is guessed wrong | Read in M0 from a real session: `mcp__<server>__<tool>` for a project server, `mcp__plugin_<plugin>_<server>__<tool>` for a plugin, with hyphens kept. A same-named project server wins over the plugin |
 | Legacy roadmaps import wrongly | The eight campaigns of this repository as golden fixtures, one of them invalid by design |
 
 ## Deliberately open
