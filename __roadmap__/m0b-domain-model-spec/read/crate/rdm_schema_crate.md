@@ -24,7 +24,7 @@
 6. **Tests:**
    - Each type deserialises the matching example from the spec documents.
    - The unknown-field round trip works at every object level.
-**Deliverables**: `crates/rdm-schema/Cargo.toml`; `crates/rdm-schema/src/lib.rs`: consts `FORMAT_VERSION`, `READ_MODEL_VERSION`; `crates/rdm-schema/src/stored.rs`: types `Directory`, `Leaf`, `Step`, `Criterion`, `Reference`, `Commit`, `HistoryEntry`, `Comment`, `Amendment`, `Change`, enum `Status`; `crates/rdm-schema/tests/stored.rs`; `Cargo.lock`
+**Deliverables**: `crates/rdm-schema/Cargo.toml`; `crates/rdm-schema/src/lib.rs`: consts `FORMAT_VERSION`, `READ_MODEL_VERSION`; `crates/rdm-schema/src/stored.rs`: types `Directory`, `Leaf`, `Step`, `Criterion`, `Reference`, `Commit`, `Check`, `Progress`, `Actor`, `History`, `Comment`, `Amendment`, `Change`, enum `Status` (names follow stored-schema.md); `crates/rdm-schema/tests/stored.rs`; `Cargo.lock`
 **Consistency Checks**: `cargo test -p rdm-schema` (expected: PASS)
 **Commit**: `feat(rdm-schema): add the stored types and the format version`
 
@@ -33,7 +33,7 @@
 **Implementation Logic**:
 1. Add one type per projection of `read-model.md`, with `Level { level, level_source }` where `level_source` is an enum holding only `Depth` for now.
 2. The worked examples from `read-model.md`, saved as test fixtures, deserialise and re-serialise to equal JSON.
-**Deliverables**: `crates/rdm-schema/src/read.rs`: types `CampaignOutline`, `NodeDetail`, `ReadySet`, `AmendmentLog`, `Level`, enum `LevelSource`; `crates/rdm-schema/tests/read.rs`; `crates/rdm-schema/tests/fixtures/*.json`
+**Deliverables**: `crates/rdm-schema/src/read.rs`: types `Envelope`, `OutlineView`, `NodeView`, `ReadyView`, `AmendmentsView`, flat `level` and `level_source` fields, enum `LevelSource` (names follow read-model.md); `crates/rdm-schema/tests/read.rs`; `crates/rdm-schema/tests/fixtures/*.json`
 **Consistency Checks**: `cargo test -p rdm-schema` (expected: PASS)
 **Commit**: `feat(rdm-schema): add the read-model types`
 
