@@ -1,17 +1,9 @@
-import { callAppTool } from './bridge';
 import type { HostInfo } from './bridge';
-import type { RoadmapView } from './types';
+import type { RoadmapView, Stamps } from './types';
 
-export type DisplayModeRan = 'fullscreen' | 'outline' | 'inline';
-
-function runKind(): 'cold' | 'warm' | 'unknown' {
+export function runKind(): 'cold' | 'warm' | 'unknown' {
   const v = new URLSearchParams(window.location.search).get('run');
   return v === 'cold' || v === 'warm' ? v : 'unknown';
-}
-
-/** Takes t_view_ms in the first animation frame after the graph mounted. */
-export function nextFrameMs(): Promise<number> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve(Date.now())));
 }
 
 // postMessage cannot clone Proxy objects; send plain JSON.
@@ -19,36 +11,31 @@ function plain(v: unknown): unknown {
   return v === undefined ? null : JSON.parse(JSON.stringify(v));
 }
 
-/** The probe JSON; field names are the probe_record contract of build/stub_server.md Step 2. */
-export function buildProbe(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
+/** The probe object. host_context is left out on purpose: it is large and recorded elsewhere. */
+export function buildProbe(
+  view: RoadmapView,
+  stamps: Stamps,
+  host: HostInfo,
+  displayMode: string,
+  leafRead: unknown,
+) {
   return {
     run_kind: runKind(),
+    mode: view.mode,
+    scale: view.scale,
+    node_count: view.node_count,
+    payload_bytes: view.payload_bytes,
     t_server_ms: view.t_server_ms,
-    t_view_ms: tViewMs,
+    ...plain(stamps) as object,
     apps_protocol_announced: host.protocolAnnounced,
     apps_protocol_host: host.protocolHost ?? 'unknown',
-    host_capabilities: plain(host.hostCapabilities),
-    host_context: plain(host.hostContext),
     display_mode: displayMode,
+    leaf_read: leafRead,
+    host_capabilities: plain(host.hostCapabilities),
   };
 }
 
-async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
-  return callAppTool('probe_record', buildProbe(view, host, tViewMs, displayMode));
-}
-
-/** First paint: one probe_record, display_mode taken from the host's current mode. */
-export async function recordFirstPaint(view: RoadmapView, host: HostInfo, tViewMs: number): Promise<void> {
-  const ctx = host.hostContext as { displayMode?: string } | undefined;
-  await send(view, host, tViewMs, ctx?.displayMode ?? 'inline');
-}
-
-/** Full view opened: a second probe_record saying which path ran (fullscreen or outline). */
-export async function recordFullView(
-  view: RoadmapView,
-  host: HostInfo,
-  tViewMs: number,
-  ran: DisplayModeRan,
-): Promise<void> {
-  await send(view, host, tViewMs, ran);
+/** One single-line chat message: RDM_PROBE followed by compact JSON. */
+export function probeLine(probe: object): string {
+  return 'RDM_PROBE ' + JSON.stringify(probe);
 }

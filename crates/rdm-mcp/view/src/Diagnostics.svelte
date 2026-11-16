@@ -1,31 +1,36 @@
 <script lang="ts">
   import type { HostInfo } from './bridge';
-  import type { RoadmapView } from './types';
+  import type { RoadmapView, Stamps } from './types';
 
-  let { view, host, tView, errors, modelContext, callResult, onCall }: {
+  let { view, host, stamps, errors, modelContext, messageStatus, displayMode }: {
     view: RoadmapView | null;
     host: HostInfo | null;
-    tView: number;
+    stamps: Stamps;
     errors: Record<string, string>;
     modelContext: string;
-    callResult: string;
-    onCall: () => void;
+    messageStatus: string;
+    displayMode: () => string;
   } = $props();
 
   let pre: HTMLPreElement | undefined = $state();
   let copied = $state('');
 
+  const rel = (t: number) => (t && view ? `${t - view.t_server_ms} ms (${t})` : 'n/a');
+
   const text = $derived(
     [
-      `t_server_ms: ${view?.t_server_ms ?? 'n/a'}`,
-      `t_view_ms: ${tView || 'n/a'}`,
-      `t_view - t_server: ${view && tView ? tView - view.t_server_ms + ' ms' : 'n/a'}`,
-      `payload_bytes: ${view?.payload_bytes ?? 'n/a'}`,
+      `mode: ${view?.mode ?? 'n/a'}  scale: ${view?.scale ?? 'n/a'}  node_count: ${view?.node_count ?? 'n/a'}`,
+      `t_server_ms: ${view?.t_server_ms ?? 'n/a'}  payload_bytes: ${view?.payload_bytes ?? 'n/a'}`,
+      `t_result - t_server:      ${rel(stamps.t_result_ms)}`,
+      `t_first_data - t_server:  ${rel(stamps.t_first_data_ms)}`,
+      `t_first_paint - t_server: ${rel(stamps.t_first_paint_ms)}`,
+      `t_complete - t_server:    ${rel(stamps.t_complete_ms)}`,
+      `bytes_received: ${stamps.bytes_received}  nodes_received: ${stamps.nodes_received}`,
       `apps protocol announced: ${host?.protocolAnnounced ?? 'n/a'}`,
       `apps protocol host: ${host?.protocolHost ?? 'n/a'}`,
-      `display mode: ${(host?.hostContext as { displayMode?: string } | undefined)?.displayMode ?? 'n/a'}`,
-      `update-model-context: ${modelContext}`,
-      `roadmap_view call: ${callResult}`,
+      `display mode: ${displayMode()}`,
+      `ui/message: ${messageStatus}`,
+      `ui/update-model-context: ${modelContext}`,
       `tool errors: ${Object.keys(errors).length ? '' : 'none'}`,
       ...Object.entries(errors).map(([k, v]) => `  ${k}: ${v}`),
       `hostCapabilities: ${JSON.stringify(host?.hostCapabilities ?? null, null, 2)}`,
@@ -54,7 +59,6 @@
 <details open class="diag">
   <summary>Diagnostics</summary>
   <div class="row">
-    <button onclick={onCall}>Call roadmap_view</button>
     <button onclick={copy}>Copy</button>
     <span class="meta">{copied}</span>
   </div>
