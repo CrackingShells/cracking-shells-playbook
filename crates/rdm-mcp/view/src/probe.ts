@@ -14,6 +14,11 @@ export function nextFrameMs(): Promise<number> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve(Date.now())));
 }
 
+// postMessage cannot clone Proxy objects; send plain JSON.
+function plain(v: unknown): unknown {
+  return v === undefined ? null : JSON.parse(JSON.stringify(v));
+}
+
 async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayMode: string) {
   // Field names are the probe_record contract of build/stub_server.md Step 2.
   return callAppTool('probe_record', {
@@ -22,8 +27,8 @@ async function send(view: RoadmapView, host: HostInfo, tViewMs: number, displayM
     t_view_ms: tViewMs,
     apps_protocol_announced: host.protocolAnnounced,
     apps_protocol_host: host.protocolHost ?? 'unknown',
-    host_capabilities: host.hostCapabilities ?? null,
-    host_context: host.hostContext ?? null,
+    host_capabilities: plain(host.hostCapabilities),
+    host_context: plain(host.hostContext),
     display_mode: displayMode,
   });
 }

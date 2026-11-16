@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- Dev only: not built, not shipped. Serve crates/rdm-mcp/view with `python3 -m http.server`
+     and open /dev/mock-host.html?run=cold  (add &modes=inline to hide fullscreen). -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>mock MCP Apps host</title>
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 8px; }
+  #frame { width: 100%; height: 420px; border: 1px solid #888; }
+  #frame.fs { position: fixed; inset: 0; height: 100vh; z-index: 9; background: #fff; }
+  pre { background: #f3f3f3; padding: 6px; max-height: 240px; overflow: auto; font-size: 11px; }
+</style>
+</head>
+<body>
+<h3>mock host <small id="state"></small></h3>
+<iframe id="frame" title="view"></iframe>
+<h4>message log</h4>
+<pre id="log"></pre>
+<script>
+const q = new URLSearchParams(location.search);
+const run = q.get('run') || 'cold';
+const modes = (q.get('modes') || 'inline,fullscreen').split(',');
+const frame = document.getElementById('frame');
+const logEl = document.getElementById('log');
+const stateEl = document.getElementById('state');
+window.probes = [];
+function log(dir, m) { logEl.textContent += dir + ' ' + JSON.stringify(m).slice(0, 400) + '\n'; }
+function post(m) { log('host->view', m); frame.contentWindow.postMessage(m, '*'); }
+function reply(id, result) { post({ jsonrpc: '2.0', id, result }); }
+const hostContext = {
+  theme: q.get('theme') || 'light', displayMode: 'inline', availableDisplayModes: modes,
+  containerDimensions: { width: 900, maxHeight: 600 }, platform: 'web', locale: 'en-US',
+};
+
+async function toolResult() {
+  const fixture = await (await fetch('sample-roadmap.json')).json();
+  const payload_bytes = JSON.stringify(fixture).length;
+  const sc = { ...fixture, t_server_ms: Date.now(), payload_bytes };
+  post({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: {} } });
+  post({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: {
+    content: [{ type: 'text', text: `${fixture.nodes.length} nodes` }], structuredContent: sc } });
+}
+
+async function callTool(id, p) {
+  if (p.name === 'leaf_get') {
+    const r = await fetch('sample-leaves/' + p.arguments.path);
+    const markdown = r.ok ? await r.text() : '(no sample leaf for ' + p.arguments.path + ')';
+    const sc = { path: p.arguments.path, markdown };
+    return reply(id, { content: [{ type: 'text', text: markdown }], structuredContent: sc });
+  }
+  if (p.name === 'probe_record') {
+    window.probes.push(p.arguments);
+    stateEl.textContent = window.probes.length + ' probe_record call(s)';
+    return reply(id, { content: [{ type: 'text', text: 'recorded' }], structuredContent: { ok: true } });
+  }
+  post({ jsonrpc: '2.0', id, error: { code: -32601, message: 'unknown tool ' + p.name } });
+}
+
+window.addEventListener('message', (e) => {
+  if (e.source !== frame.contentWindow) return;
+  const m = e.data;
+  log('view->host', m);
+  if (m.method === 'ui/initialize') {
+    reply(m.id, { protocolVersion: '2026-01-26', hostInfo: { name: 'mock-host', version: '0.0.0' },
+      hostCapabilities: { serverTools: {}, openLinks: {} }, hostContext });
+  } else if (m.method === 'ui/notifications/initialized') {
+    toolResult();
+  } else if (m.method === 'tools/call') {
+    callTool(m.id, m.params);
+  } else if (m.method === 'ui/request-display-mode') {
+    const mode = modes.includes(m.params.mode) ? m.params.mode : hostContext.displayMode;
+    frame.classList.toggle('fs', mode === 'fullscreen');
+    hostContext.displayMode = mode;
+    reply(m.id, { mode });
+  } else if (m.id !== undefined && m.method) {
+    reply(m.id, {});
+  }
+});
+frame.src = '../dist/index.html?run=' + run;
+</script>
+</body>
+</html>

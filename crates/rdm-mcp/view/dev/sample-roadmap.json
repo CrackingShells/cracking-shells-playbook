@@ -1,0 +1,102 @@
+{
+  "campaign": "sample-roadmap",
+  "frozen_at": "0000000",
+  "nodes": [
+    {
+      "path": "core",
+      "parent": "core",
+      "kind": "dir",
+      "title": "Core",
+      "status": "inprogress",
+      "depth": 0
+    },
+    {
+      "path": "design",
+      "parent": "design",
+      "kind": "dir",
+      "title": "Design",
+      "status": "done",
+      "depth": 0
+    },
+    {
+      "path": "intro.md",
+      "parent": null,
+      "kind": "leaf",
+      "title": "Intro",
+      "status": "planned",
+      "depth": 0
+    },
+    {
+      "path": "core/m1_foundation.md",
+      "parent": "core",
+      "kind": "leaf",
+      "title": "M1 Foundation",
+      "status": "inprogress",
+      "depth": 1
+    },
+    {
+      "path": "core/engine",
+      "parent": "core",
+      "kind": "dir",
+      "title": "Engine",
+      "status": "inprogress",
+      "depth": 1
+    },
+    {
+      "path": "design/spec.md",
+      "parent": "design",
+      "kind": "leaf",
+      "title": "Spec",
+      "status": "done",
+      "depth": 1
+    },
+    {
+      "path": "design/review.md",
+      "parent": "design",
+      "kind": "leaf",
+      "title": "Review",
+      "status": "amendment",
+      "depth": 1
+    },
+    {
+      "path": "design/notes.md",
+      "parent": "design",
+      "kind": "leaf",
+      "title": "Notes",
+      "status": "planned",
+      "depth": 1
+    },
+    {
+      "path": "core/engine/parse.md",
+      "parent": "core/engine",
+      "kind": "leaf",
+      "title": "Parse",
+      "status": "done",
+      "depth": 2
+    },
+    {
+      "path": "core/engine/render",
+      "parent": "core/engine",
+      "kind": "dir",
+      "title": "Render",
+      "status": "blocked",
+      "depth": 2
+    },
+    {
+      "path": "core/engine/render/html.md",
+      "parent": "core/engine/render",
+      "kind": "leaf",
+      "title": "Render html",
+      "status": "blocked",
+      "depth": 3
+    },
+    {
+      "path": "core/engine/render/svg.md",
+      "parent": "core/engine/render",
+      "kind": "leaf",
+      "title": "Render svg",
+      "status": "planned",
+      "depth": 3
+    }
+  ]
+}

@@ -7,8 +7,8 @@
   import Outline from './Outline.svelte';
   import type { RoadmapView } from './types';
 
-  let view = $state<RoadmapView | null>(null);
-  let host = $state<HostInfo | null>(null);
+  let view = $state.raw<RoadmapView | null>(null);
+  let host = $state.raw<HostInfo | null>(null);
   let error = $state<string | null>(null);
   let theme = $state<'light' | 'dark'>('light');
   let selected = $state<string | null>(null);
