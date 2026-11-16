@@ -100,7 +100,7 @@ enforced, and every mark leaves a trace.
 
 - **Pre-conditions gate the start.** `planned → ongoing` needs every pre-condition `met`. This holds for an override too: an override skips the ready set, never the pre-conditions. The same holds for `paused → ongoing` by override.
 - **Success gates gate the finish.** `ongoing → done` needs every success gate `met`, in addition to I8.
-- **Every mark is traced.** A change of a criterion's `met` mark, on a leaf or a directory, writes a mark record: `ts`, `actor`, the criterion (kind `pre` or `gate`, plus its index), the new value, and `evidence?` (free text: a command, its result, a commit). A leaf keeps the records in its `history`, a directory in its own log (stored-schema.md).
+- **Every mark is traced.** A change of a criterion's `met` mark, on a leaf or a directory, writes a mark record: `ts`, `actor`, the criterion (kind `pre` or `gate`, plus its index), the new value, and `evidence?` (free text: a command, its result, a commit). Leaves and directories keep the records in their own `marks` array, apart from `history` (stored-schema.md).
 - **`met` is a state mark, not content.** Setting it makes no amendment, and a node sealed at `done` or `cancelled` accepts no mark. A wrong mark is corrected by another mark record before the move to `done`; both records stay.
 - **Legacy data.** 30 of 48 done leaves under `__roadmap__/` carry open gates. The importer never invents a tick: it imports them as they are, and `validate` reports each `done` node with an unmet criterion as an error to reconcile. Whoever reconciles ticks the criterion, and that writes a mark record. The reconcile path on a sealed node is an open defect: see `Decisions`, row 8.
 
