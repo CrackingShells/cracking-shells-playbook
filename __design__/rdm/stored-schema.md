@@ -6,9 +6,9 @@ grammars it must cover are traced production by production in [traceability.md](
 Status meanings are in [statuses.md](statuses.md). The read model that consumers receive is a
 separate document (`read-model.md`).
 
-Where a default of the M0b plan is defective, the text gives the default as the field table says
-it, and then an `OBJECTION` with the alternative. The `rdm-schema` crate builds the default unless
-Eliott accepts the objection. Fields new against R01 are marked **new**.
+Where this document departs from a default of the M0b plan, a one-line note says who decided it
+(Eliott or the coordinator, 2026-11-16). Two recorded objections stand, with the default kept.
+Fields new against R01 are marked **new**.
 
 Notation:
 
@@ -30,6 +30,7 @@ __roadmap__/<campaign>/
   <leaf>.json                 leaf node                  (Leaf)
   <dir>/_dir.json             directory node             (Directory, kind: directory)
   <dir>/<leaf>.json
+  _comments/<ulid>.json       one file per comment      (Comment)
   .rdm/                       untracked scratch: lock, journal/, staging/
 ```
 
@@ -40,7 +41,7 @@ __roadmap__/<campaign>/
 | Version stamp | Every file carries `schema_version` (see `Format version`) |
 | Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12 |
 | Canonical order | The order of the rows in each field table is the canonical field order. Two-space indent, LF, trailing newline. M1 owns the serialiser |
-| Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number if OBJECTION 1 is accepted, the display id of an amendment, a leaf's commit count when the engine recorded the steps |
+| Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number, the display id of an amendment, a leaf's commit count when the engine recorded the steps |
 
 ## Directory
 
@@ -60,7 +61,6 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | `success_gates` | `Criterion[]` | yes | Completion criteria, one or more |
 | `gotchas` | `lines` | yes | Legacy `## Gotchas`, verbatim markdown lines. May be empty (the section is optional) |
 | `notes` | `lines` | yes | **new**: the `Notes` cell of the directory's own row in its parent's Progress table. May be empty |
-| `comments` | `Comment[]` | yes | **new**: append-only comments. May be empty |
 
 Rules for `validate`: `goal` has no line break; `preconditions` and `success_gates` each have at
 least one entry; `kind` is `campaign` exactly when the file is at the campaign root.
@@ -88,7 +88,6 @@ the branch of one of its leaves and a count of commits; both are dropped (see `t
 | `steps` | `Step[]` | yes | One to five steps, in order |
 | `progress` | `Progress` | yes | Where the work happened |
 | `history` | `History[]` | yes | Status moves, oldest first. Empty on a new leaf, and on a leaf imported from legacy markdown |
-| `comments` | `Comment[]` | yes | **new**: append-only comments |
 
 `Progress` is an object, not a separate type section:
 
@@ -100,9 +99,9 @@ the branch of one of its leaves and a count of commits; both are dropped (see `t
 
 Rules for `validate`:
 
-- `steps` has one to five entries, and entry *i* has `number == i + 1`.
+- `steps` has one to five entries. A step's number is its position plus one, so no rule can break it.
 - `goal` has no line break.
-- `references` has at least one entry (the legacy grammar requires a non-empty `**References**` line). OBJECTION 6.
+- `references` has at least one entry (the legacy grammar requires a non-empty `**References**` line). An empty array is a warning, not an error. Decided 2026-11-16 (coordinator).
 - `status == planned` implies every step has `done: false`.
 - `status == done` implies every step has `done: true`.
 - `status_reason` is present exactly when `status` is `paused` or `cancelled`, and equals the `reason` of the last `history` entry when `history` is not empty.
@@ -114,13 +113,13 @@ An element of `Leaf.steps`.
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `number` | `integer` | yes | 1 to 5, sequential from 1. OBJECTION 1 |
+| `id` | `string` | yes | **new** (R01 had it): immutable step id, minted like node ids. Anything that points into a step uses it |
 | `title` | `string` | yes | The text after `## Step N:` |
 | `goal` | `string` | yes | One line: the unique change intent of the step |
 | `implementation_logic` | `lines` | yes | Free prose and lists, blank lines allowed. At least one line is not blank |
 | `deliverables` | `lines` | yes | Legacy: one line. Import stores it as one element, unsplit. A new step may hold several elements, one per deliverable. M3's export joins them with `; ` |
 | `references` | `Reference[]` | yes | Step-level documents. May be empty (optional in the legacy grammar) |
-| `checks` | `Check[]` | yes | One or more. The legacy grammar has exactly one per step, so import yields one. OBJECTION 2 |
+| `checks` | `Check[]` | yes | One or more. The legacy grammar has exactly one per step, so import yields one |
 | `commit` | `Commit` | yes | The commit message the step must produce |
 | `requires` | `lines?` | no | Prose prerequisites that are not obvious. **Never an id or an edge**: I1 forbids a stored dependency between siblings. Never used in real campaigns, kept so the grammar's field has a home |
 | `done` | `bool` | yes | The step is recorded done. A step recorded done is sealed (`statuses.md`, `Sealing`) |
@@ -135,20 +134,17 @@ An element of `Leaf.steps`.
 | `expected` | `"PASS"` or `"FAIL"` | yes | The outcome the check expects |
 | `command` | `string?` | no | A shell command, when the whole check is one runnable command. Set only by the author of a new check, never guessed by the importer |
 
-**OBJECTION 1: store a step `id`, derive `number`.** The default stores `number`. A number stored
-beside the array position can disagree with it, which is the problem R01 avoided for names by
-making the name the path. R01's composite "reorder steps" would have to renumber, and comments or
-amendment `changes` that point into a step by number would then point at another step. R01's
-sketch had a step `id`, and the plan's list drops it. Alternative: keep an immutable step `id`
-(minted like node ids), derive `number` from position, and let `Leaf.steps` order be the only
-order. Then the validator rule "numbered in sequence" cannot be violated. If accepted, the field
-`number` leaves the table, `id` joins it, and in `traceability.md` the `<step-heading>` row reads `title` as stored and the number as derived.
+**A step has an `id`, and its number is derived.** The number is the step's position plus one, 1
+to 5, never stored. A stored number could disagree with the array position, and R01's composite
+"reorder steps" would have to renumber it, so references into a step by number would point at
+another step. The export writes the number from the position. In `traceability.md` the
+`<step-heading>` row stores `title` and derives the number. Decided 2026-11-16 (coordinator).
 
-**OBJECTION 2: a check is prose, not `{command, expected}`.** The plan's default makes `command`
+**A check is prose, not `{command, expected}`.** The plan's default made `command`
 required. The legacy check is a prose line that ends in `(expected: PASS)` or `(expected: FAIL)`.
 Real checks are commands in backticks, several commands joined by `;`, shell loops, or a
-sentence. No parser extracts a `command` from all of them without loss or invention. Decision
-recorded: `text` is required and lossless, `expected` is parsed from the trailer (the one part
+sentence. No parser extracts a `command` from all of them without loss or invention. Decided
+2026-11-16 (coordinator): `text` is required and lossless, `expected` is parsed from the trailer (the one part
 the grammar fixes), and `command` is optional and filled only by an author. Export (M3) writes
 `text`, a space, and `(expected: X)`. An agent that wants to run a check uses `command` when it
 exists and reads `text` otherwise.
@@ -222,8 +218,8 @@ An element of `Leaf.history`: one status move. Written by `transition`; never an
 | `ts` | `ts` | yes | When the move was made |
 | `from` | status | yes | The status left |
 | `to` | status | yes | The status entered |
-| `actor` | `Actor` | yes | Who made it. OBJECTION 3 |
-| `reason` | `string?` | no | Required for moves into `paused` and `cancelled`, and for `paused → planned` and `paused → ongoing` (`statuses.md`) |
+| `actor` | `Actor` | yes | Who made it |
+| `reason` | `string?` | no | Required for moves into `paused` and `cancelled`, and for `paused → planned`, `paused → ongoing` and `cancelled → planned` (`statuses.md`) |
 | `override` | `bool?` | no | `true` when the leaf was started outside the ready set |
 | `op_id` | `string?` | no | **new**: shared by every entry that one operation writes, so a directory pause or cancel is recognisable as one operation |
 
@@ -234,32 +230,31 @@ An element of `Leaf.history`: one status move. Written by `transition`; never an
 | `kind` | `"agent"`, `"human"` or `"import"` | yes | The actor kind that `statuses.md` names in its `Who` column |
 | `name` | `string?` | no | Free identifier: a user, an agent session, a tool |
 
-**OBJECTION 3: `actor` is an object, not a string.** The plan's list gives `actor` with no type,
+**`actor` is an object, not a string.** The plan's list gave `actor` with no type,
 and R01 gives none. `statuses.md` states who may set each move, `agent`, `human` or `both`. A
 bare string cannot be checked against that. `kind` is the part a rule can test, and `name` is the
-part a person reads. If a plain string is wanted, the kind must then be a separate field.
+part a person reads. Decided 2026-11-16 (coordinator).
 
 ## Comment
 
-An element of `comments` on a leaf or a directory. Append-only. The one change a sealed node
-accepts. Never an amendment.
+`_comments/<ulid>.json`, at the campaign root. One file per comment, append-only, like an
+amendment. A comment on a leaf, a directory or the campaign root. The one change a sealed node
+accepts. Never an amendment. A node's comments are the set of comment files whose `node_id` names
+it, so a comment never changes the node's `rev`. Decided 2026-11-16 (Eliott): this replaces a
+`comments[]` array in the node file, which two branches would both append to, and conflict.
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
+| `schema_version` | `string` | yes | Format version |
+| `id` | `ulid` | yes | Identity and order |
+| `node_id` | `string` | yes | The node commented on |
 | `ts` | `ts` | yes | When it was added |
 | `actor` | `Actor` | yes | Who added it |
 | `text` | `lines` | yes | The comment, one or more lines (it is prose, so it follows the lines rule) |
+| `op_id` | `string?` | no | The retry key of the write that made it |
 
-Entries are never edited or removed. A correction is a new comment.
-
-**OBJECTION 4: comments in the node file will conflict across branches.** R01 chose one file per
-leaf so task branches never touch the same file. A comment on a done leaf, added on two branches,
-appends at the end of one array on both sides and git reports a conflict. `history` has the same
-property, but only the branch that works a leaf writes it. Comments are written by anyone, on
-finished nodes. Alternative: one file per comment, `_comments/<ulid>.json` at the campaign root,
-as for amendments, with `node_id` in the entry. A node's comments are then a query, and a comment
-never changes the node's `rev`. The default stays in the field tables; M1 should weigh the
-alternative before the store fixes the layout.
+Files are never edited or removed. A correction is a new comment. Deleting a node does not delete
+its comments; the removing amendment's `snapshot` keeps them with it.
 
 ## Amendment
 
@@ -320,15 +315,15 @@ the nodes; the amendment is stored once, at the campaign root, and `changes` nam
 | Area | R01 sketch | This schema |
 |:--|:--|:--|
 | Criteria | `preconditions[]`, `success_gates[]` as plain text | `Criterion {text, met}`, at leaf and directory level |
-| Step | `{id, goal, implementation_logic, deliverables[], checks[], commit, references[], requires[], done, commit_sha?}` | adds `number`, `title`, `done_at?`; `implementation_logic` and `deliverables` are `lines`; `requires` is optional prose; `id` is dropped, see OBJECTION 1 |
-| Check | `{command, expected}` | `{text, expected, command?}`, OBJECTION 2 |
+| Step | `{id, goal, implementation_logic, deliverables[], checks[], commit, references[], requires[], done, commit_sha?}` | adds `title`, `done_at?`; `implementation_logic` and `deliverables` are `lines`; `requires` is optional prose; `id` is kept and the number is derived |
+| Check | `{command, expected}` | `{text, expected, command?}` |
 | Commit | `{type, scope, summary}` | `{type, scope?, breaking, summary}` |
 | Reference | `references[]`, no shape | `{label?, title, target?, note?}` |
 | Status | `blocked_reason?` | `status_reason?`; vocabulary per `statuses.md` |
 | History | `{ts, from, to, actor, note?, override?}` | `note` is `reason`; adds `op_id?`; `actor` is an object |
-| Comments | none | `comments[]` on leaves and directories |
+| Comments | none | one file each, `_comments/<ulid>.json`, naming the node |
 | Amendment | `{… id, …}` | adds `legacy_id?`; the id is a ULID with a derived display id |
-| Directory | no notes | adds `notes` and `comments` |
+| Directory | no notes | adds `notes` |
 | Progress | `{branch?, notes}` | adds `commits?` (import only); `notes` is `lines` |
 | Gotchas, context | strings or lines unstated | `lines` |
 | Unknown fields | I12 stated | Every type keeps them, nested ones too |
@@ -342,13 +337,8 @@ rule is "`done` leaf has every step `done`". The import records the legacy count
 `progress.commits`. `r01_sync` rewrites I8 to say so. This was not in `statuses.md`, whose `R01
 deltas` row for I8 says "unchanged"; this document supersedes that row.
 
-**OBJECTION 5: `status_reason` is a copy of the last history reason.** It is derived data stored
+**Recorded objection (coordinator kept the default): `status_reason` is a copy of the last history reason.** It is derived data stored
 beside its source, which I6 forbids. The default keeps it because an imported `blocked → cancelled`
 leaf has no history entry to hold the reason. Alternative: the importer writes one `history` entry
 with `actor.kind: "import"` and `status_reason` is derived. Default kept, with the consistency
-rule in `Leaf`.
-
-**OBJECTION 6: a leaf's `references` need not be non-empty.** The legacy grammar demands a
-non-empty `**References**` line, and this document carries that as a `validate` rule. A leaf that
-has nothing to cite then has to invent a reference. A warning, not an error, would be kinder.
-Left to M2's diagnostics, which assign severities.
+rule in `Leaf`. Decided 2026-11-16 (coordinator).

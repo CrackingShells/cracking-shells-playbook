@@ -36,13 +36,13 @@ that the export (M3) re-creates the text from stored fields.
 | `<checkbox-item>` | `stored` | `preconditions[].text` and `.met`; `[x]` is `true`, `[ ]` is `false` |
 | `<gate-item>` | `stored` | `success_gates[].text` and `.met`; the check mark is `true`, the empty box is `false` |
 | `<step>` | `stored` | One element of `steps[]` |
-| `<step-heading>` | `stored` | `steps[].title` is the text after the colon; `steps[].number` is the digit (derived if OBJECTION 1 is accepted) |
+| `<step-heading>` | `stored` | `steps[].title` is the text after the colon; the digit is dropped: the step number is derived from position |
 | `<step-field>` | `stored` | One of the step fields below |
 | `<step-field-goal>` | `stored` | `steps[].goal` |
 | `<step-field-impl-logic>` | `stored` | `steps[].implementation_logic`, the body lines with blank lines kept. The header line and trailing blank lines are presentation |
 | `<step-field-references>` | `stored` | `steps[].references[]` |
 | `<step-field-deliverables>` | `stored` | `steps[].deliverables`, one element, not split |
-| `<step-field-consistency>` | `stored` | `steps[].checks[].text` and `.expected`. The trailer `(expected: X)` becomes `expected`. `command` is not extracted: the check is prose (OBJECTION 2) |
+| `<step-field-consistency>` | `stored` | `steps[].checks[].text` and `.expected`. The trailer `(expected: X)` becomes `expected`. `command` is not extracted: the check is prose |
 | `<step-field-commit>` | `stored` | `steps[].commit.type`, `.scope`, `.breaking`, `.summary`. The backticks are presentation and are dropped |
 | `<step-field-requires>` | `stored` | `steps[].requires`, prose lines |
 | `<h1-title>` | `stored` | `title` |
@@ -54,7 +54,7 @@ Constraints the grammar states outside its productions, and where each one goes:
 | Constraint | Home |
 |:--|:--|
 | Step count is 1 to 5 | `validate` rule on `Leaf.steps` |
-| Step numbers are sequential from 1 | `validate` rule on `steps[].number` (derived, if OBJECTION 1 is accepted) |
+| Step numbers are sequential from 1 | Derived: a step's number is its position, so the rule cannot break |
 | At least one implementation line is not blank | `validate` rule on `Step.implementation_logic` |
 | All four header fields and the five required step fields are present | Required fields of `Leaf` and `Step` |
 | Header and step field order is free | Dropped: the canonical order is the field table's |
