@@ -219,7 +219,7 @@ An element of `Leaf.history`: one status move. Written by `transition`; never an
 | `from` | status | yes | The status left |
 | `to` | status | yes | The status entered |
 | `actor` | `Actor` | yes | Who made it |
-| `reason` | `string?` | no | Required for moves into `paused` and `cancelled`, and for `paused → planned`, `paused → ongoing` and `cancelled → planned` (`statuses.md`) |
+| `reason` | `string?` | no | Required for moves into `paused` and `cancelled`, and for `paused → planned`, `paused → ongoing` and every undo out of `cancelled` (`statuses.md`) |
 | `override` | `bool?` | no | `true` when the leaf was started outside the ready set |
 | `op_id` | `string?` | no | **new**: shared by every entry that one operation writes, so a directory pause or cancel is recognisable as one operation |
 
