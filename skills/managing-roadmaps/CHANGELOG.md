@@ -1,3 +1,10 @@
+# managing-roadmaps [1.3.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.2.0...managing-roadmaps@1.3.0) (2026-11-16)
+
+
+### Features
+
+* **managing-roadmaps:** ask agents to report plugin problems ([466a75c](https://github.com/CrackingShells/cracking-shells-playbook/commit/466a75c8cf74d89441bb70704c60079f0e452445))
+
 # managing-roadmaps [1.2.0](https://github.com/CrackingShells/cracking-shells-playbook/compare/managing-roadmaps@1.1.1...managing-roadmaps@1.2.0) (2026-10-05)
 
 
