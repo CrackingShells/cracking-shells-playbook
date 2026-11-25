@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::campaign::*;
-use common::hooked::{frozen_stat, options_with};
+use common::hooked::{frozen_stat, no_hard_links, options_with, race_at_link};
 use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
@@ -2461,6 +2461,44 @@ fn recover_redoes_an_interrupted_operation() {
 ///
 /// Bug it catches: recovery that redoes a create as a put and silently replaces a file it did not
 /// write.
+/// A volume that refuses hard links still takes a create (store.md, Create-only publish: check
+/// the name is free, then rename), and a name an external writer took in the meantime is refused
+/// with the error a volume with hard links gives.
+#[test]
+fn create_on_a_volume_without_hard_links_publishes_and_still_refuses_a_taken_name() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut store =
+        CachedCampaign::open(&disk.root, &name("demo"), options_with(no_hard_links())).unwrap();
+    store
+        .create(req(Some("n"), None, create_op(leaf_n(20, "fresh", 2, "Z"), None)))
+        .expect("a create works without hard links");
+    assert!(disk.root.join(file(20)).is_file());
+
+    let taken = |refuse_links: bool| {
+        let disk = Disk::new();
+        disk.write_all(&base());
+        let (fs, armed) = race_at_link(refuse_links, &disk.root.join(file(21)), b"external");
+        let mut store = CachedCampaign::open(&disk.root, &name("demo"), options_with(fs)).unwrap();
+        armed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let refused = store
+            .create(req(Some("n"), None, create_op(leaf_n(21, "late", 2, "Z"), None)))
+            .unwrap_err();
+        assert_eq!(std::fs::read(disk.root.join(file(21))).unwrap(), b"external");
+        refused
+    };
+    let without_links = taken(true);
+    assert_eq!(
+        without_links,
+        StoreError::Invalid {
+            file: file(21),
+            rule: Rule::DuplicateId,
+            detail: "the file already exists".into(),
+        }
+    );
+    assert_eq!(without_links, taken(false), "the same error as on a normal volume");
+}
+
 #[test]
 fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
     let created = leaf_n(20, "fresh", 2, "V");
