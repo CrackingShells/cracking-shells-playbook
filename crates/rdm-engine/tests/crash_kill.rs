@@ -6,7 +6,8 @@
 //! against the records.
 //!
 //! Knobs: `RDM_CRASH_ITERS` is the number of kill rounds (default 25, a few seconds; the CI soak
-//! sets thousands), `RDM_CRASH_SEED` seeds the kill schedule and the workers' choices,
+//! sets thousands), `RDM_CRASH_SEED` seeds the kill schedule and the workers' choices (default 1, one that
+//! catches a lock released after the revision check on every run tried),
 //! `RDM_CRASH_WORKERS` is the worker count (default 3).
 
 mod common;
@@ -362,7 +363,9 @@ fn run_worker(root: &Path) -> ! {
 // The parent
 
 fn spawn_worker(root: &Path, acks: &Path, seed: u64, id: usize, incarnation: u64) -> ChildProc {
-    let stream = seed ^ ((id as u64 + 1) << 48) ^ (incarnation.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    // Each (worker, incarnation) draws from its own hashed stream: streams that start close
+    // together would overlap and mint the same node ids.
+    let stream = SeededRng(seed ^ ((id as u64 + 1) << 48) ^ (incarnation << 20)).next_u64();
     spawn_child(
         TEST,
         "worker",
@@ -461,7 +464,7 @@ fn killed_workers_lose_no_acknowledged_write() {
     }
 
     let iters = env_u64("RDM_CRASH_ITERS", DEFAULT_ITERS);
-    let seed = env_u64("RDM_CRASH_SEED", 0xC0FFEE);
+    let seed = env_u64("RDM_CRASH_SEED", 1);
     let workers = usize::try_from(env_u64("RDM_CRASH_WORKERS", DEFAULT_WORKERS as u64))
         .unwrap()
         .max(1);
