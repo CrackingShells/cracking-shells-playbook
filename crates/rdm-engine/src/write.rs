@@ -430,11 +430,11 @@ impl Store {
     }
 
     /// Reads the files of [`Store::touched`] from the disk and rebuilds the views if any differs
-    /// from its entry. Run twice, because what a stale entry said about a subtree can name files the
-    /// first pass did not read. Returns the ids read.
+    /// from its entry. Repeated until the set is closed, because what a stale entry said about a subtree
+    /// can name files the pass before did not read. Returns the ids read.
     fn read_touched(&mut self, ops: &[Op]) -> Result<BTreeSet<NodeId>, StoreError> {
         let mut read = BTreeSet::new();
-        for _ in 0..2 {
+        loop {
             let wanted: BTreeSet<NodeId> = self.touched(ops).difference(&read).cloned().collect();
             if wanted.is_empty() {
                 break;
