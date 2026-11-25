@@ -13,7 +13,7 @@ use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, Rev, SubtreeRev, TreeRev};
 use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
 
-use crate::codec::{Stored, decode};
+use crate::cache::Entries;
 use crate::fs::{Durability, Fs, RealFs};
 use crate::ids::{IdRng, OsRng, UlidMint};
 use crate::links::ReverseIndex;
@@ -61,7 +61,7 @@ pub(crate) struct State {
 
 /// A record that carries an `op_id`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum OpRef {
+pub enum OpRef {
     Amendment(AmendmentId),
     Comment(CommentId),
     /// A node with a `History.op_id` entry.
@@ -71,14 +71,16 @@ pub(crate) enum OpRef {
 /// Maps an `op_id` to the records that carry it (`store.md`, §Cache): amendments, comments and
 /// `History.op_id` entries. Built on open and kept in step by write-through.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct OpIndex {
+pub struct OpIndex {
     by_op: BTreeMap<OpId, BTreeSet<OpRef>>,
     /// The op ids each node's history holds, so a replaced node drops its old entries.
     by_node: BTreeMap<NodeId, Vec<OpId>>,
 }
 
 impl OpIndex {
-    pub(crate) fn records(&self, op: &OpId) -> Option<&BTreeSet<OpRef>> {
+    /// The records that carry `op`.
+    #[must_use]
+    pub fn records(&self, op: &OpId) -> Option<&BTreeSet<OpRef>> {
         self.by_op.get(op)
     }
 
@@ -131,6 +133,8 @@ pub struct Store {
     pub(crate) options: Options,
     pub(crate) ulids: UlidMint,
     pub(crate) state: State,
+    /// The decoded files the state is built from, with the signature of each.
+    pub(crate) entries: Entries,
     /// What the last recovery did, kept until the next one.
     pub(crate) last_recovered: Option<crate::write::Recovered>,
 }
@@ -142,123 +146,12 @@ pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
     }
 }
 
-/// The file names a loader reads in a directory: `<ulid>.json` or `n_<body>.json` and no other.
-fn listed(
-    fs: &dyn Fs,
-    root: &Path,
-    dir: &str,
-    keep: impl Fn(&str) -> bool,
-) -> Result<Vec<String>, StoreError> {
-    match fs.list_dir(&root.join(dir)) {
-        Ok(names) => Ok(names
-            .into_iter()
-            .filter(|n| n.strip_suffix(".json").is_some_and(&keep))
-            .collect()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(io_error(dir, &e)),
-    }
-}
-
-fn invalid(file: &str, rule: Rule, detail: String) -> StoreError {
+pub(crate) fn invalid(file: &str, rule: Rule, detail: String) -> StoreError {
     StoreError::Invalid {
         file: file.to_owned(),
         rule,
         detail,
     }
-}
-
-/// Reads every file of a kind, decodes it, and checks that it holds the id it is named for.
-fn read_all<T: Stored>(
-    fs: &dyn Fs,
-    root: &Path,
-    dir: &str,
-    keep: impl Fn(&str) -> bool,
-    id_of: impl Fn(&T) -> String,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Result<Vec<T>, StoreError> {
-    let mut out = Vec::new();
-    for name in listed(fs, root, dir, keep)? {
-        let file = format!("{dir}/{name}");
-        let bytes = fs
-            .read(&root.join(dir).join(&name))
-            .map_err(|e| io_error(&file, &e))?;
-        let decoded = decode::<T>(&file, &bytes)?;
-        let named = name.strip_suffix(".json").unwrap_or(&name);
-        let held = id_of(&decoded.value);
-        if held != named {
-            return Err(invalid(
-                &file,
-                Rule::FileIdMismatch,
-                format!("the file is named {named} and holds the id {held}"),
-            ));
-        }
-        diagnostics.extend(decoded.diagnostics);
-        out.push(decoded.value);
-    }
-    Ok(out)
-}
-
-/// Reads the whole campaign from disk.
-pub(crate) fn load(fs: &dyn Fs, root: &Path, slug: &Name) -> Result<State, StoreError> {
-    let mut diagnostics = Vec::new();
-    let nodes: Vec<Node> = read_all(
-        fs,
-        root,
-        "nodes",
-        |s| NodeId::parse(s).is_ok(),
-        |n: &Node| n.id().to_string(),
-        &mut diagnostics,
-    )?;
-    let comments: Vec<Comment> = read_all(
-        fs,
-        root,
-        "_comments",
-        |s| CommentId::parse(s).is_ok(),
-        |c: &Comment| c.id.to_string(),
-        &mut diagnostics,
-    )?;
-    let amendments: Vec<Amendment> = read_all(
-        fs,
-        root,
-        "_amendments",
-        |s| AmendmentId::parse(s).is_ok(),
-        |a: &Amendment| a.id.to_string(),
-        &mut diagnostics,
-    )?;
-    let opened = Campaign::open(nodes, slug)?;
-    let campaign = opened.campaign;
-    let mut file_diags: BTreeMap<String, Vec<Diagnostic>> = BTreeMap::new();
-    for d in diagnostics {
-        file_diags.entry(d.file.clone()).or_default().push(d);
-    }
-    let revs = campaign
-        .nodes()
-        .map(|n| (n.id().clone(), rev::rev(n)))
-        .collect();
-    let comments: BTreeMap<CommentId, Comment> =
-        comments.into_iter().map(|c| (c.id.clone(), c)).collect();
-    let amendments: BTreeMap<AmendmentId, Amendment> =
-        amendments.into_iter().map(|a| (a.id.clone(), a)).collect();
-    let reverse = ReverseIndex::build(
-        &campaign,
-        &comments.values().cloned().collect::<Vec<_>>(),
-        &amendments.values().cloned().collect::<Vec<_>>(),
-    );
-    let mut ops = OpIndex::default();
-    amendments.values().for_each(|a| ops.add_amendment(a));
-    comments.values().for_each(|c| ops.add_comment(c));
-    campaign
-        .nodes()
-        .for_each(|n| ops.replace_node(n.id(), Some(n)));
-    Ok(State {
-        campaign,
-        comments,
-        amendments,
-        revs,
-        file_diags,
-        reverse,
-        ops,
-    })
 }
 
 impl Store {
@@ -275,14 +168,31 @@ impl Store {
         options: Options,
     ) -> Result<Self, StoreError> {
         let root = root.into();
-        let state = load(&*options.fs, &root, slug)?;
+        let mut entries = Entries::default();
+        entries.revalidate(&*options.fs, &root)?;
+        let state = entries.build(slug)?;
         Ok(Self {
             root,
             options,
             ulids: UlidMint::default(),
             state,
+            entries,
             last_recovered: None,
         })
+    }
+
+    /// Revalidates the entries against the files and rebuilds the derived views if any changed:
+    /// afterwards the store holds what a fresh [`Store::open`] would hold.
+    ///
+    /// # Errors
+    /// As [`Store::open`]: a file that does not decode fails it, naming the file.
+    pub(crate) fn refresh(&mut self) -> Result<(), StoreError> {
+        self.entries.revalidate(&*self.options.fs, &self.root)?;
+        if self.entries.is_stale() {
+            let slug = self.state.campaign.slug().clone();
+            self.state = self.entries.build(&slug)?;
+        }
+        Ok(())
     }
 
     /// The campaign root directory.
@@ -351,6 +261,12 @@ impl Store {
             }
         }
         out
+    }
+
+    /// The op index: which records carry each `op_id` (`store.md`, §Cache).
+    #[must_use]
+    pub fn ops(&self) -> &OpIndex {
+        &self.state.ops
     }
 
     /// The reverse link index.

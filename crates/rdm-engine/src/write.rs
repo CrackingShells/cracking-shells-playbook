@@ -24,6 +24,7 @@ use rdm_schema::validate::check_node;
 use rdm_schema::{FORMAT_VERSION, version_string};
 use serde_json::Value;
 
+use crate::cache::Published;
 use crate::clock::{rfc3339, unix_ms};
 use crate::codec::{decode, encode};
 use crate::fs::Fs;
@@ -33,7 +34,8 @@ use crate::lock::{LockError, WriterLock};
 use crate::order::{MAX_KEY_LEN, between, spread};
 use crate::publish;
 use crate::rev;
-use crate::store::{OpRef, State, Store, io_error, load};
+use crate::store::{OpRef, Store, io_error};
+use std::sync::Arc;
 
 const REQUEST: &str = "<request>";
 
@@ -284,11 +286,16 @@ impl Store {
         };
         // 1. Take the lock. 2. Recover. The guard releases the lock on every return.
         let _lock = self.lock()?;
+        // The instant the entries this write publishes count as read at (`store.md`, §Cache).
+        let began = std::time::SystemTime::now();
         self.ignore_scratch()?;
         let report = self.recover_locked()?;
         self.last_recovered = Some(report);
-        // 3. Read the campaign from disk, not from what an earlier read held.
-        self.state = load(self.fs(), &self.root, self.state.campaign.slug())?;
+        // 3. Revalidate the cache against the files now, after the lock and the recovery, so the
+        // replay and stale checks never see a state older than the lock. A recovery that changed
+        // files is caught here: a file it replaced has another identity, a modification time of
+        // now and so a racy entry.
+        self.refresh()?;
 
         // 3.1 Replay.
         if let Some(op_id) = &header.op_id
@@ -342,13 +349,20 @@ impl Store {
         // 5. Apply. 6. Bring the state up to date from what was written.
         let amendment = plan.amendment.as_ref().map(|a| a.id.clone());
         if let Err(e) = self.apply_plan(&plan) {
-            // Whatever was written is on disk; the next read starts from the files.
-            if let Ok(fresh) = load(self.fs(), &self.root, self.state.campaign.slug()) {
-                self.state = fresh;
+            // Whatever was written is on disk: drop the entries of every path the plan touched,
+            // not guessed, and read them again.
+            for effect in &plan.effects {
+                let path = match effect {
+                    IntentEffect::Put { path, .. }
+                    | IntentEffect::Create { path, .. }
+                    | IntentEffect::Del { path } => path,
+                };
+                self.entries.forget(path);
             }
+            let _ = self.refresh();
             return Err(e);
         }
-        self.write_through(w.campaign, &plan);
+        self.write_through(w.campaign, &plan, began);
         Ok(Receipt {
             result: w.results,
             amendment,
@@ -813,37 +827,51 @@ impl Store {
         }
     }
 
-    /// 6. The cache is updated from what was written, never before it is on disk.
-    fn write_through(&mut self, campaign: Campaign, plan: &Plan) {
-        let st: &mut State = &mut self.state;
+    /// Step 6: the cache is updated from what was written, never before it is on disk. The entries
+    /// get the written values and a signature statted from the published path, and the derived
+    /// views are updated in step.
+    fn write_through(&mut self, campaign: Campaign, plan: &Plan, began: std::time::SystemTime) {
+        let fs = Arc::clone(&self.options.fs);
+        let at = Published {
+            fs: &*fs,
+            root: &self.root,
+            began,
+        };
+        let (st, entries) = (&mut self.state, &mut self.entries);
+        let mut in_step = true;
         st.campaign = campaign;
         for n in plan.creates.iter().chain(&plan.puts) {
             let id = n.id().clone();
-            st.revs.insert(id.clone(), rev::rev(n));
+            let rev = rev::rev(n);
+            st.revs.insert(id.clone(), rev.clone());
             st.reverse
                 .replace_record(RecordRef::Node(id.clone()), Some(&Record::Node(n)));
             st.ops.replace_node(&id, Some(n));
             let file = node_file(&id);
-            let diags = decode::<Node>(&file, encode(n).as_bytes())
+            let text = encode(n);
+            let diags = decode::<Node>(&file, text.as_bytes())
                 .map(|d| d.diagnostics)
                 .unwrap_or_default();
             if diags.is_empty() {
                 st.file_diags.remove(&file);
             } else {
-                st.file_diags.insert(file, diags);
+                st.file_diags.insert(file, diags.clone());
             }
+            in_step &= entries.wrote_node(&at, n, &text, rev, diags);
         }
         for id in &plan.deletes {
             st.revs.remove(id);
             st.reverse.replace_record(RecordRef::Node(id.clone()), None);
             st.ops.replace_node(id, None);
             st.file_diags.remove(&node_file(id));
+            entries.deleted_node(id);
         }
         for c in &plan.comments {
             st.reverse
                 .replace_record(RecordRef::Comment(c.id.clone()), Some(&Record::Comment(c)));
             st.ops.add_comment(c);
             st.comments.insert(c.id.clone(), c.clone());
+            in_step &= entries.wrote_comment(&at, c, &encode(c));
         }
         if let Some(a) = &plan.amendment {
             st.reverse.replace_record(
@@ -852,7 +880,9 @@ impl Store {
             );
             st.ops.add_amendment(a);
             st.amendments.insert(a.id.clone(), a.clone());
+            in_step &= entries.wrote_amendment(&at, a, &encode(a));
         }
+        entries.settle(in_step);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -876,7 +906,7 @@ impl Store {
         let _lock = self.lock()?;
         self.ignore_scratch()?;
         let report = self.recover_locked()?;
-        self.state = load(self.fs(), &self.root, self.state.campaign.slug())?;
+        self.refresh()?;
         self.last_recovered = Some(report.clone());
         Ok(report)
     }
