@@ -5,7 +5,7 @@ mod common;
 use common::{child_role, say, spawn_child};
 use rdm_engine::lock::{LockError, WriterLock};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const LIMIT: Duration = Duration::from_secs(60);
 
@@ -151,4 +151,73 @@ fn garbage_holder_record_does_not_break_locking() {
         drop(again);
         assert!(!holder_file(root.path()).exists(), "{what}");
     }
+}
+
+/// The child of the two waiting guards: take the lock, say so, keep it for `RDM_HOLD_MS`
+/// (forever if unset, until killed), then release.
+fn timed_holder_child(root: &Path) {
+    let lock = WriterLock::acquire(root, Duration::from_secs(10), b"timed-holder").unwrap();
+    say("locked");
+    match std::env::var("RDM_HOLD_MS") {
+        Ok(ms) => {
+            std::thread::sleep(Duration::from_millis(ms.parse().unwrap()));
+            lock.release();
+            say("released");
+        }
+        Err(_) => std::thread::sleep(Duration::from_secs(120)), // bounded; the parent kills it
+    }
+}
+
+#[test]
+fn a_writer_waits_for_a_holder_that_releases_inside_the_timeout() {
+    if let Some((role, dir)) = child_role() {
+        assert_eq!(role, "timed");
+        return timed_holder_child(&dir);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let mut child = spawn_child(
+        "a_writer_waits_for_a_holder_that_releases_inside_the_timeout",
+        "timed",
+        root.path(),
+        &[("RDM_HOLD_MS", "200")],
+    );
+    child.wait_line("locked", LIMIT);
+    let started = Instant::now();
+    let lock = WriterLock::acquire(root.path(), Duration::from_secs(30), b"waiter")
+        .expect("the waiter must get the lock once the holder releases");
+    assert!(
+        started.elapsed() >= Duration::from_millis(100),
+        "it did not wait for the holder"
+    );
+    drop(lock);
+    assert!(child.child.wait().unwrap().success());
+}
+
+#[test]
+fn a_writer_gives_up_with_busy_at_the_timeout_and_not_before_or_long_after() {
+    if let Some((role, dir)) = child_role() {
+        assert_eq!(role, "timed");
+        return timed_holder_child(&dir);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let child = spawn_child(
+        "a_writer_gives_up_with_busy_at_the_timeout_and_not_before_or_long_after",
+        "timed",
+        root.path(),
+        &[],
+    );
+    child.wait_line("locked", LIMIT);
+    let timeout = Duration::from_secs(1);
+    let started = Instant::now();
+    let result = WriterLock::acquire(root.path(), timeout, b"waiter");
+    let waited = started.elapsed();
+    assert!(matches!(result, Err(LockError::Busy { .. })), "{result:?}");
+    assert!(
+        waited >= timeout.mul_f64(0.9),
+        "gave up after {waited:?}, before the timeout"
+    );
+    assert!(
+        waited < Duration::from_secs(15),
+        "gave up after {waited:?}, long after the timeout"
+    );
 }
