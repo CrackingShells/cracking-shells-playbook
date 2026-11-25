@@ -653,6 +653,21 @@ fn requests_breaking_a_rule_are_refused() {
         })
     });
     let edited = edit(&|l| l.goal = "edited".into());
+    let ref_to = |n: u32| Reference {
+        label: None,
+        title: "t".into(),
+        target: None,
+        note: None,
+        node_id: Some(nid(n)),
+        extra: Default::default(),
+    };
+    let dangling_in_step = edit(&|l| l.steps[0].references.push(ref_to(78)));
+    let mut spare = match store.read().unwrap().campaign().get(&nid(5)).unwrap() {
+        Node::Directory(d) => d.clone(),
+        other => panic!("node 5 is a directory, got {other:?}"),
+    };
+    spare.references.push(ref_to(79));
+    let rev5 = store.read().unwrap().rev(&nid(5)).unwrap().clone();
     let mut as_leaf = leaf_of(&mut store, 3);
     as_leaf.id = nid(2);
     as_leaf.parent_id = nid(1);
@@ -724,6 +739,18 @@ fn requests_breaking_a_rule_are_refused() {
             "a reference to a missing node",
             replace_req(header(note, None), Some(&rev3), dangling),
             file(3),
+            Rule::DanglingId,
+        ),
+        (
+            "a step reference to a missing node",
+            replace_req(header(note, None), Some(&rev3), dangling_in_step),
+            file(3),
+            Rule::DanglingId,
+        ),
+        (
+            "a directory reference to a missing node",
+            replace_req(header(note, None), Some(&rev5), Node::Directory(spare)),
+            file(5),
             Rule::DanglingId,
         ),
         (
