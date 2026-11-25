@@ -2482,3 +2482,135 @@ fn recover_redoes_an_interrupted_operation() {
         "a second recovery has nothing to do"
     );
 }
+
+fn reused<T: std::fmt::Debug>(row: &str, r: Result<T, StoreError>) {
+    match r {
+        Err(StoreError::Invalid {
+            file,
+            rule: Rule::OpIdReused,
+            ..
+        }) => assert_eq!(file, "<request>", "{row}"),
+        other => panic!("{row}: want op_id_reused, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut store = disk.open().unwrap();
+    let note = Some("n");
+
+    // The first outcomes, each under its own op_id.
+    let c = store
+        .create(Request {
+            header: header(note, Some("op-create")),
+            op: create_op(leaf_node(20, "fresh", 2, "V"), None),
+        })
+        .unwrap();
+    assert!(!c.replayed);
+    let op = relocate_op(&store, 3, Some("moved"), None, None);
+    store
+        .move_node(Request {
+            header: header(note, Some("op-move")),
+            op,
+        })
+        .unwrap();
+    let op = delete_op(&store, 5);
+    store
+        .delete_subtree(Request {
+            header: header(note, Some("op-delete")),
+            op,
+        })
+        .unwrap();
+    store
+        .comment(Request {
+            header: header(None, Some("op-comment")),
+            op: CommentOp {
+                node_id: nid(4),
+                text: vec!["one".into()],
+            },
+        })
+        .unwrap();
+    let before = snapshot(&disk);
+
+    let with = |op_id: &str| header(note, Some(op_id));
+    // A different node under the op_id of a create or a relocate.
+    reused(
+        "create of another node",
+        store.create(Request {
+            header: with("op-create"),
+            op: create_op(leaf_node(21, "other", 2, "V"), None),
+        }),
+    );
+    let op = relocate_op(&store, 4, Some("beta2"), None, None);
+    reused(
+        "relocate of another node",
+        store.move_node(Request {
+            header: with("op-move"),
+            op,
+        }),
+    );
+    // A delete of a node the amendment did not remove: it would have returned no node.
+    let op = delete_op(&store, 4);
+    reused(
+        "delete of another node",
+        store.delete_subtree(Request {
+            header: with("op-delete"),
+            op,
+        }),
+    );
+    // More comments than carry the op_id: it used to fall through and write.
+    let two = BatchOp {
+        expected_tree_rev: None,
+        dry_run: false,
+        ops: vec![
+            Op::Comment(CommentOp {
+                node_id: nid(4),
+                text: vec!["one".into()],
+            }),
+            Op::Comment(CommentOp {
+                node_id: nid(4),
+                text: vec!["two".into()],
+            }),
+        ],
+    };
+    reused(
+        "two comments under the op_id of one",
+        store.batch(Request {
+            header: header(None, Some("op-comment")),
+            op: two,
+        }),
+    );
+    // Records of another kind than the request.
+    reused(
+        "a create under the op_id of a comment",
+        store.create(Request {
+            header: with("op-comment"),
+            op: create_op(leaf_node(22, "third", 2, "V"), None),
+        }),
+    );
+    reused(
+        "a comment under the op_id of a create",
+        store.comment(Request {
+            header: header(None, Some("op-create")),
+            op: CommentOp {
+                node_id: nid(4),
+                text: vec!["x".into()],
+            },
+        }),
+    );
+    assert_eq!(snapshot(&disk), before, "no refusal wrote anything");
+    // The node of the first create is gone: its rev cannot be rebuilt.
+    let op = delete_op(&store, 20);
+    store.delete_subtree(req(note, op)).unwrap();
+    let before_gone = snapshot(&disk);
+    reused(
+        "a create whose node is gone",
+        store.create(Request {
+            header: with("op-create"),
+            op: create_op(leaf_node(20, "fresh", 2, "V"), None),
+        }),
+    );
+    assert_eq!(snapshot(&disk), before_gone, "a refusal writes nothing");
+}

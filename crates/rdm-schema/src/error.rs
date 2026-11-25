@@ -99,6 +99,8 @@ pub enum Rule {
     PositionNotSibling,
     /// The campaign root is deleted or given a parent or an order.
     RootDeleteOrMove,
+    /// An `op_id` that the records know names a request they cannot rebuild the result of.
+    OpIdReused,
 }
 
 impl Rule {
@@ -147,6 +149,7 @@ impl Rule {
             Self::NothingToDo => "nothing_to_do",
             Self::PositionNotSibling => "position_not_sibling",
             Self::RootDeleteOrMove => "root_delete_or_move",
+            Self::OpIdReused => "op_id_reused",
         }
     }
 }

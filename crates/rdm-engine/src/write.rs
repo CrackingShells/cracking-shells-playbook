@@ -280,7 +280,7 @@ impl Store {
 
         // 3.1 Replay.
         if let Some(op_id) = &header.op_id
-            && let Some(receipt) = self.replay(op_id, ops)
+            && let Some(receipt) = self.replay(op_id, ops)?
         {
             return Ok(receipt);
         }
@@ -345,9 +345,16 @@ impl Store {
         })
     }
 
-    /// 3.1: the first outcome of a known `op_id`, with nothing written.
-    fn replay(&self, op_id: &OpId, ops: &[Op]) -> Option<Receipt<Vec<OpResult>>> {
-        let records = self.state.ops.records(op_id)?;
+    /// 3.1: the first outcome of a known `op_id`, with nothing written. The result is rebuilt from
+    /// the records, never made up: a request the records cannot answer is `op_id_reused`.
+    fn replay(
+        &self,
+        op_id: &OpId,
+        ops: &[Op],
+    ) -> Result<Option<Receipt<Vec<OpResult>>>, StoreError> {
+        let Some(records) = self.state.ops.records(op_id) else {
+            return Ok(None);
+        };
         let amendment = records.iter().find_map(|r| match r {
             OpRef::Amendment(id) => self.state.amendments.get(id),
             _ => None,
@@ -356,39 +363,81 @@ impl Store {
             OpRef::Comment(id) => Some(id.clone()),
             _ => None,
         });
+        let names = |id: &NodeId, kinds: &[ChangeOp]| {
+            amendment.is_some_and(|a| {
+                a.changes
+                    .iter()
+                    .any(|c| &c.node_id == id && (kinds.is_empty() || kinds.contains(&c.op)))
+            })
+        };
+        let reused = |what: String| request_fault(Rule::OpIdReused, what);
         let mut results = Vec::new();
         for op in ops {
             let result = match op {
-                Op::Create(CreateOp { node, .. }) | Op::Replace(ReplaceOp { node, .. }) => {
-                    self.written(node.id())
+                Op::Create(CreateOp { node, .. }) => {
+                    let id = node.id();
+                    if !names(id, &[ChangeOp::Add]) {
+                        return Err(reused(format!("no record of this `op_id` created {id}")));
+                    }
+                    self.written(id)?
                 }
-                Op::Relocate(r) => self.written(&r.id),
-                Op::Delete(d) => OpResult::Deleted(self.replayed_delete(&d.id, amendment)),
-                Op::Comment(_) => OpResult::Commented(Commented {
-                    id: comment_ids.next()?,
-                }),
+                Op::Replace(ReplaceOp { node, .. }) => {
+                    let id = node.id();
+                    if !names(id, &[]) && !records.contains(&OpRef::History(id.clone())) {
+                        return Err(reused(format!("no record of this `op_id` edited {id}")));
+                    }
+                    self.written(id)?
+                }
+                Op::Relocate(r) => {
+                    if !names(&r.id, &[ChangeOp::Rename, ChangeOp::Move]) {
+                        return Err(reused(format!("no record of this `op_id` moved {}", r.id)));
+                    }
+                    self.written(&r.id)?
+                }
+                Op::Delete(d) => {
+                    let in_snapshot = amendment
+                        .and_then(|a| a.snapshot.as_ref())
+                        .is_some_and(|s| s.contains_key(d.id.as_str()));
+                    if !names(&d.id, &[ChangeOp::Remove]) || !in_snapshot {
+                        return Err(reused(format!(
+                            "no record of this `op_id` removed {}",
+                            d.id
+                        )));
+                    }
+                    OpResult::Deleted(self.replayed_delete(&d.id, amendment))
+                }
+                Op::Comment(_) => match comment_ids.next() {
+                    Some(id) => OpResult::Commented(Commented { id }),
+                    None => {
+                        return Err(reused(
+                            "the request names more comments than carry this `op_id`".to_owned(),
+                        ));
+                    }
+                },
             };
             results.push(result);
         }
-        Some(Receipt {
+        Ok(Some(Receipt {
             result: results,
             amendment: amendment.map(|a| a.id.clone()),
             tree_rev: self.tree_rev(),
             replayed: true,
-        })
+        }))
     }
 
-    fn written(&self, id: &NodeId) -> OpResult {
-        let rev = self
-            .state
-            .revs
-            .get(id)
-            .cloned()
-            .unwrap_or_else(|| Rev::new(String::new()));
-        OpResult::Written(Written {
-            id: id.clone(),
-            rev,
-        })
+    /// The current revision of a node a replayed write names; a node that is gone cannot be
+    /// answered.
+    fn written(&self, id: &NodeId) -> Result<OpResult, StoreError> {
+        match self.state.revs.get(id) {
+            Some(rev) => Ok(OpResult::Written(Written {
+                id: id.clone(),
+                rev: rev.clone(),
+            })),
+            None => Err(request_fault(
+                Rule::OpIdReused,
+                format!("{id} is gone: the first result cannot be rebuilt"),
+            )),
+        }
     }
 
     /// The nodes a delete removed, read back from the snapshot of its amendment.
