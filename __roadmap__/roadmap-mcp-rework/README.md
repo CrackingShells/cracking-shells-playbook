@@ -8,6 +8,7 @@ The milestone graph for implementing `__design__/rdm/architecture.md`: the `mana
 - [R02 Plugin binaries observation](../../__reports__/dirtree_rdm_plugin_binaries/00-observation_v0.md) — the darwin-only binaries problem the new distribution removes, input to M7
 - [R03 Creation-time bugs audit](../../__reports__/managing_roadmaps_audit/00-creation_time_bugs_v0.md) — defects of the current tool and skill text, input to M2 and M8
 - [R04 Domain model review](../../__reports__/rdm_domain_model_review/01-gap_analysis_v0.md) — why M0b exists, what it owns and which leaves amendment A1 edited
+- [R05 M1 rescoping](../../__reports__/m1-core-foundation/00-gap_analysis_v0.md) — the rulings of 2026-11-25 (flat id-addressed layout, types as the contract, version chain, declared links) and which leaves amendment A2 edited
 
 ## Goal
 `managing-roadmaps` ships as a plugin whose tools are a published Rust MCP server and CLI over one core, with JSON roadmaps, full CRUD under an amendment log, and a graph view.
@@ -24,7 +25,7 @@ The milestone graph for implementing `__design__/rdm/architecture.md`: the `mana
 ## Gotchas
 - Depth is ordering, so the tree over-sequences one edge: M6 needs only M4 but also waits on M5. The reminders' `after:` fields keep the exact edges; a milestone may start early on them if Eliott says so.
 - The consumer rule: `rdm-mcp` and `rdm-cli` hold no roadmap logic. M1 to M3 complete the core before either consumer starts, which is why M4 and M5 can run in parallel.
-- Ownership of shared pieces: M0 owns the workspace skeleton and the pinned `rmcp`; M0b owns the schemas, the read model and the status meanings; M1 owns the error type and id minting; M2 owns amendments and diagnostic codes; M4 owns the tool list (R01's table is a suggestion); M6 owns the app-only tool and the built HTML; M7 owns every release and manifest file; M8 owns the skill text and the removal of `dirtree-rdm`.
+- Ownership of shared pieces: M0 owns the workspace skeleton and the pinned `rmcp`; M0b owns the schemas, the read model and the status meanings; M1 owns the contracts beyond the stored types (campaign model, move table as data, store operation types, declared links), the id format and minting, the error type and the version chain; M2 owns amendments and diagnostic codes; M4 owns the tool list (R01's table is a suggestion); M6 owns the app-only tool and the built HTML; M7 owns every release and manifest file; M8 owns the skill text and the removal of `dirtree-rdm`.
 - Each milestone leaf has the same three steps: plan (its campaign, approved by Eliott), build and land (on `feat/<milestone>`, one merge commit on `main`), close out (knowledge-transfer report, this leaf marked `done`, reminder reconciliation proposed). The milestone's own plan decides how the work inside it is run.
 - Until M8 lands, roadmaps are authored with `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh` from the repository root; leaf paths passed to `add` need the `.md` suffix. From M8 on, with `rdm`.
 - Environment: Rust with local `cargo` (1.99; MSRV 1.88 from `rmcp`); Node pinned by the M6 plan for the view; Python tooling through `uv`. This machine is shared: one `CARGO_TARGET_DIR` for all agents of a milestone, removed when the milestone lands.
@@ -56,6 +57,7 @@ graph TD
 | ID | Date | Source | Nodes Added | Rationale |
 |:---|:-----|:-------|:------------|:----------|
 | A1 | 2026-11-16 | __reports__/rdm_domain_model_review/01-gap_analysis_v0.md | [ "m0b_domain_model_spec.md" ] | No milestone owned the domain model; also edits the planned leaves m0, m1, m2, m4, m6, m7 and this README, and Eliott chose to keep the label M0b |
+| A2 | 2026-11-25 | __reports__/m1-core-foundation/00-gap_analysis_v0.md | [ ] | The M1 leaf predated M0 and M0b; edits the planned leaves m1, m2, m4, m7 and this README for the flat id-addressed layout, the contracts and the version chain |
 
 ## Progress
 | Node | Branch | Commits | Notes |
