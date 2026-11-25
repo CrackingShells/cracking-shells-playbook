@@ -4,4 +4,5 @@
 //! holder record and the intent payload are bytes, and the caller gives them their meaning.
 
 pub mod fs;
+pub mod intent;
 pub mod lock;
