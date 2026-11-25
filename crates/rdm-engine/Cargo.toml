@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Filesystem primitives of the rdm store: atomic replace, writer lock and intent record"
+description = "The rdm store engine: reads a campaign directory, validates it and writes it through ordered, crash-safe writes"
 publish = false
 
 [dependencies]

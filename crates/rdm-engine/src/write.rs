@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::PathBuf;
 
-use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
+use rdm_schema::campaign::{Campaign, node_file};
 use rdm_schema::diff::{diff, is_state};
 use rdm_schema::error::LockHolder;
 use rdm_schema::error::{Current, Rule, StoreError};
@@ -19,7 +19,7 @@ use rdm_schema::ops::{
     BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, Header, Op, OpResult, Position,
     Receipt, RelocateOp, ReplaceOp, Request, Written,
 };
-use rdm_schema::stored::{Actor, Amendment, Change, ChangeOp, Comment, Node};
+use rdm_schema::stored::{Amendment, Change, ChangeOp, Comment, Node};
 use rdm_schema::validate::check_node;
 use rdm_schema::{FORMAT_VERSION, version_string};
 use serde_json::Value;
@@ -100,7 +100,8 @@ struct Working {
     /// Nodes created by this batch, in creation order (parents first).
     created: Vec<NodeId>,
     changes: Vec<Change>,
-    comments: Vec<(NodeId, Vec<String>)>,
+    /// The comments the ops add: the id minted for each, the node it is on, its text.
+    comments: Vec<(CommentId, NodeId, Vec<String>)>,
     results: Vec<OpResult>,
     /// A create, relocate or delete was applied: the batch needs a note.
     structural: bool,
@@ -135,6 +136,12 @@ impl Store {
     fn ulid(&mut self) -> String {
         let ms = unix_ms((self.options.clock)());
         self.ulids.mint(ms, &mut *self.options.rng)
+    }
+
+    /// A minted ULID as the id type of a record. The minter builds 26 characters of the ULID
+    /// alphabet, which always parse.
+    fn mint<T, E: std::fmt::Debug>(&mut self, parse: impl FnOnce(&str) -> Result<T, E>) -> T {
+        parse(&self.ulid()).expect("a minted ULID is well formed")
     }
 
     /// Takes the writer lock, naming the holder in the record it leaves.
@@ -340,7 +347,7 @@ impl Store {
                 });
             }
         }
-        let (mut w, plan) = loop {
+        let (w, plan) = loop {
             let mut w = Working {
                 campaign: self.state.campaign.clone(),
                 disk_revs: self.state.revs.clone(),
@@ -379,14 +386,6 @@ impl Store {
             let slug = self.state.campaign.slug().clone();
             self.state = self.entries.build(&slug)?;
         };
-        let mut minted = plan.comments.iter().map(|c| c.id.clone());
-        for r in &mut w.results {
-            if let OpResult::Commented(c) = r
-                && let Some(id) = minted.next()
-            {
-                c.id = id;
-            }
-        }
         if dry_run {
             return Ok(Receipt {
                 result: w.results,
@@ -633,7 +632,7 @@ impl Store {
             Op::Create(op) => op_create(w, op),
             Op::Relocate(op) => self.op_relocate(w, op, in_batch),
             Op::Delete(op) => self.op_delete(w, op, in_batch),
-            Op::Comment(op) => op_comment(w, header, op, in_batch),
+            Op::Comment(op) => self.op_comment(w, header, op, in_batch),
         }
     }
 
@@ -807,9 +806,9 @@ impl Store {
         let comments: Vec<Comment> = w
             .comments
             .iter()
-            .map(|(node_id, text)| Comment {
+            .map(|(id, node_id, text)| Comment {
                 schema_version: stamped.clone(),
-                id: CommentId::parse(&self.ulid()).unwrap_or_else(|_| minted_ulid_invalid()),
+                id: id.clone(),
                 node_id: node_id.clone(),
                 ts: ts.clone(),
                 actor: header.actor.clone(),
@@ -824,7 +823,7 @@ impl Store {
             .filter(|_| !w.changes.is_empty())
             .map(|note| Amendment {
                 schema_version: stamped.clone(),
-                id: AmendmentId::parse(&self.ulid()).unwrap_or_else(|_| minted_ulid_invalid()),
+                id: self.mint(AmendmentId::parse),
                 legacy_id: None,
                 ts: ts.clone(),
                 actor: header.actor.clone(),
@@ -1392,31 +1391,29 @@ fn op_create(w: &mut Working, op: &CreateOp) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn op_comment(
-    w: &mut Working,
-    header: &Header,
-    op: &CommentOp,
-    in_batch: bool,
-) -> Result<(), StoreError> {
-    if !in_batch && header.note.is_some() {
-        return Err(request_fault(
-            Rule::NoteForbidden,
-            "a comment carries no note",
-        ));
+impl Store {
+    fn op_comment(
+        &mut self,
+        w: &mut Working,
+        header: &Header,
+        op: &CommentOp,
+        in_batch: bool,
+    ) -> Result<(), StoreError> {
+        if !in_batch && header.note.is_some() {
+            return Err(request_fault(
+                Rule::NoteForbidden,
+                "a comment carries no note",
+            ));
+        }
+        if w.campaign.get(&op.node_id).is_none() {
+            return Err(not_found(&op.node_id));
+        }
+        let id = self.mint(CommentId::parse);
+        w.comments
+            .push((id.clone(), op.node_id.clone(), op.text.clone()));
+        w.results.push(OpResult::Commented(Commented { id }));
+        Ok(())
     }
-    if w.campaign.get(&op.node_id).is_none() {
-        return Err(not_found(&op.node_id));
-    }
-    w.comments.push((op.node_id.clone(), op.text.clone()));
-    // The id is minted with the plan; the placeholder is replaced before the result is returned.
-    w.results.push(OpResult::Commented(Commented {
-        id: placeholder_comment_id(),
-    }));
-    Ok(())
-}
-
-fn placeholder_comment_id() -> CommentId {
-    CommentId::parse("00000000000000000000000000").unwrap_or_else(|_| minted_ulid_invalid())
 }
 
 /// Sets the place fields of a node. A root takes no parent and no order.
@@ -1625,11 +1622,6 @@ fn single<R>(
     }
 }
 
-/// The minter builds 26 characters of the ULID alphabet, which always parse.
-fn minted_ulid_invalid() -> ! {
-    unreachable!("a minted ULID always parses")
-}
-
 /// Rules that report damage between files: a write may not add one.
 fn structural_rule(rule: Rule) -> bool {
     matches!(
@@ -1688,7 +1680,3 @@ fn introduced_references_exist(
     }
     Ok(())
 }
-
-/// The actor type is part of the header every request carries.
-#[allow(dead_code)]
-fn _actor(_: &Actor, _: &Diagnostic) {}
