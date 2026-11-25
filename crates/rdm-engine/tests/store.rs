@@ -2584,6 +2584,60 @@ fn recover_redoes_an_interrupted_operation() {
     );
 }
 
+/// Guards S19's rule that recovery never overwrites a create-only file: a create whose
+/// destination now holds other bytes (another writer's create of that id, as a merge or a
+/// checkout leaves it) stops recovery with `duplicate_id` naming the file, and the record stays.
+///
+/// Bug it catches: recovery that redoes a create as a put and silently replaces a file it did not
+/// write.
+#[test]
+fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
+    let created = leaf_node(20, "fresh", 2, "V");
+    let (pre_dir, _pre, _post, log) = recorded(|s| {
+        s.create(req(Some("add"), create_op(created.clone(), None)))
+            .unwrap();
+    });
+    // Cut just after the intent was published: the create of the node has not happened.
+    let intent = log
+        .iter()
+        .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
+        .unwrap();
+    let work_dir = tempfile::tempdir().unwrap();
+    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    // The other actor: a create of the same id with other content, written by the codec.
+    let mut other = leaf_of_node(&created);
+    other.goal = "the other writer's goal".into();
+    let dest = work.join(file(20));
+    std::fs::write(&dest, encode(&Node::Leaf(other))).unwrap();
+    let theirs = std::fs::read(&dest).unwrap();
+
+    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    for attempt in ["first", "second"] {
+        match store.recover() {
+            Err(StoreError::Invalid { file: f, rule, .. }) => {
+                assert_eq!((f, rule), (file(20), Rule::DuplicateId), "{attempt}");
+            }
+            other => panic!("{attempt}: want Invalid duplicate_id, got {other:?}"),
+        }
+        assert!(
+            std::fs::read(&dest).unwrap() == theirs,
+            "{attempt}: recovery overwrote the file it must only create"
+        );
+        let records = std::fs::read_dir(work.join(".rdm/intent")).unwrap().count();
+        assert_eq!(
+            records, 1,
+            "{attempt}: the record is left for a person to resolve"
+        );
+    }
+}
+
+fn leaf_of_node(n: &Node) -> Leaf {
+    match n {
+        Node::Leaf(l) => l.clone(),
+        Node::Directory(_) => panic!("a leaf"),
+    }
+}
+
 fn reused<T: std::fmt::Debug>(row: &str, r: Result<T, StoreError>) {
     match r {
         Err(StoreError::Invalid {
