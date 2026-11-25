@@ -18,7 +18,7 @@
 1. Create `crates/rdm-engine` (workspace edition and `rust-version`, `publish = false`, depends on `rdm-schema`).
 2. Define the `Fs` trait over the effects the store needs, with `RealFs` and `RecordingFs`.
 3. Write the two guards first, each spawning the test binary itself as the child process. See them red against a naive in-place write.
-4. Implement `atomic_replace`: temp file in the same directory, write, fsync, rename, directory fsync per the fsync policy, and the Windows sharing-violation retry from `store.md`. On macOS the `Fsync` tier calls `fsync(2)` through `rustix`, because std's `sync_all` issues `F_FULLFSYNC` there (`store.md` §Durability).
+4. Implement `atomic_replace`: temp file in `.rdm/tmp/` (`store.md` §Layout; same file system as the target), write, fsync, rename, directory fsync per the fsync policy, and the Windows sharing-violation retry from `store.md`. On macOS the `Fsync` tier calls `fsync(2)` through `rustix`, because std's `sync_all` issues `F_FULLFSYNC` there (`store.md` §Durability).
 5. Add `.rdm/` and `proptest-regressions/` to `.gitignore`.
 **Deliverables**: `crates/rdm-engine/Cargo.toml`; `crates/rdm-engine/src/lib.rs`; `crates/rdm-engine/src/fs.rs`: trait `Fs`, types `RealFs`, `RecordingFs`, `Effect`, fn `atomic_replace`; `crates/rdm-engine/tests/fs.rs`: tests `reader_sees_old_or_new_never_partial`, `replace_while_target_open`; `.gitignore`; `Cargo.lock`
 **Consistency Checks**: `cargo test -p rdm-engine --test fs` (expected: PASS)
