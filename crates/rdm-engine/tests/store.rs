@@ -6,20 +6,27 @@
 
 mod common;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+use std::time::Duration;
 
 use common::campaign::*;
 use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
+use rdm_engine::fs::{Durability, Effect, RealFs, RecordingFs};
 use rdm_engine::ids::{IdRng, MAX_COLLISIONS, MintError, mint_id};
+use rdm_engine::intent::{self, INTENT_FORMAT, Intent, IntentEffect};
+use rdm_engine::lock::WriterLock;
 use rdm_engine::store::Options;
 use rdm_schema::error::{Current, Rule, StoreError};
 use rdm_schema::ids::*;
 use rdm_schema::links::RecordRef;
-use rdm_schema::ops::{Header, ReplaceOp, Request};
+use rdm_schema::ops::{
+    BatchOp, CommentOp, CreateOp, DeleteOp, Header, Op, Position, RelocateOp, ReplaceOp, Request,
+};
 use rdm_schema::stored::*;
 use serde_json::{Value, json};
 
@@ -803,11 +810,6 @@ mod order_keys {
 
 // ---------------------------------------------------------------------------------------------
 // The other primitives
-
-use rdm_engine::fs::{Effect, RecordingFs};
-use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Position, RelocateOp};
-use std::collections::BTreeMap;
-use std::sync::Arc;
 
 fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
     store.read().unwrap().rev(&nid(n)).unwrap().clone()
@@ -2586,11 +2588,6 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
 
 // ---------------------------------------------------------------------------------------------
 // Recovery, at the store level
-
-use rdm_engine::fs::{Durability, RealFs};
-use rdm_engine::intent::{self, INTENT_FORMAT, Intent, IntentEffect};
-use rdm_engine::lock::WriterLock;
-use std::time::Duration;
 
 const PLANTED: &str = "01M88Y1HSKTXC19PQH7AQK75A3";
 
