@@ -17,7 +17,7 @@ A campaign opens, validates, and changes through ordered, revision-checked write
 ```mermaid
 graph TD
     campaign_store[Campaign store]:::done
-    harden[Harden]:::planned
+    harden[Harden]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -29,7 +29,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `campaign_store.md` | 📄 Leaf Task | ✅ Done |
-| `harden/` | 📁 Directory | ⬜ Planned |
+| `harden/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

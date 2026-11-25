@@ -17,8 +17,8 @@ No kill loses an acknowledged write, and the long-lived process serves reads fro
 ## Status
 ```mermaid
 graph TD
-    crash_test[Crash test]:::planned
-    hot_cache[Hot cache]:::planned
+    crash_test[Crash test]:::inprogress
+    hot_cache[Hot cache]:::inprogress
     verify[Verify]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -30,8 +30,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `crash_test.md` | 📄 Leaf Task | ⬜ Planned |
-| `hot_cache.md` | 📄 Leaf Task | ⬜ Planned |
+| `crash_test.md` | 📄 Leaf Task | 🔄 In Progress |
+| `hot_cache.md` | 📄 Leaf Task | 🔄 In Progress |
 | `verify/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
