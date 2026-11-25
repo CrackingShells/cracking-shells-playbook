@@ -93,6 +93,8 @@ struct Working {
     /// A create, relocate or delete was applied: the batch needs a note.
     structural: bool,
     snapshot: serde_json::Map<String, Value>,
+    /// The nodes the ops removed, deepest first, in the order they are unlinked.
+    removed: Vec<NodeId>,
 }
 
 /// Everything a validated request will write, in the order it is written.
@@ -300,6 +302,7 @@ impl Store {
             results: Vec::new(),
             structural: false,
             snapshot: serde_json::Map::new(),
+            removed: Vec::new(),
         };
         for (i, op) in ops.iter().enumerate() {
             self.apply_op(&mut w, header, op, in_batch)
@@ -609,24 +612,15 @@ impl Store {
                 puts.push(n.clone());
             }
         }
-        // Deepest first: the reverse of the pre-order of every removed subtree.
-        let gone: BTreeSet<NodeId> = before
-            .nodes()
-            .map(|n| n.id().clone())
-            .filter(|id| w.campaign.get(id).is_none())
+        // Deepest first, as `op_delete` listed them: a cycle has no root to start from, so the
+        // removed ids themselves are the list.
+        let mut seen = BTreeSet::new();
+        let deletes: Vec<NodeId> = w
+            .removed
+            .iter()
+            .filter(|id| before.get(id).is_some() && seen.insert((*id).clone()))
+            .cloned()
             .collect();
-        let mut deletes = Vec::new();
-        for id in &gone {
-            let parent_gone = before
-                .get(id)
-                .and_then(Node::parent_id)
-                .is_some_and(|p| gone.contains(p));
-            if !parent_gone {
-                let mut sub: Vec<NodeId> = before.subtree(id).cloned().collect();
-                sub.reverse();
-                deletes.extend(sub);
-            }
-        }
         let ts = rfc3339(self.now());
         let comments: Vec<Comment> = w
             .comments
@@ -1106,6 +1100,7 @@ impl Store {
         let referrers = self.referrers_into(&removed);
         w.campaign.remove_subtree(&id);
         w.created.retain(|c| !removed.contains(c));
+        w.removed.extend(removed.iter().rev().cloned());
         w.structural = true;
         w.results
             .push(OpResult::Deleted(Deleted { removed, referrers }));

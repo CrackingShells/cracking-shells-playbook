@@ -2213,6 +2213,40 @@ fn structure_rows() {
         );
         assert_eq!(validated(&store).len(), 5, "{row}");
     }
+
+    // A cycle that a merge of two branches leaves: core under spare on one branch, spare under
+    // core on the other. Deleting a member deletes the cycle and everything below it.
+    let disk = merged(
+        vec![Edit::new(dir_node(2, "core", Some(5), "V"))],
+        vec![Edit::new(dir_node(5, "spare", Some(2), "k"))],
+    );
+    let mut store = disk.open().unwrap();
+    assert!(rules(&store).iter().any(|(_, r)| *r == Rule::Cycle));
+    let op = delete_op(&store, 5);
+    let done = store.delete_subtree(req(note, op)).unwrap();
+    assert_eq!(done.result.removed, vec![nid(5), nid(2), nid(3), nid(4)]);
+    for n in [2, 3, 4, 5] {
+        assert!(!disk.path(&file(n)).exists(), "n{n} is gone from the disk");
+    }
+    assert!(disk.path(&file(1)).exists());
+    assert_eq!(
+        ids_of(&store),
+        BTreeSet::from([nid(1)]),
+        "and from the store"
+    );
+    let amendment = &store.amendments()[done.amendment.as_ref().unwrap()];
+    let listed: BTreeSet<NodeId> = amendment
+        .changes
+        .iter()
+        .map(|c| c.node_id.clone())
+        .collect();
+    assert_eq!(listed, BTreeSet::from([nid(2), nid(3), nid(4), nid(5)]));
+    let reopened = disk.open().unwrap();
+    assert_eq!(ids_of(&reopened), ids_of(&store));
+    assert!(
+        rules(&reopened).iter().all(|(_, r)| *r != Rule::Cycle),
+        "no cycle is reported"
+    );
 }
 
 #[test]
