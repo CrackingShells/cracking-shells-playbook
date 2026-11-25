@@ -26,7 +26,7 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 - ⬜ The rescoped gates of the M1 leaf hold: contracts, version refusal, I3, I4, I7, I10, I12, declared links
 
 ## Gotchas
-- **Rulings (Eliott, 2026-11-25), not to be reopened by an implementer:** flat `nodes/<id>.json` with `name`, `parent_id`, an order key, and depth computed from `parent_id`; Rust types are the contract and JSON is derived; a version chain of responsibility; a file newer than the binary is refused with `NewerFormat`; declared links, never a stored value derivable from an id; tracked data stays text; the cache is never the source of truth. A leaf that finds one of these wrong reports it as a finding.
+- **Rulings (Eliott, 2026-11-25), not to be reopened by an implementer:** flat `nodes/<id>.json` with `name`, `parent_id`, an order key, and depth computed from `parent_id`; Rust types are the contract and JSON is derived; a version chain of responsibility; a file newer than the binary is refused with `NewerFormat`; declared links, never a stored value derivable from an id; tracked data stays text; the cache is never the source of truth. A leaf that finds one of these wrong reports it as a finding. **Review rulings (Eliott, 2026-11-25, reply 5):** every newer file is refused, a higher X or a higher Y; unknown keys survive and each one yields an `unknown_key` diagnostic; `open` refuses per-file faults but loads and loudly reports cross-file merge damage, anchored on the root named by the expected slug, and refuses writes that build on an unvalidated node except repairs; `op_id` replay is the store's; `FORMAT_VERSION` stays `0.1.0` until M1 merges to `main`; `Reference.target` is relative to the root and `Change` holds no paths.
 - **Test roles** (designing-tests). A *guard* is a Success Gate, stays in the suite, and is named as a sentence. A *confirm* is scaffolding with the `confirm_` name prefix, culled at leaf done by the cull gate above. A *probe* stays outside the suite: its answer goes into the design doc or a report, and its code is deleted.
 - **Fixtures come only from real producers:** hand-written canonical files reviewed line by line against `contracts.md`; the store's own writes and their prefixes; transformations a real actor performs (an editor writing in place, `git merge-file`, a CRLF checkout, `git checkout`). No synthetic old-format files. The 160-node benchmark campaign is built through the store's create API.
 - **Expected values are independent of the code:** `statuses.md` is the oracle for `MOVES`, the generated JSON Schema for `Links`, a brute-force scan for the reverse index, a fresh cold open for the cache, the full or absent operation for crash prefixes. No snapshot is blessed unreviewed.
@@ -53,8 +53,8 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 ## Status
 ```mermaid
 graph TD
-    store_design[Store design]:::inprogress
-    contracts_design[Contracts design]:::inprogress
+    store_design[Store design]:::done
+    contracts_design[Contracts design]:::done
     settle[Settle]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -66,8 +66,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `store_design.md` | 📄 Leaf Task | 🔄 In Progress |
-| `contracts_design.md` | 📄 Leaf Task | 🔄 In Progress |
+| `store_design.md` | 📄 Leaf Task | ✅ Done |
+| `contracts_design.md` | 📄 Leaf Task | ✅ Done |
 | `settle/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log

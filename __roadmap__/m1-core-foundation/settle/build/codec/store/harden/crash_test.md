@@ -4,7 +4,7 @@
 **Pre-conditions**:
 - [ ] `../campaign_store.md` is done
 **Success Gates**:
-- ⬜ [run] `cargo test -p rdm-engine --test crash_prefix every_write_prefix_loads_and_recovers_to_pre_or_post` passes: for each store primitive, each prefix of the effects `RecordingFs` logged is applied to a copy, then opened and recovered, and equals the full state or the absent state
+- ⬜ [run] `cargo test -p rdm-engine --test crash_prefix every_write_prefix_loads_and_recovers_to_pre_or_post` passes: for each store primitive, each prefix of the effects `RecordingFs` logged is applied to a copy, then opened and recovered, and equals the full state or the absent state; one row also cuts recovery's own effects and recovers again (store.md S18)
 - ⬜ [run] `cargo test -p rdm-engine --test crash_kill killed_workers_lose_no_acknowledged_write` passes with the default short, seeded run; with `RDM_CRASH_ITERS` set it runs the soak
 - ⬜ [static] The two guards were seen red: the prefix guard with node files removed before the amendment is written, the kill guard with the lock released between the revision check and the write
 - ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes

@@ -5,11 +5,14 @@
 - [ ] `../codec_and_versions.md` is done
 **Success Gates**:
 - ⬜ [run] `cargo test -p rdm-engine --test store stale_replace_changes_nothing` passes: after a refused stale replace, the node bytes, the amendments and `tree_rev` are unchanged (I4)
-- ⬜ [run] `cargo test -p rdm-engine --test store move_writes_one_file_and_keeps_ids` passes: a move or rename changes one file under `nodes/` and no id; the descendants' files are byte-identical while their derived paths change (I7)
+- ⬜ [run] `cargo test -p rdm-engine --test store move_writes_one_file_and_keeps_ids` passes: a move or rename changes one file under `nodes/` (the amendment is written besides) and no id; the descendants' files are byte-identical while their derived paths change (I7)
 - ⬜ [run] `cargo test -p rdm-engine --test store rev_tracks_value_not_formatting` and `tree_rev_changes_on_node_ops_not_comments` pass
 - ⬜ [run] `cargo test -p rdm-engine --test store minting_retries_on_collision` passes, with an injected RNG that first returns an existing id
-- ⬜ [run] `cargo test -p rdm-engine --test store open_names_invalid_campaigns` passes, with one row per class a real actor produces: a dangling `parent_id`, a `parent_id` cycle (two branches each moving one node under the other), a file name that differs from its inner id, and a leftover temp file (ignored, not an error)
-- ⬜ [run] `cargo test -p rdm-engine --test store reverse_index_equals_brute_force_scan` passes: a proptest over random operation sequences against a scan of the declared link fields
+- ⬜ [run] `cargo test -p rdm-engine --test store open_names_invalid_campaigns` passes, with one row per class a real actor produces. Per-file faults refuse `open`: a file name that differs from its inner id, a sub-item duplicate, an editor adding `target` beside `node_id`. Cross-file merge damage loads and is reported, one diagnostic naming file and rule, while the sound files load: a dangling `parent_id`, a `parent_id` cycle (two branches each moving one node under the other), a name collision, a root whose name is not the slug (every node unvalidated). A leftover temp file is ignored, not an error
+- ⬜ [run] `cargo test -p rdm-engine --test store reverse_index_equals_brute_force_scan` passes: a proptest over random operation sequences against a scan of the declared link fields; the same sequences compare children, depth and path with a rebuild
+- ⬜ [run] `cargo test -p rdm-engine --test store requests_breaking_a_rule_are_refused` passes, with rows `note_required`, `empty_edit`, a replace changing `parent_id` or `name` (`use_relocate`), create under or replace of an unvalidated node (`unvalidated_node`), and the repairs accepted: relocate into the tree, rename of a colliding sibling or of the root, delete
+- ⬜ [run] `cargo test -p rdm-engine --test store replayed_op_id_writes_nothing`, `failed_batch_writes_nothing` and `delete_reports_referrers_and_touches_only_the_subtree` pass
+- ⬜ [run] `cargo test -p rdm-engine --test store order_keys_sort_strictly_between_their_bounds` passes: a proptest over random bounds
 - ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each guard, the bug that turned it red
 **References**: [store.md](../../../../../../__design__/rdm/store.md) — Layout, Ids, Revisions, Write order, Intent and recovery; [contracts.md](../../../../../../__design__/rdm/contracts.md) — Campaign model, Operations, Errors, Links
 
@@ -26,17 +29,17 @@
 ## Step 2: Revisions and replace
 **Goal**: A stale write is refused and changes nothing.
 **Implementation Logic**:
-Write the three revision guards first. Compute `rev` from the canonical encoding and `tree_rev` from the sorted `(id, rev)` pairs, as `store.md` says. `replace` takes the lock, re-reads the node from disk, compares `expected_rev`, then writes.
-**Deliverables**: `crates/rdm-engine/src/rev.rs`: fns `rev`, `tree_rev`; fn `Campaign::replace`; the three guards
+Write the three revision guards first. Compute `rev` from the canonical encoding and `tree_rev` from the sorted `(id, rev)` pairs, as `store.md` says. `replace` takes the lock, replays a known `op_id` from the op index, re-reads the node from disk, compares `expected_rev`, applies the request rules (`diff` decides whether an amendment is needed), then writes. Write `requests_breaking_a_rule_are_refused` and `replayed_op_id_writes_nothing` first.
+**Deliverables**: `crates/rdm-engine/src/rev.rs`: fns `rev`, `tree_rev`, `subtree_rev`; fn `Campaign::replace`; the op index; the five guards
 **Consistency Checks**: `cargo test -p rdm-engine --test store rev` (expected: PASS)
 **Commit**: `feat(rdm-engine): check revisions on replace`
 
 ## Step 3: Structural primitives and the reverse index
 **Goal**: Create, move, delete, comment and batch keep every link resolvable.
 **Implementation Logic**:
-1. Write `move_writes_one_file_and_keeps_ids` and `reverse_index_equals_brute_force_scan` first.
+1. Write `move_writes_one_file_and_keeps_ids`, `reverse_index_equals_brute_force_scan`, `failed_batch_writes_nothing`, `delete_reports_referrers_and_touches_only_the_subtree` and `order_keys_sort_strictly_between_their_bounds` first.
 2. Implement `create`, `move_node`, `delete_subtree` (amendment with its snapshot first, then the node files bottom-up), `comment` and `batch` (through the intent record), each in the order of the write-order table of `store.md`. Update the reverse index on every change.
-**Deliverables**: fns `Campaign::create`, `move_node`, `delete_subtree`, `comment`, `batch`; `crates/rdm-engine/src/links.rs`: type `ReverseIndex`; the two guards
+**Deliverables**: fns `Campaign::create`, `move_node`, `delete_subtree`, `comment`, `batch`; `crates/rdm-engine/src/links.rs`: type `ReverseIndex`; the five guards
 **Consistency Checks**: `cargo test -p rdm-engine --test store` (expected: PASS)
 **Commit**: `feat(rdm-engine): apply the store primitives through ordered writes`
 

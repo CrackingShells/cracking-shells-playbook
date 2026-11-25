@@ -5,11 +5,11 @@
 - [ ] Amendment A2 is on the branch (`8b4a4e7`) and the A2 gap analysis is read
 - [ ] `__design__/rdm/stored-schema.md`, `read-model.md` and `statuses.md` are read
 **Success Gates**:
-- ⬜ [static] The id inventory gives, for every stored record, the verdict (id or no id) and the reason, by the rule "it is pointed at from outside, and its natural key can change"; `stored-schema.md` matches it
-- ⬜ [static] Every contract type is listed with its fields and Rust name: the id newtypes, the node fields (`name`, `parent_id`, `order`), the campaign model and what it derives, `MOVES`, the store operation request and result types, the error type, the `Links` declaration and the `FormatLayer` trait
-- ⬜ [static] The version chain states the trait, the `NotInVersion` default, how a layer overrides, that a newer file is refused with `NewerFormat { found, supported }` before anything else is parsed, the write-version rule, and whether `FORMAT_VERSION` stays `0.1.0`
-- ⬜ [static] No stored field holds a value derivable from an id (`Reference.target` is derived when `node_id` is set); the owner of `op_id` replay (store or M2) is decided and recorded
-- ⬜ [static] Every invariant names its guard from the campaign README, or "not tested" with the reason
+- ✅ [static] The id inventory gives, for every stored record, the verdict (id or no id) and the reason, by the rule "it is pointed at from outside, and its natural key can change"; `stored-schema.md` matches it
+- ✅ [static] Every contract type is listed with its fields and Rust name: the id newtypes, the node fields (`name`, `parent_id`, `order`), the campaign model and what it derives, `MOVES`, the store operation request and result types, the error type, the `Links` declaration and the `FormatLayer` trait
+- ✅ [static] The version chain states the trait, the `NotInVersion` default, how a layer overrides, that a newer file is refused with `NewerFormat { found, supported }` before anything else is parsed, the write-version rule, and whether `FORMAT_VERSION` stays `0.1.0`
+- ✅ [static] No stored field holds a value derivable from an id (`Reference.target` is derived when `node_id` is set); the owner of `op_id` replay (store or M2) is decided and recorded
+- ✅ [static] Every invariant names its guard from the campaign README, or "not tested" with the reason
 **References**: [A2 gap analysis](../../__reports__/m1-core-foundation/00-gap_analysis_v0.md) — the rulings and the scope (no tool I/O); [stored-schema.md](../../__design__/rdm/stored-schema.md) — the types to amend; [statuses.md](../../__design__/rdm/statuses.md) — the move table `MOVES` encodes; [crates/rdm-schema/src/stored.rs](../../crates/rdm-schema/src/stored.rs) — the current types
 
 ## Step 1: Ids and node fields

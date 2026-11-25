@@ -5,10 +5,10 @@
 - [ ] Amendment A2 is on the branch (`8b4a4e7`) and the A2 gap analysis is read
 - [ ] `__design__/rdm/stored-schema.md` and `read-model.md` are read
 **Success Gates**:
-- ⬜ [static] `store.md` covers the layout, id format and minting, the write algorithm with one write-order row per store primitive (create, replace, move or rename, subtree delete, comment, batch), recovery, the fsync policy, the lock and its holder record, `rev` and `tree_rev`, cache revalidation and Windows rename semantics
-- ⬜ [static] Each technique names its source, checked by web research: Soft Updates (McKusick & Ganger, 1999), Maildir delivery, ARIES redo (Mohan et al., 1992), Pillai et al. OSDI 2014 (ALICE), git's racy-git note, the Win32 `MoveFileEx` and `ReplaceFile` documentation. A claim the source does not support is dropped or marked as this design's own
-- ⬜ [static] Every invariant row has a "Guarded by" cell naming a guard from the campaign README (for example `every_write_prefix_loads_and_recovers_to_pre_or_post`), or "not tested" with the reason
-- ⬜ [static] The four probes assigned here (lock crate, Windows rename, directory mtime, fsync cost) have their answer and decision recorded in `store.md`; no probe code is committed
+- ✅ [static] `store.md` covers the layout, id format and minting, the write algorithm with one write-order row per store primitive (create, replace, move or rename, subtree delete, comment, batch), recovery, the fsync policy, the lock and its holder record, `rev` and `tree_rev`, cache revalidation and Windows rename semantics
+- ✅ [static] Each technique names its source, checked by web research: Soft Updates (McKusick & Ganger, 1999), Maildir delivery, ARIES redo (Mohan et al., 1992), Pillai et al. OSDI 2014 (ALICE), git's racy-git note, the Win32 `MoveFileEx` and `ReplaceFile` documentation. A claim the source does not support is dropped or marked as this design's own
+- ✅ [static] Every invariant row has a "Guarded by" cell naming a guard from the campaign README (for example `every_write_prefix_loads_and_recovers_to_pre_or_post`), or "not tested" with the reason
+- ✅ [static] The four probes assigned here (lock crate, Windows rename, directory mtime, fsync cost) have their answer and decision recorded in `store.md`; no probe code is committed
 **References**: [A2 gap analysis](../../__reports__/m1-core-foundation/00-gap_analysis_v0.md) — the rulings; [R01 §Concurrency](../../__design__/rdm/architecture.md) — the lock and journal sketch this replaces; [read-model.md](../../__design__/rdm/read-model.md) — what `rev` and `tree_rev` promise consumers
 
 ## Step 1: Probes and sources
