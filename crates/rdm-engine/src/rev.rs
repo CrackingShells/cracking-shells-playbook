@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::codec::{json_text, json_value};
 use rdm_schema::ids::{NodeId, Rev, SubtreeRev, TreeRev};
 use rdm_schema::stored::Node;
 use serde_json::Value;
@@ -28,13 +29,12 @@ fn lines<'a>(domain: &str, entries: impl Iterator<Item = (&'a NodeId, &'a Rev)>)
 /// `schema_version` left out. Formatting of the file, and the stamp, do not count.
 #[must_use]
 pub fn rev(node: &Node) -> Rev {
-    let mut value = serde_json::to_value(node).unwrap_or(Value::Null);
+    let mut value = json_value(node);
     if let Value::Object(map) = &mut value {
         // `remove` would swap the last key into the first slot under `preserve_order`.
         map.shift_remove("schema_version");
     }
-    // Cannot fail: a `Value` has string keys only.
-    let mut text = serde_json::to_string_pretty(&value).unwrap_or_default();
+    let mut text = json_text(&value);
     text.push('\n');
     Rev::new(hex16(Sha256::digest(text.as_bytes())))
 }

@@ -91,11 +91,27 @@ pub(crate) fn current_amendment(file: &str, raw: Value) -> Result<Decoded<Amendm
     typed::<Amendment>(file, raw).map(|a| scanned(file, a, scan_amendment, |a| a))
 }
 
+/// A stored record as a JSON value. The one policy for turning a record into JSON: it cannot
+/// fail (every key of a stored type is a string and every value is JSON), so a failure is a
+/// broken invariant and panics, rather than turning into a `null` that every record then shares.
+pub(crate) fn json_value<T: Serialize + ?Sized>(record: &T) -> Value {
+    serde_json::to_value(record).expect("a stored record serialises to JSON")
+}
+
+/// A stored record as pretty JSON text, without the trailing newline (see [`json_value`]).
+pub(crate) fn json_text<T: Serialize + ?Sized>(record: &T) -> String {
+    serde_json::to_string_pretty(record).expect("a stored record serialises to JSON")
+}
+
+/// A stored record as compact JSON bytes (see [`json_value`]).
+pub(crate) fn json_bytes<T: Serialize + ?Sized>(record: &T) -> Vec<u8> {
+    serde_json::to_vec(record).expect("a stored record serialises to JSON")
+}
+
 /// The canonical text of a record: ends with exactly one newline.
 #[must_use]
 pub fn encode<T: Stored>(value: &T) -> String {
-    // Cannot fail: every key of a stored type is a string and every value is JSON.
-    let mut text = serde_json::to_string_pretty(value).expect("a stored record serialises to JSON");
+    let mut text = json_text(value);
     text.push('\n');
     text
 }

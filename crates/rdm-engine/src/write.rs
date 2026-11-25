@@ -25,7 +25,7 @@ use serde_json::Value;
 
 use crate::cache::Published;
 use crate::clock::{rfc3339, unix_ms};
-use crate::codec::{decode, encode};
+use crate::codec::{decode, encode, json_bytes, json_value};
 use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
 use crate::layout::{self, RecordKind};
@@ -149,7 +149,7 @@ impl Store {
                 .unwrap_or_else(|_| "unknown".to_owned()),
             since: rfc3339(self.now()),
         };
-        let record = serde_json::to_vec(&holder).unwrap_or_default();
+        let record = json_bytes(&holder);
         match WriterLock::acquire(&self.root, self.options.lock_timeout, &record) {
             Ok(lock) => Ok(lock),
             Err(LockError::Busy { holder }) => {
@@ -1276,7 +1276,7 @@ impl Store {
             if let Some(node) = w.campaign.get(n) {
                 w.snapshot.insert(
                     n.to_string(),
-                    serde_json::to_value(node).unwrap_or(Value::Null),
+                    json_value(node),
                 );
             }
             w.changes.push(Change {
@@ -1531,7 +1531,7 @@ fn rebalance(w: &mut Working, parent: &NodeId, exclude: Option<&NodeId>) {
 /// reference). Marks already there keep their meaning: a removed criterion stays named by the
 /// marks and by the amendment that removed it.
 fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result<(), StoreError> {
-    let value = serde_json::to_value(after).unwrap_or(Value::Null);
+    let value = json_value(after);
     let marks_of = |v: &Value| {
         v.get("marks")
             .and_then(Value::as_array)
@@ -1539,7 +1539,7 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
             .unwrap_or_default()
     };
     let old = before
-        .map(|b| marks_of(&serde_json::to_value(b).unwrap_or(Value::Null)))
+        .map(|b| marks_of(&json_value(b)))
         .unwrap_or_default();
     let criteria: BTreeSet<&str> = ["preconditions", "success_gates"]
         .iter()
@@ -1680,7 +1680,7 @@ fn introduced_references_exist(
     after: &Node,
 ) -> Result<(), StoreError> {
     let targets = |n: &Node| -> BTreeSet<NodeId> {
-        let v = serde_json::to_value(n).unwrap_or(Value::Null);
+        let v = json_value(n);
         let mut out = BTreeSet::new();
         let mut take = |refs: Option<&Value>| {
             for r in refs.and_then(Value::as_array).into_iter().flatten() {
