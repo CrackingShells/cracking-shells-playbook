@@ -44,7 +44,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: bash
         run: git ls-files --eol ':(glob)crates/**/tests/fixtures/**/*.json'
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --locked --no-fail-fast
 
   msrv:
     name: msrv (1.88)
@@ -58,4 +58,4 @@ jobs:
         run: |
           echo "RDM_SOAK_ITERS=1000" >> "$GITHUB_ENV"
           echo "PROPTEST_CASES=10000" >> "$GITHUB_ENV"
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --locked --no-fail-fast
