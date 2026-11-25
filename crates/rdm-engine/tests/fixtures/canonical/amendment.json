@@ -1,12 +1,14 @@
 {
   "schema_version": "0.1.0",
   "id": "01JD0000000000000000000002",
+  "legacy_id": "A1",
   "ts": "2026-11-16T12:30:00Z",
   "actor": {
     "kind": "agent"
   },
   "description": "Edit a goal, rename a node, move one and remove another",
   "source": "__reports__/x.md",
+  "op_id": "op3",
   "correction": true,
   "changes": [
     {
