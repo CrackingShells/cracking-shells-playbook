@@ -98,16 +98,10 @@ struct Worker {
     owned: Vec<(NodeId, String, NodeId)>,
 }
 
-/// A store as it is on disk now. A reader that races a delete can find a file listed and gone;
-/// that and nothing else is retried.
+/// A store as it is on disk now. A reader that races a delete finds the file absent, never an
+/// error, so a campaign a kill left loads at once.
 fn open_fresh(root: &Path) -> Store {
-    loop {
-        match open_default(root) {
-            Ok(store) => return store,
-            Err(StoreError::Io { .. }) => std::thread::sleep(Duration::from_millis(1)),
-            Err(other) => panic!("a campaign a kill left must load: {other:?}"),
-        }
-    }
+    open_default(root).unwrap_or_else(|e| panic!("a campaign a kill left must load: {e:?}"))
 }
 
 impl Worker {

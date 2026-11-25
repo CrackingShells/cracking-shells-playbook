@@ -20,6 +20,23 @@ pub enum Durability {
     Full,
 }
 
+/// What a revalidation compares of a file (`store.md`, §Cache): its identity, modification time
+/// and size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileStat {
+    /// The inode on Unix, the creation time on Windows: a replace by rename gives the new file a
+    /// new identity.
+    pub identity: u64,
+    /// The modification time.
+    pub mtime: std::time::SystemTime,
+    /// The length in bytes.
+    pub size: u64,
+    /// The inode change time on Unix, as seconds and nanoseconds; `None` on Windows. No
+    /// user-level call sets it, so an in-place edit that restores the modification time still
+    /// moves it.
+    pub ctime: Option<(i64, i64)>,
+}
+
 /// The effects the store performs on the file system, plus the reads it needs.
 ///
 /// Paths are taken as given. The mutating methods are the ones a `RecordingFs` logs.
@@ -42,6 +59,9 @@ pub trait Fs {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
     /// File names in a directory, sorted bytewise. A missing directory is `NotFound`.
     fn list_dir(&self, path: &Path) -> io::Result<Vec<String>>;
+    /// The signature of a file ([`FileStat`]). A missing file is `NotFound`. No default: every
+    /// implementation says what it reports.
+    fn stat(&self, path: &Path) -> io::Result<FileStat>;
 }
 
 /// One logged effect. Paths are relative to the root the `RecordingFs` was built with, so a
@@ -239,6 +259,31 @@ impl Fs for RealFs {
         names.sort();
         Ok(names)
     }
+
+    fn stat(&self, path: &Path) -> io::Result<FileStat> {
+        let meta = std::fs::metadata(path)?;
+        #[cfg(unix)]
+        let identity = std::os::unix::fs::MetadataExt::ino(&meta);
+        #[cfg(unix)]
+        let ctime = Some((
+            std::os::unix::fs::MetadataExt::ctime(&meta),
+            std::os::unix::fs::MetadataExt::ctime_nsec(&meta),
+        ));
+        #[cfg(not(unix))]
+        let ctime = None;
+        #[cfg(not(unix))]
+        let identity = meta
+            .created()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX));
+        Ok(FileStat {
+            identity,
+            mtime: meta.modified()?,
+            size: meta.len(),
+            ctime,
+        })
+    }
 }
 
 /// A file system that performs every effect on an inner one and logs it, in order, once it
@@ -376,6 +421,10 @@ impl<F: Fs> Fs for RecordingFs<F> {
 
     fn list_dir(&self, path: &Path) -> io::Result<Vec<String>> {
         self.inner.list_dir(path)
+    }
+
+    fn stat(&self, path: &Path) -> io::Result<FileStat> {
+        self.inner.stat(path)
     }
 }
 
