@@ -18,7 +18,7 @@
 1. Create `crates/rdm-engine` (workspace edition and `rust-version`, `publish = false`, depends on `rdm-schema`).
 2. Define the `Fs` trait over the effects the store needs, with `RealFs` and `RecordingFs`.
 3. Write the two guards first, each spawning the test binary itself as the child process. See them red against a naive in-place write.
-4. Implement `atomic_replace`: temp file in the same directory, write, fsync, rename, directory fsync per the fsync policy, and the Windows sharing-violation retry from `store.md`.
+4. Implement `atomic_replace`: temp file in the same directory, write, fsync, rename, directory fsync per the fsync policy, and the Windows sharing-violation retry from `store.md`. On macOS the `Fsync` tier calls `fsync(2)` through `rustix`, because std's `sync_all` issues `F_FULLFSYNC` there (`store.md` §Durability).
 5. Add `.rdm/` and `proptest-regressions/` to `.gitignore`.
 **Deliverables**: `crates/rdm-engine/Cargo.toml`; `crates/rdm-engine/src/lib.rs`; `crates/rdm-engine/src/fs.rs`: trait `Fs`, types `RealFs`, `RecordingFs`, `Effect`, fn `atomic_replace`; `crates/rdm-engine/tests/fs.rs`: tests `reader_sees_old_or_new_never_partial`, `replace_while_target_open`; `.gitignore`; `Cargo.lock`
 **Consistency Checks**: `cargo test -p rdm-engine --test fs` (expected: PASS)
@@ -28,9 +28,9 @@
 **Goal**: Writers are serialised across processes, and a killed holder never leaves the campaign locked.
 **Implementation Logic**:
 1. Write the three lock guards first, with real child processes, and see them red.
-2. Implement `WriterLock::acquire(root, timeout)` with the crate `store.md` chose, writing the holder record (pid, host, start time) after the lock is held. The record is informational: the lock state never depends on it.
-3. Return the error type's `Locked { holder }` on timeout.
-**Deliverables**: `crates/rdm-engine/src/lock.rs`: type `WriterLock`, fn `acquire`, type `Holder`; `crates/rdm-engine/tests/lock.rs`: the three guards
+2. Implement `WriterLock::acquire(root, timeout, holder_record: &[u8])` with `fs4`, as `store.md` §Lock says: the lock file `.rdm/lock` stays empty, and the caller's holder bytes replace `.rdm/holder.json` through `atomic_replace` after the lock is held, and are removed before release. The record is informational: the lock state never depends on it.
+3. On timeout return `LockError::Busy { holder: Option<Vec<u8>> }`, the holder file's bytes as read (`None` when absent). The primitives stay generic over bytes: `LockHolder` and `StoreError::Locked` are `rdm-schema`'s contract types, and `campaign_store` parses the bytes into them (an unparsable record is an unknown holder). `rdm-engine` defines no contract type.
+**Deliverables**: `crates/rdm-engine/src/lock.rs`: types `WriterLock`, `LockError`, fn `acquire`; `crates/rdm-engine/tests/lock.rs`: the three guards
 **Consistency Checks**: `cargo test -p rdm-engine --test lock` (expected: PASS)
 **Commit**: `feat(rdm-engine): add the writer lock with a holder record`
 
