@@ -306,6 +306,120 @@ Three tiers, chosen when the store is opened. The default is `Fsync`.
 - **Why `Fsync` as the default for a git-tracked store.** What a power cut can cost is the last acknowledged writes, not the history: committed work is in git, and uncommitted work in a worktree has the same exposure as every source file beside it. A plain `fsync` costs a measured 0.16 ms per file and directory, so an edit (an intent, a node, an amendment and three directories) costs about a millisecond; `F_FULLFSYNC` would cost about 30 ms per edit and 1.6 seconds for a 160-node import, which an agent doing many small edits would feel. `Full` stays available for a user who wants it.
 - **What a process kill guarantees is the contract the tests hold** (`killed_workers_lose_no_acknowledged_write`). Power loss is not tested: it needs a file system that injects reordering, which this campaign does not build (README, "Deliberately not tested"). The argument above is the evidence, and it rests on the Soft Updates ordering and the ALICE observation that rename ordering and directory durability vary between file systems, which is why `Fsync` syncs both.
 
+## Cache
+
+The long-lived server keeps the decoded campaign in memory. It is a cache: other processes (another
+worktree's server, the CLI, an editor, `git checkout`) change the files under it, so it is
+revalidated against the files on every read, writes go straight through to the files, and it is
+never the source of truth. A writer never reads it: step 3 of the write algorithm reads the disk, so
+a stale cache cannot cause a lost update, only a stale read, and only in the one case named below.
+
+**An entry** holds, per file: the decoded record, its `rev`, a **signature** `(identity, mtime, size)`
+where identity is the inode on Unix and the creation time on Windows (a replace by rename gives the
+new file a new identity), the wall-clock instant `read_at` taken before the file was statted, and a
+`racy` flag. The same entry shape serves `nodes/`, `_amendments/` and `_comments/`: append-only files
+are checked like the rest, so every kind of external change is covered by one rule. Derived structures
+(paths, depth, the reverse link index, `tree_rev`) belong to a generation counter that is bumped when
+any entry changes; they are rebuilt from the entries and never outlive them.
+
+**Revalidation, on every read:**
+
+1. List the directory and take each entry's metadata (one `lstat` per file on Unix; free with the listing on Windows).
+2. A cached entry whose signature is unchanged and whose `racy` flag is clear is kept.
+3. Every other file is read, decoded and hashed again. The signature stored is the one statted before the read, so a change made during the read shows up on the next validation.
+4. Entries whose file is no longer listed are dropped; a new name is read.
+5. If anything changed, bump the generation.
+
+**Why not the directory `stat`.** The probe shows a directory's mtime changes for a create, a rename and
+an unlink but not for an in-place write (a text editor saving, `git merge-file`). A directory-stat fast
+path would serve stale data after exactly the edits a person makes by hand, which breaks
+`cached_read_equals_cold_read`. The directory is therefore not trusted to say "nothing changed"; a
+per-file check on every read is. Its measured cost, 0.25 ms for 160 files and 2.7 ms for 2 000 (from
+Python, so an upper bound), is small next to a tool call.
+
+**The racily-clean rule** (git, racy-git, Sources, adapted). A file changed twice within one
+timestamp tick has the same mtime and, if the size matches, the same signature. So an entry whose
+mtime is not older than its `read_at` by at least `RACY_WINDOW` is marked `racy` and re-read on every
+validation until a read finds it old enough. `RACY_WINDOW` is 2 seconds, which covers FAT (2 s) and
+HFS+ (1 s); APFS and NTFS are finer but the rule does not depend on it. A future mtime is also racy.
+Git zeroes the cached size to force this; this store keeps an explicit flag, because it has no index
+file whose own timestamp to compare with.
+
+**What stays undetected.** An external program that rewrites a file in place keeping its size and
+setting its mtime back to the old value (`touch -r`, some synchronisers) leaves the signature
+unchanged. It is not detected until the entry is evicted or the server restarts; the same limit holds
+for git's index. Nothing is written from such a stale entry (writes read the disk). Not tested.
+
+**`notify` is not adopted in M1.** File-event services (inotify, FSEvents, `ReadDirectoryChangesW`)
+coalesce, overflow and miss events, so they can only be an accelerator beside the scan; the scan costs
+under a millisecond at the expected size, so there is nothing to accelerate.
+
+**Write-through.** Step 6 of the write algorithm updates the entries from what was written, after the
+files have been published and before the lock is released:
+
+- The value is the decoded after-image the writer holds; the `rev` is that of the after-image's bytes.
+- The signature is statted from the published path afterwards, with `read_at` taken before the write began, so the entry is `racy`: the next reads within two seconds re-read the file once, and if an external program replaced it in between, the re-read finds it.
+- Created files are added and deleted files dropped. The cache is never updated before its files are written, so it is never ahead of the disk.
+- If the operation fails after writing anything, the entries of every path it touched are dropped, not guessed.
+
+A write returns after step 5 under the durability tier in force, so a cold reader (another process,
+a fresh open) that starts after the return sees the written files. Guarded by
+`write_through_visible_to_cold_reader_on_return`; and by `cached_read_equals_cold_read` for external
+change: an editor writing in place, an atomic replacement by another process, `git checkout`, a new
+file, a deleted file, a same-size edit within one tick.
+
+**Persisted form.** Whether a binary cache is built at all is decided by the `hot_cache` leaf from its
+cold-versus-warm measurement. If one is, it lives in `.rdm/cache/` (untracked), carries the crate
+version and format version in a header, is validated by the same signatures, and is discarded when
+any check fails. It is never read as a source of truth and never tracked.
+
+## Windows
+
+Windows has no `rename(2)`: the semantics below are the ones the design relies on, with the evidence
+that is and is not available (Probe answers, Sources).
+
+| Concern | Decision |
+|:--|:--|
+| Replace a file | `std::fs::rename`, which on the MSRV (1.88) is `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` (from Rust 1.86). Microsoft documents neither atomicity nor the error for a held-open target, so atomic replace on NTFS is an observed property that `killed_workers_lose_no_acknowledged_write` and `every_write_prefix_loads_and_recovers_to_pre_or_post` test on the Windows runner. `ReplaceFile` is not used: its documented failure states can leave the replaced file renamed or absent, and its write-through flag is documented as unsupported |
+| Create-only publish | `std::fs::hard_link` (`CreateHardLinkW`, NTFS), as on Unix. If the volume refuses hard links, the store falls back to "check the name is free, then rename" under the lock; the only remaining race is an external writer creating that exact name in the same instant |
+| Held-open target | A program that has the target open without `FILE_SHARE_DELETE` (an editor, a scanner, an indexer) makes the rename or an unlink fail. Retry on `ERROR_ACCESS_DENIED` (5) and `ERROR_SHARING_VIOLATION` (32): up to 10 attempts, waiting 5, 10, 20, 40, 80 ms and then 100 ms for the rest, about 655 ms in all, then fail with the I/O error of the last attempt, its path and its code. That is inside the lock timeout (5 s), and the lock is held throughout, so no other writer interleaves. These two codes, and that holders release within that window, are this design's expectations, not the documentation's; `replace_while_target_open` measures them and the numbers are set by what it shows |
+| This store's own readers | They open with `std`'s default share mode, `FILE_SHARE_READ`, `WRITE` and `DELETE`, so they never block a replace or an unlink. Only foreign programs do |
+| Lock | `fs4` locks the whole file with `LockFileEx`; the holder record is a separate file for that reason (Lock). A killed process's lock is released by the system after a short, resource-dependent delay, which the lock timeout covers |
+| Directory sync | Not available through `std`; skipped (Durability) |
+| Long paths | A path below a campaign is at most 40 characters (`_amendments/<26>.json` is 39), whatever the depth of the tree, so only the campaign's own location counts against 260 characters. `std` adds the `\\?\` prefix to long absolute paths, but the store does not rely on it |
+| Names | Ids are lower case and carry a prefix, so they cannot collide on a case-insensitive file system or be a reserved device name (`con`, `nul`); a node's `name` is not a file name |
+| Line endings | A checkout with `core.autocrlf` can turn LF into CRLF. The decoder accepts CRLF and `rev` is taken over the decoded value, so neither changes a `rev`. `ci_matrix` confirms what a runner does (`git ls-files --eol`) |
+
+## Invariants and guards
+
+Every row names the guard from the campaign README that holds it, or says "not tested" with the
+reason. Invariant numbers are those of R01 `§Contracts & Invariants` (I10 is reworded by the A2
+rulings from "the server keeps no state between calls" to the cache rule of this document).
+
+| # | Invariant | Rule above | Guarded by |
+|:--|:--|:--|:--|
+| S1 | Readers take no lock, and see each file as the old or the new version, never a torn one | Reads | `reader_sees_old_or_new_never_partial` |
+| S2 | Every prefix of every operation's file effects loads, and recovery makes it exactly the state before or after the operation (I3) | Write order, Intent and recovery | `every_write_prefix_loads_and_recovers_to_pre_or_post` |
+| S3 | A process kill loses no acknowledged write (I3) | Durability | `killed_workers_lose_no_acknowledged_write` |
+| S4 | A write based on a stale `rev` or `tree_rev` is refused with `Stale { current }` and changes nothing (I4) | Write algorithm, step 3 | `stale_replace_changes_nothing` |
+| S5 | A move writes one node file, and no id changes (I7) | Write order | `move_writes_one_file_and_keeps_ids` |
+| S6 | `rev` follows the decoded value, not the bytes | Revisions | `rev_tracks_value_not_formatting` |
+| S7 | `tree_rev` changes on any node operation and not on a comment or an amendment | Revisions | `tree_rev_changes_on_node_ops_not_comments` |
+| S8 | A minted id that collides is drawn again, and minting ends | Ids | `minting_retries_on_collision` |
+| S9 | A second writer, after the timeout, gets `Locked { holder }` and the file is unchanged | Lock | `second_writer_gets_locked_with_holder` |
+| S10 | A killed holder does not leave the lock held | Lock | `lock_survives_holder_kill` |
+| S11 | A missing, truncated or garbage holder record never breaks locking | Lock | `garbage_holder_record_does_not_break_locking` |
+| S12 | A replace or unlink against a target another program holds open succeeds once it is released inside the retry window, and fails cleanly otherwise | Windows | `replace_while_target_open` |
+| S13 | A cached read equals a cold read after any kind of external change (I10, reworded) | Cache | `cached_read_equals_cold_read` |
+| S14 | A write returns only after its files are written, and a cold reader then sees them | Cache, write-through | `write_through_visible_to_cold_reader_on_return` |
+| S15 | `between` returns a key strictly between its bounds, of the allowed characters, not ending in `0`, and keys stay short | Order key | Not tested: the README names no guard. A property test over random inserts is a gap for the settle leaves |
+| S16 | An id of a deleted record is never minted again | Ids | Not tested: a probability under 2e-9 per mint, accepted |
+| S17 | Power loss leaves a valid campaign | Durability | Not tested: needs a fault-injecting file system (README, "Deliberately not tested"); argued under Durability |
+| S18 | A kill during recovery is repaired by the next recovery | Intent and recovery | Not tested by a named guard: `every_write_prefix_loads_and_recovers_to_pre_or_post` cuts operations, and whether `crash_test` also cuts recovery is for that leaf to decide (reported as a finding) |
+| S19 | Recovery never overwrites a create-only file that holds other bytes | Intent and recovery | Not tested: it needs an external writer in the crash window |
+| S20 | Loading a campaign with a duplicate sibling name, an orphan, a cycle or no root does not fail | Layout | Not tested here: `validate` (M2) owns the rules and their tests |
+| S21 | An in-place edit that preserves size and restores mtime is detected | Cache | Not tested: documented limit, undetectable by stat |
+
 ## Probe answers
 
 Four probes were assigned to this leaf. Probe code lived in a scratch directory and is deleted;
