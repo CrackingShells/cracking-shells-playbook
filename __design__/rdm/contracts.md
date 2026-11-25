@@ -267,7 +267,15 @@ One type for every warning, from three producers:
 | `Campaign::open`, from the link table | `dangling_reference`, `references_empty` | per reference whose `node_id` names no node; per leaf with no reference |
 
 `open` aggregates the decode diagnostics of every file with its own and returns them sorted by
-`(file, rule, detail)`, so two opens of the same files give the same list. A diagnostic is a
+`(file, rule, detail)`, so two opens of the same files give the same list. A defect that spans
+several files (a cycle, a collision, a second root) names in `file` the file of the smallest id
+involved, and lists the other ids in `detail`.
+
+**Settled while building the store (coordinator, 2026-11-25).** The root has depth 0. A change
+that adds, removes or moves a sub-item names in `field` the array's pointer (`/steps`). A mark
+names its criterion by id, so `Mark.criterion` is a declared link: a write that leaves a mark on a
+missing criterion is refused like a dangling reference, and `open` reports one. `id_changed`
+applies only when a replace payload carries an id of its own that differs from the target. A diagnostic is a
 warning by type; an error is a `StoreError`.
 
 ## Moves

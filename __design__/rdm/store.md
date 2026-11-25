@@ -315,6 +315,11 @@ holds, so redo needs no log sequence number and no comparison of versions (ARIES
 for that). The price is size: an intent holds each file it writes once more, in untracked, deleted-at-commit storage. A
 160-node import is about 0.5 to 1 MB for a moment.
 
+
+- **A newer intent record.** The intent format is one integer (`INTENT_FORMAT`). A record whose
+  format is higher refuses the write with `NewerFormat`, reported as `found = (0, n, 0)` and
+  `supported = (0, INTENT_FORMAT, 0)`, so one error type covers both kinds of newer file.
+
 ## Durability
 
 Three tiers, chosen when the store is opened. The default is `Fsync`.
