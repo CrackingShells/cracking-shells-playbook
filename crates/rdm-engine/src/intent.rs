@@ -12,26 +12,18 @@ use std::path::Path;
 /// Format version of the record itself. A newer one is refused by the reader of the record.
 pub const INTENT_FORMAT: u32 = 1;
 
-/// What to do to one path on redo.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Action {
-    /// Replace the file (whole-file put, idempotent).
-    Put,
-    /// Create the file; never overwrites.
-    Create,
-    /// Unlink the file; a missing one is skipped.
-    Del,
-}
-
-/// One effect of step 5. `path` is relative to the campaign, with `/` separators. `bytes` is the
-/// full new content as text for `Put` and `Create`, and absent for `Del`.
+/// One effect of step 5, in the order it is applied. `path` is relative to the campaign, with `/`
+/// separators. `Put` and `Create` carry the full new content as text and `Del` carries none; a
+/// record that breaks this does not decode.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IntentEffect {
-    pub action: Action,
-    pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bytes: Option<String>,
+#[serde(tag = "action", rename_all = "lowercase", deny_unknown_fields)]
+pub enum IntentEffect {
+    /// Replace the file (whole-file put, idempotent).
+    Put { path: String, bytes: String },
+    /// Create the file; never overwrites.
+    Create { path: String, bytes: String },
+    /// Unlink the file; a missing one is skipped.
+    Del { path: String },
 }
 
 /// An intent record: its format version and the effects in the order they are applied.
@@ -71,12 +63,18 @@ impl Pending {
     }
 }
 
+fn is_ulid(s: &str) -> bool {
+    rdm_schema::ids::AmendmentId::parse(s).is_ok()
+}
+
 fn intent_dir(root: &Path) -> std::path::PathBuf {
     root.join(".rdm").join("intent")
 }
 
 /// Publish the intent `<ulid>` under `root`: written under `.rdm/tmp/`, synced, renamed into
-/// `.rdm/intent/`. Its rename is the commit point of the operation.
+/// `.rdm/intent/`. Its rename is the commit point of the operation. Refuses a `ulid` that is not
+/// a ULID (`InvalidInput`) and never overwrites a record (`AlreadyExists`); the writer lock is
+/// held, so the check and the publish do not race.
 pub fn begin(
     fs: &dyn Fs,
     root: &Path,
@@ -84,16 +82,27 @@ pub fn begin(
     intent: &Intent,
     tier: Durability,
 ) -> io::Result<()> {
+    if !is_ulid(ulid) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{ulid:?} is not a ULID"),
+        ));
+    }
     let bytes = serde_json::to_vec(intent).map_err(io::Error::other)?;
     let dir = intent_dir(root);
+    let record = dir.join(format!("{ulid}.json"));
+    match fs.read(&record) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("an intent {ulid} is already recorded"),
+            ));
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
     fs.create_dir_all(&dir)?;
-    atomic_replace(
-        fs,
-        &dir.join(format!("{ulid}.json")),
-        &root.join(".rdm").join("tmp"),
-        &bytes,
-        tier,
-    )
+    atomic_replace(fs, &record, &root.join(".rdm").join("tmp"), &bytes, tier)
 }
 
 /// Remove the intent `<ulid>` and sync `.rdm/intent/`. A record already gone is not an error.
@@ -108,7 +117,7 @@ pub fn complete(fs: &dyn Fs, root: &Path, ulid: &str, tier: Durability) -> io::R
 }
 
 /// The records in `.rdm/intent/`, oldest ULID first (the ULID is the order). Entries that are
-/// not a 26-character ULID with `.json` are ignored. A missing directory holds nothing.
+/// not a ULID with `.json` are ignored. A missing directory holds nothing.
 pub fn pending(fs: &dyn Fs, root: &Path) -> io::Result<Vec<Pending>> {
     let dir = intent_dir(root);
     let names = match fs.list_dir(&dir) {
@@ -118,7 +127,7 @@ pub fn pending(fs: &dyn Fs, root: &Path) -> io::Result<Vec<Pending>> {
     };
     let mut found = Vec::new();
     for name in names {
-        let Some(ulid) = name.strip_suffix(".json").filter(|u| u.len() == 26) else {
+        let Some(ulid) = name.strip_suffix(".json").filter(|u| is_ulid(u)) else {
             continue;
         };
         let bytes = match fs.read(&dir.join(&name)) {
