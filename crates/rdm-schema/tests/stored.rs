@@ -7,9 +7,27 @@ use serde_json::json;
 
 #[test]
 fn status_is_lowercase_and_has_five_values() {
-    let all = [Status::Planned, Status::Ongoing, Status::Paused, Status::Cancelled, Status::Done];
-    let names: Vec<_> = all.iter().map(|s| serde_json::to_string(s).unwrap()).collect();
-    assert_eq!(names, ["\"planned\"", "\"ongoing\"", "\"paused\"", "\"cancelled\"", "\"done\""]);
+    let all = [
+        Status::Planned,
+        Status::Ongoing,
+        Status::Paused,
+        Status::Cancelled,
+        Status::Done,
+    ];
+    let names: Vec<_> = all
+        .iter()
+        .map(|s| serde_json::to_string(s).unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "\"planned\"",
+            "\"ongoing\"",
+            "\"paused\"",
+            "\"cancelled\"",
+            "\"done\""
+        ]
+    );
     assert!(serde_json::from_str::<Status>("\"blocked\"").is_err());
 }
 
@@ -41,7 +59,25 @@ fn only_newer_versions_are_refused() {
 
 #[test]
 fn parse_version_is_strict() {
-    for bad in ["01.1.0", "+1.2.3", " 1.2.3", "1.2.3 ", "1.02.3", "-1.0.0", "1", "1.2", "1.", ".1.2", "1.2.", "1.2.3.4", "banana", "", "1.x.0", "65536.0.0", "0.1.00"] {
+    for bad in [
+        "01.1.0",
+        "+1.2.3",
+        " 1.2.3",
+        "1.2.3 ",
+        "1.02.3",
+        "-1.0.0",
+        "1",
+        "1.2",
+        "1.",
+        ".1.2",
+        "1.2.",
+        "1.2.3.4",
+        "banana",
+        "",
+        "1.x.0",
+        "65536.0.0",
+        "0.1.00",
+    ] {
         assert_eq!(parse_version(bad), None, "{bad:?}");
     }
     assert_eq!(parse_version("0.0.0"), Some((0, 0, 0)));
@@ -55,15 +91,26 @@ fn marks_point_by_criterion_id_and_corrections_are_flagged() {
     assert!(v.marks.iter().all(|m| &m.criterion_id == gate));
     assert_eq!(v.marks[0].correction, None);
     assert_eq!(v.marks[1].correction, Some(true));
-    assert!(v.marks[1].reason.as_deref().is_some_and(|r| !r.trim().is_empty()));
+    assert!(
+        v.marks[1]
+            .reason
+            .as_deref()
+            .is_some_and(|r| !r.trim().is_empty())
+    );
     let rev = v.history.last().unwrap();
-    assert_eq!((rev.from, rev.to, rev.correction), (Status::Done, Status::Ongoing, Some(true)));
+    assert_eq!(
+        (rev.from, rev.to, rev.correction),
+        (Status::Done, Status::Ongoing, Some(true))
+    );
 }
 
 #[test]
 fn a_mark_with_a_position_is_refused() {
     let mut v = fixture("stored_leaf.json");
-    v["marks"][0].as_object_mut().unwrap().remove("criterion_id");
+    v["marks"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("criterion_id");
     v["marks"][0]["index"] = serde_json::json!(0);
     assert!(serde_json::from_value::<Leaf>(v).is_err());
 }
@@ -71,11 +118,21 @@ fn a_mark_with_a_position_is_refused() {
 #[test]
 fn reordering_criteria_leaves_marks_valid() {
     let mut v: Leaf = serde_json::from_value(fixture("stored_leaf.json")).unwrap();
-    let extra = Criterion { id: CriterionId::parse("c_4d7k1h").unwrap(), text: "another".into(), met: false, extra: Default::default() };
+    let extra = Criterion {
+        id: CriterionId::parse("c_4d7k1h").unwrap(),
+        text: "another".into(),
+        met: false,
+        extra: Default::default(),
+    };
     v.success_gates.insert(0, extra);
     v.preconditions.reverse();
     for m in &v.marks {
-        assert!(v.success_gates.iter().chain(&v.preconditions).any(|c| c.id == m.criterion_id));
+        assert!(
+            v.success_gates
+                .iter()
+                .chain(&v.preconditions)
+                .any(|c| c.id == m.criterion_id)
+        );
     }
 }
 
@@ -83,7 +140,12 @@ fn reordering_criteria_leaves_marks_valid() {
 fn ids_are_unique_and_changes_name_items_by_id() {
     // Criteria and steps are the only sub-items with ids: a check and a reference have none.
     let v: Leaf = serde_json::from_value(fixture("stored_leaf.json")).unwrap();
-    let mut ids: Vec<&str> = v.preconditions.iter().chain(&v.success_gates).map(|c| c.id.as_str()).collect();
+    let mut ids: Vec<&str> = v
+        .preconditions
+        .iter()
+        .chain(&v.success_gates)
+        .map(|c| c.id.as_str())
+        .collect();
     ids.extend(v.steps.iter().map(|s| s.id.as_str()));
     let n = ids.len();
     ids.sort_unstable();
@@ -92,7 +154,10 @@ fn ids_are_unique_and_changes_name_items_by_id() {
     assert_eq!(n, 5);
     let a: Amendment = serde_json::from_value(fixture("stored_amendment.json")).unwrap();
     assert_eq!(a.correction, Some(true));
-    assert_eq!(a.changes[3].item_id, Some(ItemId::Step(v.steps[0].id.clone())));
+    assert_eq!(
+        a.changes[3].item_id,
+        Some(ItemId::Step(v.steps[0].id.clone()))
+    );
     assert_eq!(a.changes[3].field.as_deref(), Some("/commit_sha"));
 }
 
@@ -100,7 +165,11 @@ fn ids_are_unique_and_changes_name_items_by_id() {
 fn malformed_ids_are_refused() {
     // One row per class for each prefixed id type: wrong prefix, a letter outside the alphabet
     // (`i`, `l`, `o`, `u`, or upper case), wrong length. `parse` and the deserialiser agree.
-    fn check<T: serde::de::DeserializeOwned>(parse: fn(&str) -> Result<(), IdError>, good: &str, bad: &[(&str, IdError)]) {
+    fn check<T: serde::de::DeserializeOwned>(
+        parse: fn(&str) -> Result<(), IdError>,
+        good: &str,
+        bad: &[(&str, IdError)],
+    ) {
         assert_eq!(parse(good), Ok(()), "{good}");
         assert!(serde_json::from_value::<T>(json!(good)).is_ok(), "{good}");
         for (s, why) in bad {
@@ -154,8 +223,16 @@ fn malformed_ids_are_refused() {
         ],
     );
     // A ULID is 26 characters of upper-case Crockford base32.
-    for bad in ["01JD000000000000000000001", "01JD00000000000000000000001", "01jd0000000000000000000001", "01JD000000000000000000000I"] {
-        assert!(CommentId::parse(bad).is_err() && AmendmentId::parse(bad).is_err(), "{bad}");
+    for bad in [
+        "01JD000000000000000000001",
+        "01JD00000000000000000000001",
+        "01jd0000000000000000000001",
+        "01JD000000000000000000000I",
+    ] {
+        assert!(
+            CommentId::parse(bad).is_err() && AmendmentId::parse(bad).is_err(),
+            "{bad}"
+        );
     }
     assert!(CommentId::parse("01JD0000000000000000000001").is_ok());
     // An op id is one line of 1 to 128 characters.
@@ -167,8 +244,14 @@ fn malformed_ids_are_refused() {
 
 #[test]
 fn an_item_id_reads_as_a_criterion_or_a_step_by_its_prefix() {
-    assert_eq!(ItemId::parse("c_8m2xqv"), Ok(ItemId::Criterion(CriterionId::parse("c_8m2xqv").unwrap())));
-    assert_eq!(ItemId::parse("s_0f4tzn"), Ok(ItemId::Step(StepId::parse("s_0f4tzn").unwrap())));
+    assert_eq!(
+        ItemId::parse("c_8m2xqv"),
+        Ok(ItemId::Criterion(CriterionId::parse("c_8m2xqv").unwrap()))
+    );
+    assert_eq!(
+        ItemId::parse("s_0f4tzn"),
+        Ok(ItemId::Step(StepId::parse("s_0f4tzn").unwrap()))
+    );
     assert!(ItemId::parse("n_7k3q9x2m").is_err());
     assert!(ItemId::parse("c_8m2xqi").is_err());
     let id: ItemId = serde_json::from_value(json!("s_0f4tzn")).unwrap();
@@ -178,7 +261,10 @@ fn an_item_id_reads_as_a_criterion_or_a_step_by_its_prefix() {
 #[test]
 fn names_follow_the_path_segment_pattern() {
     for good in ["core", "m1_core_foundation", "a", "x-1_y"] {
-        assert_eq!(Name::parse(good).map(|n| n.to_string()), Ok(good.to_owned()));
+        assert_eq!(
+            Name::parse(good).map(|n| n.to_string()),
+            Ok(good.to_owned())
+        );
     }
     assert_eq!(Name::parse(""), Err(NameError::Empty));
     for bad in ["1core", "_core", "-core", "Core"] {

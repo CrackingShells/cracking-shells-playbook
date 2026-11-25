@@ -141,11 +141,7 @@ pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer> {
 /// `Invalid` with the rule `schema_version` when the stamp is missing, not a string, or not
 /// `N.N.N`.
 pub fn read_version(file: &str, raw: &Value) -> Result<Version, StoreError> {
-    let invalid = |detail: &str| StoreError::Invalid {
-        file: file.to_owned(),
-        rule: Rule::SchemaVersion,
-        detail: detail.to_owned(),
-    };
+    let invalid = |detail: &str| StoreError::invalid(file, Rule::SchemaVersion, detail);
     match raw.get("schema_version") {
         None => Err(invalid("`schema_version` is missing")),
         Some(Value::String(s)) => parse_version(s)
@@ -172,11 +168,11 @@ pub fn layer_of(
             file: file.to_owned(),
         });
     }
-    layer_for(found)
-        .map(|layer| (found, layer))
-        .ok_or_else(|| StoreError::Invalid {
-            file: file.to_owned(),
-            rule: Rule::UnknownFormat,
-            detail: format!("no layer reads format {}", version_string(found)),
-        })
+    layer_for(found).map(|layer| (found, layer)).ok_or_else(|| {
+        StoreError::invalid(
+            file,
+            Rule::UnknownFormat,
+            format!("no layer reads format {}", version_string(found)),
+        )
+    })
 }

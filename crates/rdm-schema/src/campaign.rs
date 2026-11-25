@@ -100,11 +100,7 @@ impl Campaign {
             }
         }
         for (id, node) in &table {
-            check_node(node).map_err(|f| StoreError::Invalid {
-                file: node_file(id),
-                rule: f.rule,
-                detail: f.detail,
-            })?;
+            check_node(node).map_err(|f| StoreError::invalid(node_file(id), f.rule, f.detail))?;
         }
         let mut campaign = Self {
             slug: expected_slug.clone(),

@@ -49,13 +49,12 @@ const WORKER_LIFETIME: Duration = Duration::from_secs(600);
 /// demo (1)    hot1 (2), hot2 (3), hot3 (4)
 /// ```
 /// Workers create leaves under the hot directories and delete them again.
-fn base() -> Vec<Node> {
-    let n = nid;
+fn hot_dirs() -> Vec<Node> {
     vec![
-        dir_node(n(1), "demo", None, ""),
-        dir_node(n(2), "hot1", Some(n(1)), "V"),
-        dir_node(n(3), "hot2", Some(n(1)), "k"),
-        dir_node(n(4), "hot3", Some(n(1)), "t"),
+        dir_n(1, "demo", None, ""),
+        dir_n(2, "hot1", Some(1), "V"),
+        dir_n(3, "hot2", Some(1), "k"),
+        dir_n(4, "hot3", Some(1), "t"),
     ]
 }
 
@@ -464,7 +463,7 @@ fn killed_workers_lose_no_acknowledged_write() {
     let workers = usize::try_from(env_u64("RDM_SOAK_WORKERS", DEFAULT_WORKERS as u64))
         .unwrap()
         .max(1);
-    let disk = Disk::with(&base());
+    let disk = Disk::with(&hot_dirs());
     let acks_dir = disk._tmp.path().join("acks");
     std::fs::create_dir_all(&acks_dir).unwrap();
     let initial = diagnostic_keys(&mut open_default(&disk.root).unwrap());
@@ -517,16 +516,6 @@ fn killed_workers_lose_no_acknowledged_write() {
     assert_no_new_diagnostics("after recovery", &initial, &mut store);
 
     check_acks(store.read().unwrap(), &acks_dir, workers);
-}
-
-fn diagnostic_keys(store: &mut CachedCampaign) -> BTreeSet<(String, rdm_schema::error::Rule)> {
-    store
-        .read()
-        .unwrap()
-        .diagnostics()
-        .iter()
-        .map(|d| (d.file.clone(), d.rule))
-        .collect()
 }
 
 fn assert_no_new_diagnostics(

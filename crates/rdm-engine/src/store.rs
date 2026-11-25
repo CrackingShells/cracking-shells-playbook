@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
+use rdm_schema::campaign::{Campaign, Diagnostic};
 use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, Rev, SubtreeRev, TreeRev};
 use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
@@ -18,6 +18,7 @@ use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
 use crate::cache::Entries;
 use crate::fs::{Durability, Fs, RealFs};
 use crate::ids::{IdRng, OsRng, UlidMint};
+use crate::layout::RecordKind;
 use crate::links::ReverseIndex;
 use crate::rev;
 
@@ -148,28 +149,18 @@ pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
     }
 }
 
-pub(crate) fn invalid(file: &str, rule: Rule, detail: String) -> StoreError {
-    StoreError::Invalid {
-        file: file.to_owned(),
-        rule,
-        detail,
-    }
-}
-
 impl Store {
     /// Opens the campaign at `root`, given the slug its caller knows it by: the root is the
-    /// parentless node that carries it.
-    ///
-    /// # Errors
-    /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
-    /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
-    /// Damage between files loads, and is in [`Store::diagnostics`].
+    /// parentless node that carries it. Errors as [`crate::cache::CachedCampaign::open`].
     pub(crate) fn open(
         root: impl Into<PathBuf>,
         slug: &Name,
         options: Options,
     ) -> Result<Self, StoreError> {
         let root = root.into();
+        // A root that is not a directory is refused here: reading it as an empty campaign would
+        // let the first write create the whole path, and a typo would leave a stray tree.
+        options.fs.list_dir(&root).map_err(|e| io_error(".", &e))?;
         let mut entries = Entries::default();
         entries.revalidate(&*options.fs, &root)?;
         let state = entries.build(slug)?;
@@ -255,7 +246,7 @@ impl Store {
                     && !removed.contains(&(node.id().to_string(), target.to_owned()))
                 {
                     out.push(Diagnostic {
-                        file: node_file(node.id()),
+                        file: RecordKind::Node.logical(&node.id()),
                         rule: Rule::MarkTarget,
                         detail: format!(
                             "/marks/{i} names the criterion {target}, which the file does not hold"
@@ -311,11 +302,5 @@ impl Store {
             self.state.campaign.subtree(id),
             &self.state.revs,
         ))
-    }
-
-    /// The relative path of a node's file.
-    #[must_use]
-    pub fn file_of(id: &NodeId) -> String {
-        node_file(id)
     }
 }

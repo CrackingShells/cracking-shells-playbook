@@ -6,7 +6,8 @@ use serde_json::{Map, Value};
 
 use crate::error::{Rule, StoreError};
 use crate::ids::{
-    AmendmentId, CommentId, CriterionId, ItemId, MALFORMED_ID_TAG, Name, NodeId, OpId, OrderKey, StepId,
+    AmendmentId, CommentId, CriterionId, ItemId, MALFORMED_ID_TAG, Name, NodeId, OpId, OrderKey,
+    StepId,
 };
 
 /// A multi-line prose field, stored as one line per element.
@@ -187,13 +188,18 @@ impl Node {
     /// `parse` when the value is not an object of the type its `kind` names. The file is
     /// `<request>`: the codec, which knows the file, names it.
     pub fn decode(raw: Value) -> Result<Node, StoreError> {
-        let invalid = |rule, detail: String| StoreError::Invalid { file: "<request>".to_owned(), rule, detail };
+        let invalid = |rule, detail: String| StoreError::invalid_request(rule, detail);
         match raw.get("kind").and_then(Value::as_str) {
-            Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(|e| invalid(Rule::Parse, e.to_string())),
-            Some("campaign" | "directory") => {
-                serde_json::from_value(raw).map(Self::Directory).map_err(|e| invalid(Rule::Parse, e.to_string()))
-            }
-            _ => Err(invalid(Rule::Kind, "`kind` is not `leaf`, `directory` or `campaign`".to_owned())),
+            Some("leaf") => serde_json::from_value(raw)
+                .map(Self::Leaf)
+                .map_err(|e| invalid(Rule::Parse, e.to_string())),
+            Some("campaign" | "directory") => serde_json::from_value(raw)
+                .map(Self::Directory)
+                .map_err(|e| invalid(Rule::Parse, e.to_string())),
+            _ => Err(invalid(
+                Rule::Kind,
+                "`kind` is not `leaf`, `directory` or `campaign`".to_owned(),
+            )),
         }
     }
 }
@@ -380,7 +386,11 @@ pub struct Amendment {
     pub changes: Vec<Change>,
     /// The removed subtree of a delete, as stored JSON keyed by `NodeId`. The keys are links; the
     /// values are historical copies.
-    #[serde(default, deserialize_with = "snapshot_keys", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "snapshot_keys",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[schemars(schema_with = "snapshot_schema")]
     pub snapshot: Option<Map<String, Value>>,
     #[serde(flatten)]
@@ -398,9 +408,17 @@ pub struct Change {
     pub item_id: Option<ItemId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
-    #[serde(default, deserialize_with = "some_value", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "some_value",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub old: Option<Value>,
-    #[serde(default, deserialize_with = "some_value", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "some_value",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub new: Option<Value>,
     #[serde(flatten)]
     pub extra: Extra,
@@ -416,7 +434,9 @@ fn snapshot_keys<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Map<String, V
     let map = Option::<Map<String, Value>>::deserialize(d)?;
     if let Some(m) = &map {
         for key in m.keys() {
-            NodeId::parse(key).map_err(|e| serde::de::Error::custom(format!("{MALFORMED_ID_TAG}snapshot key {key:?}: {e}")))?;
+            NodeId::parse(key).map_err(|e| {
+                serde::de::Error::custom(format!("{MALFORMED_ID_TAG}snapshot key {key:?}: {e}"))
+            })?;
         }
     }
     Ok(map)

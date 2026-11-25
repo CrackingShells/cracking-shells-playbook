@@ -75,7 +75,7 @@ pub(crate) fn current_node(file: &str, raw: Value) -> Result<Decoded<Node>, Stor
         Some("campaign" | "directory") => {
             typed::<Directory>(file, raw).map(|d| scanned(file, d, scan_directory, Node::Directory))
         }
-        _ => Err(invalid(
+        _ => Err(StoreError::invalid(
             file,
             Rule::Kind,
             "`kind` is not `leaf`, `directory` or `campaign`",
@@ -91,11 +91,27 @@ pub(crate) fn current_amendment(file: &str, raw: Value) -> Result<Decoded<Amendm
     typed::<Amendment>(file, raw).map(|a| scanned(file, a, scan_amendment, |a| a))
 }
 
+/// A stored record as a JSON value. The one policy for turning a record into JSON: it cannot
+/// fail (every key of a stored type is a string and every value is JSON), so a failure is a
+/// broken invariant and panics, rather than turning into a `null` that every record then shares.
+pub(crate) fn json_value<T: Serialize + ?Sized>(record: &T) -> Value {
+    serde_json::to_value(record).expect("a stored record serialises to JSON")
+}
+
+/// A stored record as pretty JSON text, without the trailing newline (see [`json_value`]).
+pub(crate) fn json_text<T: Serialize + ?Sized>(record: &T) -> String {
+    serde_json::to_string_pretty(record).expect("a stored record serialises to JSON")
+}
+
+/// A stored record as compact JSON bytes (see [`json_value`]).
+pub(crate) fn json_bytes<T: Serialize + ?Sized>(record: &T) -> Vec<u8> {
+    serde_json::to_vec(record).expect("a stored record serialises to JSON")
+}
+
 /// The canonical text of a record: ends with exactly one newline.
 #[must_use]
 pub fn encode<T: Stored>(value: &T) -> String {
-    // Cannot fail: every key of a stored type is a string and every value is JSON.
-    let mut text = serde_json::to_string_pretty(value).expect("a stored record serialises to JSON");
+    let mut text = json_text(value);
     text.push('\n');
     text
 }
@@ -114,17 +130,21 @@ pub fn encode<T: Stored>(value: &T) -> String {
 pub fn decode<T: Stored>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreError> {
     // Editors that write a UTF-8 byte order mark (PowerShell 5, older Notepad): one is skipped.
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    let raw = parse(bytes).map_err(|e| invalid(file, Rule::Parse, &e.to_string()))?;
+    let raw = parse(bytes).map_err(|e| StoreError::invalid(file, Rule::Parse, e.to_string()))?;
     if !raw.is_object() {
-        return Err(invalid(file, Rule::Parse, "the file is not a JSON object"));
+        return Err(StoreError::invalid(
+            file,
+            Rule::Parse,
+            "the file is not a JSON object",
+        ));
     }
     let (found, layer) = layer_of(file, &raw)?;
     match T::decode_by(layer, file, raw) {
         Ok(decoded) => decoded,
-        Err(NotInVersion { behaviour }) => Err(invalid(
+        Err(NotInVersion { behaviour }) => Err(StoreError::invalid(
             file,
             Rule::NotInVersion,
-            &format!("`{behaviour}` is not in format {}", version_string(found)),
+            format!("`{behaviour}` is not in format {}", version_string(found)),
         )),
     }
 }
@@ -219,14 +239,6 @@ impl<'de> Visitor<'de> for Unique {
     }
 }
 
-fn invalid(file: &str, rule: Rule, detail: &str) -> StoreError {
-    StoreError::Invalid {
-        file: file.to_owned(),
-        rule,
-        detail: detail.to_owned(),
-    }
-}
-
 /// Reads `raw` as a `T`, telling the rules apart by the tag the id and name types put on their
 /// messages (`rdm_schema::ids`): everything else is `parse`.
 fn typed<T: DeserializeOwned>(file: &str, raw: Value) -> Result<T, StoreError> {
@@ -239,7 +251,7 @@ fn typed<T: DeserializeOwned>(file: &str, raw: Value) -> Result<T, StoreError> {
         } else {
             (Rule::Parse, message.as_str())
         };
-        invalid(file, rule, detail)
+        StoreError::invalid(file, rule, detail)
     })
 }
 

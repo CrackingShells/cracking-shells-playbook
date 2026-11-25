@@ -7,13 +7,13 @@
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
 use common::campaign::*;
-use common::hooked::{frozen_stat, options_with};
+use common::hooked::{frozen_stat, no_hard_links, options_with, race_at_link};
 use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
@@ -335,7 +335,7 @@ fn spell(id: &NodeId) -> Vec<u8> {
     id.as_str()[2..]
         .chars()
         .enumerate()
-        .map(|(i, c)| ALPHABET.find(c).unwrap() as u8 | [0xE0, 0x20, 0x80, 0x40][i % 4])
+        .map(|(i, c)| ID_ALPHABET.find(c).unwrap() as u8 | [0xE0, 0x20, 0x80, 0x40][i % 4])
         .collect()
 }
 
@@ -397,13 +397,6 @@ fn replace_req(h: Header, expected: Option<&Rev>, node: Node) -> Request<Replace
             expected_rev: expected.cloned(),
             node,
         },
-    }
-}
-
-fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
-    match store.read().unwrap().campaign().get(&nid(n)).unwrap() {
-        Node::Leaf(l) => l.clone(),
-        Node::Directory(_) => panic!("not a leaf"),
     }
 }
 
@@ -653,6 +646,21 @@ fn requests_breaking_a_rule_are_refused() {
         })
     });
     let edited = edit(&|l| l.goal = "edited".into());
+    let ref_to = |n: u32| Reference {
+        label: None,
+        title: "t".into(),
+        target: None,
+        note: None,
+        node_id: Some(nid(n)),
+        extra: Default::default(),
+    };
+    let dangling_in_step = edit(&|l| l.steps[0].references.push(ref_to(78)));
+    let mut spare = match store.read().unwrap().campaign().get(&nid(5)).unwrap() {
+        Node::Directory(d) => d.clone(),
+        other => panic!("node 5 is a directory, got {other:?}"),
+    };
+    spare.references.push(ref_to(79));
+    let rev5 = store.read().unwrap().rev(&nid(5)).unwrap().clone();
     let mut as_leaf = leaf_of(&mut store, 3);
     as_leaf.id = nid(2);
     as_leaf.parent_id = nid(1);
@@ -724,6 +732,18 @@ fn requests_breaking_a_rule_are_refused() {
             "a reference to a missing node",
             replace_req(header(note, None), Some(&rev3), dangling),
             file(3),
+            Rule::DanglingId,
+        ),
+        (
+            "a step reference to a missing node",
+            replace_req(header(note, None), Some(&rev3), dangling_in_step),
+            file(3),
+            Rule::DanglingId,
+        ),
+        (
+            "a directory reference to a missing node",
+            replace_req(header(note, None), Some(&rev5), Node::Directory(spare)),
+            file(5),
             Rule::DanglingId,
         ),
         (
@@ -868,10 +888,6 @@ mod order_keys {
 // ---------------------------------------------------------------------------------------------
 // The other primitives
 
-fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
-    store.read().unwrap().rev(&nid(n)).unwrap().clone()
-}
-
 fn ids_of(store: &mut CachedCampaign) -> BTreeSet<NodeId> {
     store
         .read()
@@ -899,13 +915,6 @@ fn relocate_op(
         parent_id: parent.map(nid),
         name: name_to.map(name),
         position,
-    }
-}
-
-fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
-    DeleteOp {
-        id: nid(n),
-        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
     }
 }
 
@@ -2390,14 +2399,6 @@ fn recorded(run: impl FnOnce(&mut CachedCampaign)) -> Recorded {
     (pre_dir, pre, post, log)
 }
 
-fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) -> PathBuf {
-    let work = into.join("demo");
-    let _ = std::fs::remove_dir_all(&work);
-    copy_tree(&pre_dir.join("demo"), &work);
-    rdm_engine::fs::replay_prefix(log, k, &work).unwrap();
-    work
-}
-
 #[test]
 fn recover_redoes_an_interrupted_operation() {
     let (pre_dir, pre, post, log) = recorded(|s| {
@@ -2427,7 +2428,8 @@ fn recover_redoes_an_interrupted_operation() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent + 1, &work);
     std::fs::create_dir_all(work.join(".rdm/tmp")).unwrap();
     std::fs::write(work.join(".rdm/tmp/stray"), b"half").unwrap();
     assert_eq!(files_of(&work), pre, "a reader sees the state before");
@@ -2461,6 +2463,81 @@ fn recover_redoes_an_interrupted_operation() {
 ///
 /// Bug it catches: recovery that redoes a create as a put and silently replaces a file it did not
 /// write.
+/// A root that does not exist is refused by `open`, and neither it nor a write afterwards
+/// creates the path: a typo in the root must not leave a stray directory tree.
+#[test]
+fn open_on_a_path_that_does_not_exist_errors_and_creates_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let missing = tmp.path().join("typo").join("demo");
+    let refused = CachedCampaign::open(&missing, &name("demo"), Options::default())
+        .err()
+        .expect("a root that is not a directory is refused");
+    assert!(
+        matches!(refused, StoreError::Io { ref file, .. } if file == "."),
+        "{refused:?}"
+    );
+    assert!(!tmp.path().join("typo").exists(), "nothing was created");
+    let lock = WriterLock::acquire(&missing, Duration::from_millis(50), b"x");
+    assert!(lock.is_err(), "the lock does not create a missing root");
+    assert!(
+        !tmp.path().join("typo").exists(),
+        "the lock created nothing"
+    );
+}
+
+/// A volume that refuses hard links still takes a create (store.md, Create-only publish: check
+/// the name is free, then rename), and a name an external writer took in the meantime is refused
+/// with the error a volume with hard links gives.
+#[test]
+fn create_on_a_volume_without_hard_links_publishes_and_still_refuses_a_taken_name() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut store =
+        CachedCampaign::open(&disk.root, &name("demo"), options_with(no_hard_links())).unwrap();
+    store
+        .create(req(
+            Some("n"),
+            None,
+            create_op(leaf_n(20, "fresh", 2, "Z"), None),
+        ))
+        .expect("a create works without hard links");
+    assert!(disk.root.join(file(20)).is_file());
+
+    let taken = |refuse_links: bool| {
+        let disk = Disk::new();
+        disk.write_all(&base());
+        let (fs, armed) = race_at_link(refuse_links, &disk.root.join(file(21)), b"external");
+        let mut store = CachedCampaign::open(&disk.root, &name("demo"), options_with(fs)).unwrap();
+        armed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let refused = store
+            .create(req(
+                Some("n"),
+                None,
+                create_op(leaf_n(21, "late", 2, "Z"), None),
+            ))
+            .unwrap_err();
+        assert_eq!(
+            std::fs::read(disk.root.join(file(21))).unwrap(),
+            b"external"
+        );
+        refused
+    };
+    let without_links = taken(true);
+    assert_eq!(
+        without_links,
+        StoreError::Invalid {
+            file: file(21),
+            rule: Rule::DuplicateId,
+            detail: "the file already exists".into(),
+        }
+    );
+    assert_eq!(
+        without_links,
+        taken(false),
+        "the same error as on a normal volume"
+    );
+}
+
 #[test]
 fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
     let created = leaf_n(20, "fresh", 2, "V");
@@ -2474,7 +2551,8 @@ fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent + 1, &work);
     // The other actor: a create of the same id with other content, written by the codec.
     let mut other = leaf_of_node(&created);
     other.goal = "the other writer's goal".into();
@@ -2767,7 +2845,8 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent_at + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent_at + 1, &work);
     let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     assert!(store.last_recovered().is_none(), "no recovery has run yet");
     // An unrelated write: a comment on a node the interrupted operation does not touch.

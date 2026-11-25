@@ -8,6 +8,7 @@
 
 use crate::fs::{Durability, Fs, RealFs, atomic_replace};
 use crate::layout;
+use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,7 @@ const MAX_BACKOFF: Duration = Duration::from_millis(50);
 
 /// Why a lock was not acquired.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum LockError {
     /// Another writer held the lock for the whole timeout. `holder` is the bytes of
     /// `.rdm/holder.json` as read (`None` when absent or unreadable). They may be garbage, or
@@ -27,8 +29,8 @@ pub enum LockError {
     Io(io::Error),
 }
 
-impl std::fmt::Display for LockError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LockError::Busy {
                 holder: Some(bytes),
@@ -73,7 +75,12 @@ impl WriterLock {
         timeout: Duration,
         holder_record: &[u8],
     ) -> Result<WriterLock, LockError> {
-        std::fs::create_dir_all(layout::rdm_dir(root)).map_err(LockError::Io)?;
+        // `create_dir`, not `create_dir_all`: a missing root is an error and creates nothing.
+        match std::fs::create_dir(layout::rdm_dir(root)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(LockError::Io(e)),
+        }
         // Opened for writing only so that it can be created; its bytes are never touched.
         let file = OpenOptions::new()
             .read(true)

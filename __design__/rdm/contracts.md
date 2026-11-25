@@ -195,6 +195,7 @@ one of these in any file fails the whole open, naming the file:
 | the text is not JSON, or not an object of the expected type | `Invalid`, rule `parse` |
 | `schema_version` missing or malformed | `Invalid`, rule `schema_version` |
 | the file is newer than the binary | `NewerFormat` (raised first, `Version chain`) |
+| the campaign root is not a directory (missing, or a file): nothing is read and nothing is created | `Io`, file `.` |
 | an id field does not parse as its type | `Invalid`, rule `malformed_id` |
 | `nodes/<id>.json` holds another `id` | `Invalid`, rule `file_id_mismatch` |
 | a node breaks a rule of its own record: `kind`, `root_shape`, `name_format`, the stored-schema rules, `sub_item_id_unique`, `reference_target_derived` | `Invalid`, that rule |
@@ -590,10 +591,19 @@ impl StoreError {
 | `Stale { current }` | a presented `expected_rev`, `expected_subtree_rev` or `expected_tree_rev` is not the current one (I4). `current` holds the one that should have been presented | none | re-read, reapply the intent |
 | `Locked { holder }` | the writer lock was not taken within the wait of store.md §Lock. `holder` is the advisory record, `None` if it is absent or unreadable | none | retry later |
 | `NewerFormat { found, supported, file }` | a file's `schema_version` is not readable by this binary (`Version chain`). Raised before anything else of the file is parsed, by a load or a write that must read it | none | upgrade; M7 may do it for the user |
-| `Invalid { file, rule, detail }` | a file or a request breaks a rule. `file` is the path relative to the campaign root (`nodes/<id>.json`), or `<request>` when the fault is in the request. `rule` is the code below | none | fix the input, or repair the file by hand |
+| `Invalid { file, rule, detail }` | a file or a request breaks a rule. `file` is the path relative to the campaign root (`nodes/<id>.json`), or `<request>` (`rdm_schema::error::REQUEST_FILE`) when the fault is in the request. `rule` is the code below | none | fix the input, or repair the file by hand |
 | `NotFound { target }` | a node a request names does not exist (an unknown `node_id` of a comment, an unknown `id` to replace, relocate or delete). Checked before any presented revision, so a node another writer removed is `NotFound`, never `Stale` | none | re-read |
 | `Io { file, message }` | the operating system refused a read or a write | maybe a recoverable prefix (store.md §Intent and recovery) | retry or report |
 | `InBatch { index, source }` | one op of a batch failed. `source` is any of the above | none: a batch is atomic | as `source` |
+
+**`#[non_exhaustive]` policy.** A public enum is `#[non_exhaustive]` when a consumer outside its
+crate must survive it growing: the errors and diagnostics (`StoreError`, `Rule`, `Current`,
+`IdError`, `NameError`, `KeyError`, `MintError`, `LockError`) and the result and effect kinds
+that report what an operation did (`OpResult`, `Pending`, `Durability`). It is not on an enum whose
+closed set is the stored or wire contract (`Status`, `ActorKind`, `Node`, `Op`, `Position`,
+`RecordRef`, `IntentEffect`, the `LINKS` and `moves` tables, the read-model projections), nor on
+the test-support `Effect` log: a new case there is a format version or a new `Fs` operation, and the
+exhaustive match that stops compiling is the point. A new enum states its side when it is added.
 
 `Rule` is `#[non_exhaustive]`, each variant with a stable snake-case code.
 M2 may add codes without changing existing ones. A warning (`unknown_key`, `dangling_reference`,

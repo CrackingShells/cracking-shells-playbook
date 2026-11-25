@@ -34,15 +34,8 @@ use serde_json::Value;
 // ---------------------------------------------------------------------------------------------
 // Requests
 
-fn leaf_of(store: &Store, n: u32) -> Leaf {
-    match store.campaign().get(&nid(n)).unwrap() {
-        Node::Leaf(l) => l.clone(),
-        Node::Directory(_) => panic!("not a leaf"),
-    }
-}
-
 fn edit_goal(store: &Store, n: u32, goal: &str) -> ReplaceOp {
-    let mut leaf = leaf_of(store, n);
+    let mut leaf = leaf_in(store, n);
     leaf.goal = goal.into();
     ReplaceOp {
         expected_rev: store.rev(&nid(n)).cloned(),
@@ -196,7 +189,7 @@ fn cached_read_equals_cold_read() {
     run_child("cached_read_equals_cold_read", &disk.root);
     read_same("a store write from another process", &mut cache, &disk.root);
     let warm = cache.read().unwrap();
-    assert_eq!(leaf_of(warm, 3).goal, "written by the child");
+    assert_eq!(leaf_in(warm, 3).goal, "written by the child");
     assert!(
         warm.ops()
             .records(&OpId::parse("child-op-2").unwrap())
@@ -257,10 +250,10 @@ fn cached_read_equals_cold_read() {
     let mut cache = opened(&disk);
     git(&disk.root, &["checkout", "other"]);
     read_same("git checkout of the other branch", &mut cache, &disk.root);
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "other a");
+    assert_eq!(leaf_in(cache.read().unwrap(), 3).goal, "other a");
     git(&disk.root, &["checkout", "main"]);
     read_same("git checkout back", &mut cache, &disk.root);
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "a goal");
+    assert_eq!(leaf_in(cache.read().unwrap(), 3).goal, "a goal");
 
     // Bug caught: a cache that never lists the directory again.
     let disk = sound();
@@ -367,7 +360,7 @@ fn an_aged_file_changes_and_the_directory_does_not() {
         let mut cache = opened(&disk);
         change(&disk.path(&file(3)));
         read_same(row, &mut cache, &disk.root);
-        assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, goal, "{row}");
+        assert_eq!(leaf_in(cache.read().unwrap(), 3).goal, goal, "{row}");
     }
 }
 
@@ -448,7 +441,7 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
     );
 
     // A status move carries its `op_id` in `History`, a record the op index also holds.
-    let mut moved = leaf_of(cache.read().unwrap(), 4);
+    let mut moved = leaf_in(cache.read().unwrap(), 4);
     moved.status = Status::Ongoing;
     moved.history.push(History {
         ts: "2026-01-01T00:00:00Z".into(),
@@ -503,7 +496,7 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
     v["zz"] = serde_json::json!(1);
     std::fs::write(&file, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
     read_same("an unknown key added", &mut cache, &root);
-    let mut cleaned = leaf_of(cache.read().unwrap(), 3);
+    let mut cleaned = leaf_in(cache.read().unwrap(), 3);
     cleaned.extra.clear();
     let op = ReplaceOp {
         expected_rev: cache.read().unwrap().rev(&nid(3)).cloned(),
@@ -524,7 +517,7 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
             .all(|d| d.rule != rdm_schema::error::Rule::UnknownKey),
         "the warning went with the key"
     );
-    let mut keyed = leaf_of(cache.read().unwrap(), 3);
+    let mut keyed = leaf_in(cache.read().unwrap(), 3);
     keyed.extra.insert("yy".into(), serde_json::json!(2));
     let op = ReplaceOp {
         expected_rev: cache.read().unwrap().rev(&nid(3)).cloned(),
@@ -672,7 +665,7 @@ fn write_through_visible_to_cold_reader_on_return() {
     let op = edit_goal(cache.read().unwrap(), 3, "durable");
     cache.replace(req(Some("e"), None, op)).unwrap();
     assert_eq!(
-        leaf_of(cold(&root).read().unwrap(), 3).goal,
+        leaf_in(cold(&root).read().unwrap(), 3).goal,
         "durable",
         "replace"
     );
@@ -806,7 +799,7 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
     let file = disk.path(&file(4));
     rewrite_in_place(&file, "a goal", "b goal");
     assert_eq!(
-        leaf_of(cache.read().unwrap(), 4).goal,
+        leaf_in(cache.read().unwrap(), 4).goal,
         "a goal",
         "the edit is hidden from reads"
     );
@@ -845,5 +838,5 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
         keys.windows(2).all(|w| w[0] < w[1]),
         "renumbered in order: {keys:?}"
     );
-    assert_eq!(leaf_of(cold(&disk.root).read().unwrap(), 4).goal, "b goal");
+    assert_eq!(leaf_in(cold(&disk.root).read().unwrap(), 4).goal, "b goal");
 }

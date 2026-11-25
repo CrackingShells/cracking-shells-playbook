@@ -25,9 +25,10 @@ use rdm_schema::stored::{Amendment, Comment, Node};
 
 use crate::codec::{Stored, decode};
 use crate::fs::{FileStat, Fs};
+use crate::layout::RecordKind;
 use crate::links::ReverseIndex;
 use crate::rev;
-use crate::store::{OpIndex, Options, State, Store, invalid, io_error};
+use crate::store::{OpIndex, Options, State, Store, io_error};
 use crate::write::Recovered;
 
 /// A file whose modification time is not older than this when it was read is read again on every
@@ -116,33 +117,17 @@ pub(crate) struct Entries {
     built: u64,
 }
 
-/// What kind of record a path of the campaign holds.
-enum Kind {
-    Node,
-    Comment,
-    Amendment,
-}
-
-fn kind_of(path: &str) -> Option<(Kind, &str)> {
-    let (dir, name) = path.split_once('/')?;
-    match dir {
-        "nodes" => Some((Kind::Node, name)),
-        "_comments" => Some((Kind::Comment, name)),
-        "_amendments" => Some((Kind::Amendment, name)),
-        _ => None,
-    }
-}
-
 /// The file names of a directory that a loader reads: `<id>.json` and no other, sorted.
 fn listed(
     fs: &dyn Fs,
     root: &Path,
-    dir: &str,
+    record: RecordKind,
     keep: fn(&str) -> bool,
 ) -> Result<Vec<String>, StoreError> {
-    match fs.list_dir(&root.join(dir)) {
+    let dir = record.dir();
+    match fs.list_dir(&record.dir_path(root)) {
         Ok(mut names) => {
-            names.retain(|n| n.strip_suffix(".json").is_some_and(keep));
+            names.retain(|n| RecordKind::id_of_file(n).is_some_and(keep));
             Ok(names)
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
@@ -150,29 +135,29 @@ fn listed(
     }
 }
 
-/// What a directory of the campaign holds: its name, which file names it reads, and how a record
+/// What a directory of the campaign holds: its kind, which file names it reads, and how a record
 /// of it gives its id and what is kept with it.
 struct Dir<T, A> {
-    name: &'static str,
+    record: RecordKind,
     keep: fn(&str) -> bool,
     id_of: fn(&T) -> String,
     aux_of: fn(&T) -> A,
 }
 
 const NODES: Dir<Node, Rev> = Dir {
-    name: "nodes",
+    record: RecordKind::Node,
     keep: NodeId::is_valid,
     id_of: node_id_of,
     aux_of: rev::rev,
 };
 const COMMENTS: Dir<Comment, ()> = Dir {
-    name: "_comments",
+    record: RecordKind::Comment,
     keep: CommentId::is_valid,
     id_of: |c| c.id.to_string(),
     aux_of: |_| (),
 };
 const AMENDMENTS: Dir<Amendment, ()> = Dir {
-    name: "_amendments",
+    record: RecordKind::Amendment,
     keep: AmendmentId::is_valid,
     id_of: |a| a.id.to_string(),
     aux_of: |_| (),
@@ -202,11 +187,11 @@ fn load_file<T: Stored, A>(
     read_at: SystemTime,
     force: bool,
 ) -> Result<Loaded<T, A>, StoreError> {
-    let dir = kind.name;
+    let file = kind.record.logical_of_file(name);
     let stat = match fs.stat(path) {
         Ok(s) => s,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Loaded::Gone),
-        Err(e) => return Err(io_error(&format!("{dir}/{name}"), &e)),
+        Err(e) => return Err(io_error(&file, &e)),
     };
     if !force
         && let Some(e) = prev
@@ -215,7 +200,6 @@ fn load_file<T: Stored, A>(
     {
         return Ok(Loaded::Kept);
     }
-    let file = format!("{dir}/{name}");
     let bytes = match fs.read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Loaded::Gone),
@@ -227,10 +211,10 @@ fn load_file<T: Stored, A>(
         return Ok(Loaded::Same(stat, racy));
     }
     let decoded = decode::<T>(&file, &bytes)?;
-    let stem = name.strip_suffix(".json").unwrap_or(name);
+    let stem = RecordKind::id_of_file(name).unwrap_or(name);
     let held = (kind.id_of)(&decoded.value);
     if held != stem {
-        return Err(invalid(
+        return Err(StoreError::invalid(
             &file,
             Rule::FileIdMismatch,
             format!("the file is named {stem} and holds the id {held}"),
@@ -257,8 +241,8 @@ fn sync_kind<T: Stored, A>(
     read_at: SystemTime,
     table: &mut Table<T, A>,
 ) -> Result<bool, StoreError> {
-    let names = listed(fs, root, kind.name, kind.keep)?;
-    let mut path = root.join(kind.name);
+    let names = listed(fs, root, kind.record, kind.keep)?;
+    let mut path = kind.record.dir_path(root);
     let mut changed = false;
     let mut i = 0;
     for name in &names {
@@ -354,11 +338,11 @@ impl Entries {
         ids: &BTreeSet<NodeId>,
     ) -> Result<(), StoreError> {
         let read_at = SystemTime::now();
-        let mut path = root.join("nodes");
+        let mut path = RecordKind::Node.dir_path(root);
         let mut changed = false;
         let mut failed = None;
         for id in ids {
-            let name = format!("{id}.json");
+            let name = RecordKind::Node.file_name(id);
             path.push(&name);
             let loaded = load_file(
                 fs,
@@ -404,10 +388,10 @@ impl Entries {
 
     /// Drops the entry of a path, so the next validation reads it.
     pub(crate) fn forget(&mut self, path: &str) {
-        let gone = match kind_of(path) {
-            Some((Kind::Node, n)) => self.nodes.take(n),
-            Some((Kind::Comment, n)) => self.comments.take(n),
-            Some((Kind::Amendment, n)) => self.amendments.take(n),
+        let gone = match RecordKind::from_logical(path) {
+            Some((RecordKind::Node, n)) => self.nodes.take(n),
+            Some((RecordKind::Comment, n)) => self.comments.take(n),
+            Some((RecordKind::Amendment, n)) => self.amendments.take(n),
             None => false,
         };
         if gone {
@@ -488,8 +472,8 @@ impl Entries {
         rev: Rev,
         diags: Vec<Diagnostic>,
     ) -> bool {
-        let name = format!("{}.json", node.id());
-        let Some(stat) = self.stat_written(at, "nodes", &name) else {
+        let name = RecordKind::Node.file_name(&node.id());
+        let Some(stat) = self.stat_written(at, RecordKind::Node, &name) else {
             self.nodes.take(&name);
             return false;
         };
@@ -514,8 +498,8 @@ impl Entries {
         comment: &Comment,
         text: &str,
     ) -> bool {
-        let name = format!("{}.json", comment.id);
-        let Some(stat) = self.stat_written(at, "_comments", &name) else {
+        let name = RecordKind::Comment.file_name(&comment.id);
+        let Some(stat) = self.stat_written(at, RecordKind::Comment, &name) else {
             self.comments.take(&name);
             return false;
         };
@@ -540,8 +524,8 @@ impl Entries {
         amendment: &Amendment,
         text: &str,
     ) -> bool {
-        let name = format!("{}.json", amendment.id);
-        let Some(stat) = self.stat_written(at, "_amendments", &name) else {
+        let name = RecordKind::Amendment.file_name(&amendment.id);
+        let Some(stat) = self.stat_written(at, RecordKind::Amendment, &name) else {
             self.amendments.take(&name);
             return false;
         };
@@ -559,13 +543,13 @@ impl Entries {
         true
     }
 
-    fn stat_written(&self, at: &Published<'_>, dir: &str, name: &str) -> Option<FileStat> {
-        at.fs.stat(&at.root.join(dir).join(name)).ok()
+    fn stat_written(&self, at: &Published<'_>, record: RecordKind, name: &str) -> Option<FileStat> {
+        at.fs.stat(&record.dir_path(at.root).join(name)).ok()
     }
 
     /// Write-through of a deleted node file.
     pub(crate) fn deleted_node(&mut self, id: &NodeId) {
-        self.nodes.take(&format!("{id}.json"));
+        self.nodes.take(&RecordKind::Node.file_name(id));
     }
 
     /// The derived views were updated in step with the entries: they belong to the generation.
@@ -602,7 +586,8 @@ impl CachedCampaign {
     /// # Errors
     /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
     /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
-    /// Damage between files loads, and is in [`Store::diagnostics`].
+    /// Damage between files loads, and is in [`Store::diagnostics`]. A `root` that is not a
+    /// directory is `Io` (file `.`), and nothing is created.
     pub fn open(
         root: impl Into<PathBuf>,
         slug: &Name,

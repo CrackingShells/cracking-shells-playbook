@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::{AmendmentId, NodeId, OpId, Rev, TreeRev};
 use crate::stored::{
-    Mark, Actor, Change, Comment, Criterion, Extra, History, Lines, Progress, Reference, Status, Step, Ts,
+    Actor, Change, Comment, Criterion, Extra, History, Lines, Mark, Progress, Reference, Status,
+    Step, Ts,
 };
 
 /// The rule that produced a `level`. One value today.

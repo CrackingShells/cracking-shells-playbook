@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::codec::json_value;
 use rdm_schema::campaign::Campaign;
 use rdm_schema::ids::NodeId;
 use rdm_schema::links::{LINKS, Owner, RecordRef, Referrer, Target};
@@ -39,11 +40,10 @@ impl Record<'_> {
 
     fn value(&self) -> Value {
         match self {
-            Record::Node(n) => serde_json::to_value(n),
-            Record::Comment(c) => serde_json::to_value(c),
-            Record::Amendment(a) => serde_json::to_value(a),
+            Record::Node(n) => json_value(*n),
+            Record::Comment(c) => json_value(*c),
+            Record::Amendment(a) => json_value(*a),
         }
-        .unwrap_or(Value::Null)
     }
 }
 

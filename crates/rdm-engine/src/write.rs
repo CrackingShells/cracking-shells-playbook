@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use rdm_schema::campaign::{Campaign, node_file};
+use rdm_schema::campaign::Campaign;
 use rdm_schema::diff::{diff, is_state};
 use rdm_schema::error::LockHolder;
 use rdm_schema::error::{Current, Rule, StoreError};
@@ -25,10 +25,10 @@ use serde_json::Value;
 
 use crate::cache::Published;
 use crate::clock::{rfc3339, unix_ms};
-use crate::codec::{decode, encode};
+use crate::codec::{decode, encode, json_bytes, json_value};
 use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
-use crate::layout;
+use crate::layout::{self, RecordKind};
 use crate::links::Record;
 use crate::lock::{LockError, WriterLock};
 use crate::order::{MAX_KEY_LEN, between, spread};
@@ -37,22 +37,12 @@ use crate::rev;
 use crate::store::{OpRef, Store, io_error};
 use std::sync::Arc;
 
-const REQUEST: &str = "<request>";
-
 fn request_fault(rule: Rule, detail: impl Into<String>) -> StoreError {
-    StoreError::Invalid {
-        file: REQUEST.to_owned(),
-        rule,
-        detail: detail.into(),
-    }
+    StoreError::invalid_request(rule, detail)
 }
 
 fn node_fault(id: &NodeId, rule: Rule, detail: impl Into<String>) -> StoreError {
-    StoreError::Invalid {
-        file: node_file(id),
-        rule,
-        detail: detail.into(),
-    }
+    StoreError::invalid(RecordKind::Node.logical(id), rule, detail)
 }
 
 fn not_found(id: &NodeId) -> StoreError {
@@ -149,7 +139,7 @@ impl Store {
                 .unwrap_or_else(|_| "unknown".to_owned()),
             since: rfc3339(self.now()),
         };
-        let record = serde_json::to_vec(&holder).unwrap_or_default();
+        let record = json_bytes(&holder);
         match WriterLock::acquire(&self.root, self.options.lock_timeout, &record) {
             Ok(lock) => Ok(lock),
             Err(LockError::Busy { holder }) => {
@@ -231,7 +221,8 @@ impl Store {
                 }
                 Pending::Record { ulid, intent } => {
                     for effect in &intent.effects {
-                        self.apply_effect(effect, ExistingCreate::Resume)?;
+                        self.apply_effect(effect, ExistingCreate::Resume)
+                            .map_err(|e| name_intent_record(e, &file))?;
                     }
                     intent::complete(fs, &self.root, &ulid, tier)
                         .map_err(|e| io_error(&file, &e))?;
@@ -267,12 +258,11 @@ impl Store {
                     match fs.read(&dest) {
                         Ok(b) if b == bytes.as_bytes() => return Ok(()),
                         Ok(_) => {
-                            return Err(StoreError::Invalid {
-                                file: path.to_owned(),
-                                rule: Rule::DuplicateId,
-                                detail: "recovery found other bytes where it must create a file"
-                                    .to_owned(),
-                            });
+                            return Err(StoreError::invalid(
+                                path,
+                                Rule::DuplicateId,
+                                "recovery found other bytes where it must create a file",
+                            ));
                         }
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                         Err(e) => return Err(io_err(e)),
@@ -280,11 +270,7 @@ impl Store {
                 }
                 publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(|e| {
                     if e.kind() == io::ErrorKind::AlreadyExists {
-                        StoreError::Invalid {
-                            file: path.to_owned(),
-                            rule: Rule::DuplicateId,
-                            detail: "the file already exists".to_owned(),
-                        }
+                        StoreError::invalid(path, Rule::DuplicateId, "the file already exists")
                     } else {
                         io_err(e)
                     }
@@ -760,11 +746,7 @@ impl Store {
                 continue;
             }
             if structural_rule(d.rule) && !before.contains(&(d.file.as_str(), d.rule)) {
-                return Err(StoreError::Invalid {
-                    file: d.file.clone(),
-                    rule: d.rule,
-                    detail: d.detail.clone(),
-                });
+                return Err(StoreError::invalid(&d.file, d.rule, &d.detail));
             }
         }
         Ok(())
@@ -837,13 +819,13 @@ impl Store {
 
         let mut effects = Vec::new();
         let text = |n: &Node| encode(n);
-        let node_path = |n: &Node| format!("nodes/{}.json", n.id());
+        let node_path = |n: &Node| RecordKind::Node.logical(&n.id());
         effects.extend(creates.iter().map(|n| IntentEffect::Create {
             path: node_path(n),
             bytes: text(n),
         }));
         effects.extend(comments.iter().map(|c| IntentEffect::Create {
-            path: format!("_comments/{}.json", c.id),
+            path: RecordKind::Comment.logical(&c.id),
             bytes: encode(c),
         }));
         effects.extend(puts.iter().map(|n| IntentEffect::Put {
@@ -852,12 +834,12 @@ impl Store {
         }));
         if let Some(a) = &amendment {
             effects.push(IntentEffect::Create {
-                path: format!("_amendments/{}.json", a.id),
+                path: RecordKind::Amendment.logical(&a.id),
                 bytes: encode(a),
             });
         }
         effects.extend(deletes.iter().map(|id| IntentEffect::Del {
-            path: format!("nodes/{id}.json"),
+            path: RecordKind::Node.logical(id),
         }));
         Plan {
             effects,
@@ -916,7 +898,7 @@ impl Store {
             st.reverse
                 .replace_record(RecordRef::Node(id.clone()), Some(&Record::Node(n)));
             st.ops.replace_node(&id, Some(n));
-            let file = node_file(&id);
+            let file = RecordKind::Node.logical(&id);
             let text = encode(n);
             let diags = decode::<Node>(&file, text.as_bytes())
                 .map(|d| d.diagnostics)
@@ -932,7 +914,7 @@ impl Store {
             st.revs.remove(id);
             st.reverse.replace_record(RecordRef::Node(id.clone()), None);
             st.ops.replace_node(id, None);
-            st.file_diags.remove(&node_file(id));
+            st.file_diags.remove(&RecordKind::Node.logical(id));
             entries.deleted_node(id);
         }
         for c in &plan.comments {
@@ -957,20 +939,13 @@ impl Store {
     // -----------------------------------------------------------------------------------------
     // The primitives
 
-    /// What the last recovery did: the one a write ran on taking the lock, or a recovery on request.
-    /// `None` until a recovery has run; it holds the report until the next one replaces it.
+    /// See [`crate::cache::CachedCampaign::last_recovered`].
     #[must_use]
-    pub fn last_recovered(&self) -> Option<&Recovered> {
+    pub(crate) fn last_recovered(&self) -> Option<&Recovered> {
         self.last_recovered.as_ref()
     }
 
-    /// Recovery on request: takes the writer lock, removes the stray temporary files, redoes every
-    /// intent record left by an interrupted write, and reads the campaign again. Every write does
-    /// this on its own on taking the lock; a reader that wants the settled state calls it.
-    ///
-    /// # Errors
-    /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
-    /// create finds other bytes where it must create a file, `Io`.
+    /// See [`crate::cache::CachedCampaign::recover`].
     pub(crate) fn recover(&mut self) -> Result<Recovered, StoreError> {
         let _lock = self.lock()?;
         self.ignore_scratch()?;
@@ -980,11 +955,7 @@ impl Store {
         Ok(report)
     }
 
-    /// Replaces one node file if its current `rev` is `expected_rev` (I4). It cannot change
-    /// `id`, `name`, `parent_id` or `order`; a content edit needs a note and writes an amendment.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` with the rule that is broken, `Io`.
+    /// See [`crate::cache::CachedCampaign::replace`].
     pub(crate) fn replace(
         &mut self,
         req: Request<ReplaceOp>,
@@ -998,14 +969,7 @@ impl Store {
 }
 
 impl Store {
-    /// Writes a new node file. The caller minted the ids in `node`; `node.order` is not read, the
-    /// store sets it from `position` (default last) and rebalances the siblings when a key grows
-    /// past the limit.
-    ///
-    /// # Errors
-    /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
-    /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
-    /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
+    /// See [`crate::cache::CachedCampaign::create`].
     pub(crate) fn create(
         &mut self,
         req: Request<CreateOp>,
@@ -1017,12 +981,7 @@ impl Store {
         })
     }
 
-    /// Renames or moves one node: one node file and one amendment, no id changes.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
-    /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
-    /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
+    /// See [`crate::cache::CachedCampaign::move_node`].
     pub(crate) fn move_node(
         &mut self,
         req: Request<RelocateOp>,
@@ -1034,12 +993,7 @@ impl Store {
         })
     }
 
-    /// Removes a node and every descendant if the `SubtreeRev` matches. The amendment, with the
-    /// snapshot of the removed nodes, is written before the first node file is removed.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
-    /// `expected_rev_required`), `Io`.
+    /// See [`crate::cache::CachedCampaign::delete_subtree`].
     pub(crate) fn delete_subtree(
         &mut self,
         req: Request<DeleteOp>,
@@ -1051,10 +1005,7 @@ impl Store {
         })
     }
 
-    /// Writes one comment file. It has no revision and never conflicts.
-    ///
-    /// # Errors
-    /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
+    /// See [`crate::cache::CachedCampaign::comment`].
     pub(crate) fn comment(
         &mut self,
         req: Request<CommentOp>,
@@ -1066,13 +1017,7 @@ impl Store {
         })
     }
 
-    /// Applies the ops in order as one transaction: each is checked against the state the
-    /// earlier ones produced, the whole result is checked once, and either everything is
-    /// written or nothing. `dry_run` runs every check and writes nothing.
-    ///
-    /// # Errors
-    /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
-    /// `expected_tree_rev`; `Locked`; `Io`.
+    /// See [`crate::cache::CachedCampaign::batch`].
     pub(crate) fn batch(
         &mut self,
         req: Request<BatchOp>,
@@ -1274,10 +1219,7 @@ impl Store {
         let removed: Vec<NodeId> = w.campaign.subtree(&id).cloned().collect();
         for n in &removed {
             if let Some(node) = w.campaign.get(n) {
-                w.snapshot.insert(
-                    n.to_string(),
-                    serde_json::to_value(node).unwrap_or(Value::Null),
-                );
+                w.snapshot.insert(n.to_string(), json_value(node));
             }
             w.changes.push(Change {
                 node_id: n.clone(),
@@ -1531,16 +1473,14 @@ fn rebalance(w: &mut Working, parent: &NodeId, exclude: Option<&NodeId>) {
 /// reference). Marks already there keep their meaning: a removed criterion stays named by the
 /// marks and by the amendment that removed it.
 fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result<(), StoreError> {
-    let value = serde_json::to_value(after).unwrap_or(Value::Null);
+    let value = json_value(after);
     let marks_of = |v: &Value| {
         v.get("marks")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default()
     };
-    let old = before
-        .map(|b| marks_of(&serde_json::to_value(b).unwrap_or(Value::Null)))
-        .unwrap_or_default();
+    let old = before.map(|b| marks_of(&json_value(b))).unwrap_or_default();
     let criteria: BTreeSet<&str> = ["preconditions", "success_gates"]
         .iter()
         .filter_map(|k| value.get(*k).and_then(Value::as_array))
@@ -1566,6 +1506,19 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
     Ok(())
 }
 
+/// A recovery that is refused leaves its intent record in place for a person to resolve, so an
+/// `Invalid` it raises names that record, not only the node file the record could not write.
+fn name_intent_record(error: StoreError, record: &str) -> StoreError {
+    match error {
+        StoreError::Invalid { file, rule, detail } => StoreError::invalid(
+            file,
+            rule,
+            format!("{detail} (the interrupted write is held in {record})"),
+        ),
+        other => other,
+    }
+}
+
 /// A recorded effect may touch only a campaign record: a relative path with no `..`, under
 /// `nodes/`, `_amendments/` or `_comments/`.
 fn effect_path_is_ours(effect: &IntentEffect) -> bool {
@@ -1573,7 +1526,7 @@ fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     let mut parts = Path::new(effect.path()).components();
     let under = matches!(
         parts.next(),
-        Some(Component::Normal(d)) if ["nodes", "_amendments", "_comments"].iter().any(|k| d == *k)
+        Some(Component::Normal(d)) if d.to_str().and_then(RecordKind::from_dir).is_some()
     );
     let rest: Vec<Component> = parts.collect();
     under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
@@ -1680,7 +1633,7 @@ fn introduced_references_exist(
     after: &Node,
 ) -> Result<(), StoreError> {
     let targets = |n: &Node| -> BTreeSet<NodeId> {
-        let v = serde_json::to_value(n).unwrap_or(Value::Null);
+        let v = json_value(n);
         let mut out = BTreeSet::new();
         let mut take = |refs: Option<&Value>| {
             for r in refs.and_then(Value::as_array).into_iter().flatten() {

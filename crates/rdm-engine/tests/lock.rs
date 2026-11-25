@@ -24,6 +24,7 @@ fn contender_child(root: &Path) {
         }) => say(&format!("busy {}", hex(&bytes))),
         Err(LockError::Busy { holder: None }) => say("busy none"),
         Err(LockError::Io(err)) => say(&format!("io {err}")),
+        Err(other) => say(&format!("other {other}")),
     }
 }
 
@@ -68,7 +69,7 @@ fn second_writer_gets_locked_with_holder() {
 }
 
 /// The child of `lock_survives_holder_kill`: take the lock, say so, then wait to be killed.
-fn holder_child(root: &Path) {
+fn lock_holder_child(root: &Path) {
     let _lock = WriterLock::acquire(root, Duration::from_secs(10), b"the-killed-holder").unwrap();
     say("locked");
     std::thread::sleep(Duration::from_secs(120)); // bounded; the parent kills this process
@@ -78,7 +79,7 @@ fn holder_child(root: &Path) {
 fn lock_survives_holder_kill() {
     if let Some((role, dir)) = child_role() {
         assert_eq!(role, "holder");
-        return holder_child(&dir);
+        return lock_holder_child(&dir);
     }
     let root = tempfile::tempdir().unwrap();
     let mut child = spawn_child("lock_survives_holder_kill", "holder", root.path(), &[]);
@@ -153,7 +154,7 @@ fn garbage_holder_record_does_not_break_locking() {
 
 /// The child of the two waiting guards: take the lock, say so, keep it for `RDM_HOLD_MS`
 /// (forever if unset, until killed), then release.
-fn timed_holder_child(root: &Path) {
+fn timed_lock_holder_child(root: &Path) {
     let lock = WriterLock::acquire(root, Duration::from_secs(10), b"timed-holder").unwrap();
     say("locked");
     match env_u64("RDM_HOLD_MS", u64::MAX) {
@@ -170,7 +171,7 @@ fn timed_holder_child(root: &Path) {
 fn a_writer_waits_for_a_holder_that_releases_inside_the_timeout() {
     if let Some((role, dir)) = child_role() {
         assert_eq!(role, "timed");
-        return timed_holder_child(&dir);
+        return timed_lock_holder_child(&dir);
     }
     let root = tempfile::tempdir().unwrap();
     let mut child = spawn_child(
@@ -195,7 +196,7 @@ fn a_writer_waits_for_a_holder_that_releases_inside_the_timeout() {
 fn a_writer_gives_up_with_busy_at_the_timeout_and_not_before_or_long_after() {
     if let Some((role, dir)) = child_role() {
         assert_eq!(role, "timed");
-        return timed_holder_child(&dir);
+        return timed_lock_holder_child(&dir);
     }
     let root = tempfile::tempdir().unwrap();
     let child = spawn_child(

@@ -14,6 +14,8 @@ use rdm_engine::store::Options;
 pub enum At {
     Stat,
     Read,
+    /// Before a hard link is made, with the path of the new name.
+    Link,
 }
 
 type Before = Box<dyn Fn(At, &Path) + Send + Sync>;
@@ -22,12 +24,49 @@ type Report = Box<dyn Fn(&Path, FileStat) -> FileStat + Send + Sync>;
 pub struct Hooked {
     before: Before,
     report: Report,
+    /// Whether `hard_link` fails with `Unsupported`, as on a volume without hard links.
+    refuse_links: bool,
 }
 
 impl Hooked {
     fn new(before: Before, report: Report) -> Arc<Self> {
-        Arc::new(Self { before, report })
+        Arc::new(Self {
+            before,
+            report,
+            refuse_links: false,
+        })
     }
+}
+
+/// A file system that writes `bytes` at `target` once, just before the next hard link to it
+/// after the returned flag is set: an external writer taking the name between the store's check
+/// and its publish. With `refuse_links` the volume has no hard links, so the link then fails.
+pub fn race_at_link(
+    refuse_links: bool,
+    target: &Path,
+    bytes: &[u8],
+) -> (Arc<Hooked>, Arc<AtomicBool>) {
+    let armed = Arc::new(AtomicBool::new(false));
+    let (flag, target, bytes) = (Arc::clone(&armed), target.to_path_buf(), bytes.to_vec());
+    let fs = Arc::new(Hooked {
+        before: Box::new(move |when, p| {
+            if when == At::Link && p == target && flag.swap(false, Ordering::SeqCst) {
+                std::fs::write(p, &bytes).unwrap();
+            }
+        }),
+        report: Box::new(|_, s| s),
+        refuse_links,
+    });
+    (fs, armed)
+}
+
+/// A file system on a volume that refuses hard links.
+pub fn no_hard_links() -> Arc<Hooked> {
+    Arc::new(Hooked {
+        before: Box::new(|_, _| {}),
+        report: Box::new(|_, s| s),
+        refuse_links: true,
+    })
 }
 
 /// Store options over `fs`.
@@ -88,6 +127,10 @@ impl Fs for Hooked {
         RealFs.rename(a, b)
     }
     fn hard_link(&self, a: &Path, b: &Path) -> std::io::Result<()> {
+        (self.before)(At::Link, b);
+        if self.refuse_links {
+            return Err(std::io::ErrorKind::Unsupported.into());
+        }
         RealFs.hard_link(a, b)
     }
     fn remove_file(&self, p: &Path) -> std::io::Result<()> {

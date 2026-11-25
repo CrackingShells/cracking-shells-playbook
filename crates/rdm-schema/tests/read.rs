@@ -51,7 +51,10 @@ fn unknown_fields_survive_in_every_projection() {
 
 #[test]
 fn level_source_has_only_depth() {
-    assert_eq!(serde_json::to_string(&LevelSource::Depth).unwrap(), "\"depth\"");
+    assert_eq!(
+        serde_json::to_string(&LevelSource::Depth).unwrap(),
+        "\"depth\""
+    );
     assert!(serde_json::from_str::<LevelSource>("\"other\"").is_err());
 }
 
@@ -69,6 +72,9 @@ fn node_detail_has_finished_and_correction_count_and_no_sealed() {
     assert_eq!(v["node"]["correction_count"], json!(0));
     assert!(v["node"].get("sealed").is_none());
     let mut bad = v;
-    bad["node"].as_object_mut().unwrap().remove("correction_count");
+    bad["node"]
+        .as_object_mut()
+        .unwrap()
+        .remove("correction_count");
     assert!(serde_json::from_value::<NodeView>(bad).is_err());
 }
