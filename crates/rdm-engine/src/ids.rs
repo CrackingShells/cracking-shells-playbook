@@ -35,6 +35,7 @@ impl IdRng for OsRng {
 
 /// Why no id was minted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MintError {
     /// [`MAX_COLLISIONS`] candidates in a row were already taken.
     Exhausted,

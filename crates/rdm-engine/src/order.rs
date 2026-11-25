@@ -13,6 +13,7 @@ pub const MAX_KEY_LEN: usize = 24;
 
 /// Why no key lies between two bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyError {
     /// The lower bound is not below the upper bound.
     NotAscending,

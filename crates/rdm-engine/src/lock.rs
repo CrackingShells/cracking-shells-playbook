@@ -19,6 +19,7 @@ const MAX_BACKOFF: Duration = Duration::from_millis(50);
 
 /// Why a lock was not acquired.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum LockError {
     /// Another writer held the lock for the whole timeout. `holder` is the bytes of
     /// `.rdm/holder.json` as read (`None` when absent or unreadable). They may be garbage, or

@@ -24,6 +24,7 @@ fn contender_child(root: &Path) {
         }) => say(&format!("busy {}", hex(&bytes))),
         Err(LockError::Busy { holder: None }) => say("busy none"),
         Err(LockError::Io(err)) => say(&format!("io {err}")),
+        Err(other) => say(&format!("other {other}")),
     }
 }
 

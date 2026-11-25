@@ -42,6 +42,7 @@ pub const ITEM_BODY_LEN: usize = 6;
 
 /// Why a string is not an id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IdError {
     /// The string is empty.
     Empty,
@@ -314,6 +315,7 @@ impl JsonSchema for ItemId {
 
 /// Why a string is not a [`Name`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NameError {
     /// The string is empty.
     Empty,

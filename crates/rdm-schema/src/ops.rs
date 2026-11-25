@@ -149,6 +149,7 @@ pub struct Commented {
 /// The result of one op of a batch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum OpResult {
     Written(Written),
     Deleted(Deleted),

@@ -10,6 +10,7 @@ use std::time::Duration;
 
 /// Durability tier of a publish (`store.md` §Durability). Chosen by the store when it is opened.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Durability {
     /// No sync. Ordering still comes from the rename.
     Process,

@@ -175,6 +175,7 @@ pub type Behaviour<T> = Result<T, NotInVersion>;
 
 /// What the presented revision should have been, in a [`StoreError::Stale`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Current {
     /// The current `rev` of a node. A node that no longer exists is `NotFound`, never `Stale`.
     Node { id: NodeId, rev: Rev },
