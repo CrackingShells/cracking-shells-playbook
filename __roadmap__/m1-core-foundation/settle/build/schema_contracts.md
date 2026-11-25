@@ -4,12 +4,12 @@
 **Pre-conditions**:
 - [ ] `../r01_sync.md` is done
 **Success Gates**:
-- ⬜ [run] `cargo test -p rdm-schema --test schemas committed_schemas_match_the_types` passes (the existing drift guard covers the new types)
-- ⬜ [run] `cargo test -p rdm-schema move_table_matches_statuses_doc` passes: the test parses the move table of `__design__/rdm/statuses.md` and compares it with `MOVES` cell for cell, in both directions
-- ⬜ [run] `cargo test -p rdm-schema links_cover_every_id_field` passes: every property of the generated JSON Schemas that references an id newtype is declared in `Links`, and nothing else is
-- ⬜ [run] `cargo test -p rdm-schema malformed_ids_are_refused` passes, with one row per class: wrong prefix, letter outside the alphabet, wrong length
-- ⬜ [static] Every type and field in `contracts.md` and `stored-schema.md` exists in the crate under the same name, and the crate has none the documents lack
-- ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each new guard, the bug that turned it red
+- ✅ [run] `cargo test -p rdm-schema --test schemas committed_schemas_match_the_types` passes (the existing drift guard covers the new types)
+- ✅ [run] `cargo test -p rdm-schema move_table_matches_statuses_doc` passes: the test parses the move table of `__design__/rdm/statuses.md` and compares it with `MOVES` cell for cell, in both directions
+- ✅ [run] `cargo test -p rdm-schema links_cover_every_id_field` passes: every property of the generated JSON Schemas that references an id newtype is declared in `Links`, and nothing else is
+- ✅ [run] `cargo test -p rdm-schema malformed_ids_are_refused` passes, with one row per class: wrong prefix, letter outside the alphabet, wrong length
+- ✅ [static] Every type and field in `contracts.md` and `stored-schema.md` exists in the crate under the same name, and the crate has none the documents lack. Except, by coordinator decision (2026-11-25): `Campaign::open` with its derivations and `diff` move to `campaign_store` (still in `rdm-schema`, pure), `ReverseIndex` and `Record` are the engine's, and `Campaign::from_parts` is an interim constructor that `campaign_store` removes
+- ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each new guard, the bug that turned it red
 **References**: [contracts.md, stored-schema.md, statuses.md](../../../../__design__/rdm/) — the specification; [crates/rdm-schema](../../../../crates/rdm-schema/) — the current types and tests
 
 ## Step 1: Ids and stored types

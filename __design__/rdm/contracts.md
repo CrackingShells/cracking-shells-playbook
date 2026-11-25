@@ -151,6 +151,7 @@ everything about the tree derived from `parent_id`, `name` and `order`. A **pare
 subtree.
 
 ```rust
+// In rdm-schema, pure: no I/O. The engine's `Store` reads and decodes the files and calls `open`.
 pub struct Campaign { /* nodes; root: Option<NodeId>; children index; depth memo;
                          unvalidated: set of NodeId; diagnostics: Vec<Diagnostic> */ }
 #[must_use = "an opened campaign carries diagnostics; read them"]
@@ -793,7 +794,7 @@ own guards (revisions, minting, order keys, crash prefixes, lock, cache).
 | `stored.rs`: `leaf_fixture_round_trips`, `directory_fixture_round_trips`, `comment_fixture_round_trips` | every fixture is rewritten with valid ids, the node fields, no check or reference ids, and no `Reference.target` beside a `node_id`; the injection counts are recomputed |
 | `stored.rs`: `marks_point_by_criterion_id_and_corrections_are_flagged` | reads fixture ids that become typed |
 | `schemas.rs`: `committed_schemas_match_the_types` | the generated schemas change on purpose and are re-blessed under review; request and result schemas join the list |
-| `read.rs` and `fixtures/{outline,node,ready,ready_scoped,amendments}.json` | read-model id fields (`id`, `leaf_ids`, `held_by`, `parent` ids) become the newtypes, and `rev` and `tree_rev` become `Rev` and `TreeRev`; their fixtures hold valid ids. The read model stays a projection, outside `LINKS` |
+| `read.rs` and `fixtures/{outline,node,ready,ready_scoped,amendments}.json` | read-model id fields (`id`, `leaf_ids`, `held_by`, the holder keys) become the newtypes (`parent` is a path in `read-model.md` and stays a string), and `rev` and `tree_rev` become `Rev` and `TreeRev`; their fixtures hold valid ids. The read model stays a projection, outside `LINKS` |
 | `Reference.target` fixtures (`stored_leaf.json`, `node.json`) | `target` is relative to the campaign root, not the node file (`../../../__design__/…` becomes `../../__design__/…` from `__roadmap__/<campaign>/`); a reference with `node_id` has none |
 
 `parse_version_is_strict` does not change. `reader_refuses_per_the_read_model_rule` changes on

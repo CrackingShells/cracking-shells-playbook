@@ -1,6 +1,6 @@
 # Campaign store
 
-**Goal**: `rdm_engine::store::Campaign` opens and validates a campaign, mints ids, computes revisions, applies every store primitive through ordered writes under the writer lock, keeps a reverse link index, and recovers on lock acquisition.
+**Goal**: `rdm_engine::store::Store` opens a campaign from disk into the pure `rdm_schema::Campaign` model, validates it, mints ids, computes revisions, applies every store primitive through ordered writes under the writer lock, keeps a reverse link index, and recovers on lock acquisition.
 **Pre-conditions**:
 - [ ] `../codec_and_versions.md` is done
 **Success Gates**:
@@ -20,9 +20,9 @@
 **Goal**: A campaign on disk becomes a validated model.
 **Implementation Logic**:
 1. Write `open_names_invalid_campaigns` and `minting_retries_on_collision` first; produce the invalid campaigns with the store's own writes followed by the real actor's change (for the cycle, two git branches merged).
-2. Implement `Campaign::open`: read `nodes/`, decode through the codec, derive children, depth and path, build the reverse index, and refuse with `Invalid` naming the file and the rule.
+2. Implement `rdm_schema::Campaign::open` and its derivations (`parent`, `children`, `depth`, `path`, `resolve`, `subtree`, `insert`, `remove_subtree`) in `rdm-schema`, pure and without I/O, exactly as `contracts.md` §Campaign model gives them; `open` becomes the only constructor and the interim `Campaign::from_parts` of `schema_contracts` is removed. Then `Store::open` in the engine reads `nodes/`, decodes through the codec, calls `Campaign::open`, builds the reverse index, and refuses per-file faults with `Invalid` naming the file and the rule. The per-node rules serde does not enforce (`root_shape`, `reference_target_derived`, `sub_item_id_unique`) are checked here.
 3. Implement `mint_id` over an injected RNG.
-**Deliverables**: `crates/rdm-engine/src/store.rs`: type `Campaign`, fn `open`; `crates/rdm-engine/src/ids.rs`: fn `mint_id`; `crates/rdm-engine/tests/store.rs`: the two guards
+**Deliverables**: `crates/rdm-schema/src/campaign.rs`: fn `Campaign::open` and the derivations; `crates/rdm-engine/src/store.rs`: type `Store`, fn `open`; `crates/rdm-engine/src/ids.rs`: fn `mint_id`; `crates/rdm-engine/tests/store.rs`: the two guards
 **Consistency Checks**: `cargo test -p rdm-engine --test store open_names_invalid_campaigns` (expected: PASS)
 **Commit**: `feat(rdm-engine): open and validate a flat campaign`
 
@@ -30,7 +30,7 @@
 **Goal**: A stale write is refused and changes nothing.
 **Implementation Logic**:
 Write the three revision guards first. Compute `rev` from the canonical encoding and `tree_rev` from the sorted `(id, rev)` pairs, as `store.md` says. `replace` takes the lock, replays a known `op_id` from the op index, re-reads the node from disk, compares `expected_rev`, applies the request rules (`diff` decides whether an amendment is needed), then writes. Write `requests_breaking_a_rule_are_refused` and `replayed_op_id_writes_nothing` first.
-**Deliverables**: `crates/rdm-engine/src/rev.rs`: fns `rev`, `tree_rev`, `subtree_rev`; fn `Campaign::replace`; the op index; the five guards
+**Deliverables**: `crates/rdm-engine/src/rev.rs`: fns `rev`, `tree_rev`, `subtree_rev`; `crates/rdm-schema/src/diff.rs`: fn `diff` (`contracts.md` §The amendment rule, pure); fn `Store::replace`; the op index; the five guards
 **Consistency Checks**: `cargo test -p rdm-engine --test store rev` (expected: PASS)
 **Commit**: `feat(rdm-engine): check revisions on replace`
 
@@ -39,7 +39,7 @@ Write the three revision guards first. Compute `rev` from the canonical encoding
 **Implementation Logic**:
 1. Write `move_writes_one_file_and_keeps_ids`, `reverse_index_equals_brute_force_scan`, `failed_batch_writes_nothing`, `delete_reports_referrers_and_touches_only_the_subtree` and `order_keys_sort_strictly_between_their_bounds` first.
 2. Implement `create`, `move_node`, `delete_subtree` (amendment with its snapshot first, then the node files bottom-up), `comment` and `batch` (through the intent record), each in the order of the write-order table of `store.md`. Update the reverse index on every change.
-**Deliverables**: fns `Campaign::create`, `move_node`, `delete_subtree`, `comment`, `batch`; `crates/rdm-engine/src/links.rs`: type `ReverseIndex`; the five guards
+**Deliverables**: fns `Store::create`, `move_node`, `delete_subtree`, `comment`, `batch`; `crates/rdm-engine/src/links.rs`: type `ReverseIndex`, and type `Record` (a borrowed node, comment or amendment, which `contracts.md` names in `replace_record` without defining); the five guards
 **Consistency Checks**: `cargo test -p rdm-engine --test store` (expected: PASS)
 **Commit**: `feat(rdm-engine): apply the store primitives through ordered writes`
 
@@ -47,6 +47,6 @@ Write the three revision guards first. Compute `rev` from the canonical encoding
 **Goal**: An interrupted operation is completed by the next writer.
 **Implementation Logic**:
 Implement recovery on lock acquisition, as `store.md` specifies: redo incomplete intents, remove completed ones and stray temp files. Use confirms only: the behaviour is observable only under interruption, and `harden/crash_test.md` guards it.
-**Deliverables**: fn `Campaign::recover`
+**Deliverables**: fn `Store::recover`
 **Consistency Checks**: `cargo test -p rdm-engine` (expected: PASS)
 **Commit**: `feat(rdm-engine): recover interrupted operations on lock acquisition`

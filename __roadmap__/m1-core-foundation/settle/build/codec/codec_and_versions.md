@@ -17,7 +17,7 @@
 **Goal**: One value has exactly one text.
 **Implementation Logic**:
 1. Write the canonical fixtures by hand from `contracts.md`, then the three guards (byte round trip, identity property with `proptest` as a dev-dependency that builds on 1.88, unknown keys in place). See them red against plain `serde_json::to_string_pretty`.
-2. Implement `encode` and `decode`: struct field order, two-space indent, LF, a trailing newline, prose as line arrays, unknown keys after the known ones, `null` only where the contract has it (`Change.new`).
+2. Implement `encode` and `decode`, taking the file name so every `Invalid` and `Diagnostic` names it (the `rdm-schema` decoders use a placeholder file), and telling the rules apart: a bad id is `malformed_id` and a bad name `name_format`, not `parse`. Struct field order, two-space indent, LF, a trailing newline, prose as line arrays, unknown keys after the known ones, `null` only where the contract has it (`Change.new`).
 3. Cull the superseded value-level tests in `rdm-schema` and list them.
 **Deliverables**: `crates/rdm-engine/src/codec.rs`: fns `encode`, `decode`; `crates/rdm-engine/tests/codec.rs`: the three guards; `crates/rdm-engine/tests/fixtures/canonical/*.json`
 **Consistency Checks**: `cargo test -p rdm-engine --test codec` (expected: PASS)
