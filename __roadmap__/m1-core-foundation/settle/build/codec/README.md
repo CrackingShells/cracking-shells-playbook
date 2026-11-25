@@ -10,7 +10,7 @@ Bytes in and out of a node file are canonical, lossless and version-aware.
 - [ ] `../schema_contracts.md`, `../fs_primitives.md` and `../ci_matrix.md` are done
 
 ## Success Gates
-- ⬜ `cargo test --workspace --locked` passes after the merge
+- ✅ `cargo test --workspace --locked` passes after the merge
 
 ## Gotchas
 - One implementer builds `codec_and_versions` and then, resumed, `store/campaign_store.md`: the store is the codec's first consumer.
@@ -19,7 +19,7 @@ Bytes in and out of a node file are canonical, lossless and version-aware.
 ```mermaid
 graph TD
     codec_and_versions[Codec and versions]:::done
-    store[Store]:::inprogress
+    store[Store]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -31,7 +31,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `codec_and_versions.md` | 📄 Leaf Task | ✅ Done |
-| `store/` | 📁 Directory | 🔄 In Progress |
+| `store/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

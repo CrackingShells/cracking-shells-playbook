@@ -11,7 +11,7 @@
 - ⬜ Every content or structure edit writes exactly one amendment with a non-empty description; status and progress write none (I5)
 - ⬜ A batch is atomic: a failing operation leaves the campaign untouched, and a dry-run writes nothing
 - ⬜ `done` is refused while a step lacks its commit (I8); deleting or reopening done work and moving work in progress are refused without an acknowledgement (I9)
-**References**: [R01 §Graph operations, §Contracts & Invariants](../../../../__design__/rdm/architecture.md) — validation, order, the status machine, the operations, impact analysis and batch
+**References**: [R01 §Graph operations, §Contracts & Invariants](../../../../__design__/rdm/architecture.md) — validation, order, the status machine, the operations, impact analysis and batch; [M1 knowledge transfer](../../../../__reports__/m1-core-foundation/04-knowledge_transfer_v0.md) — the items M1 carried to M2 (§Carried forward)
 
 ## Step 1: Plan the milestone
 

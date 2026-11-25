@@ -10,12 +10,12 @@ The milestone's guards are shown to catch the bugs they claim, and the three-OS 
 - [ ] `../crash_test.md` and `../hot_cache.md` are done
 
 ## Success Gates
-- ⬜ Every finding is fixed by the leaf's original implementer or recorded with Eliott's decision
+- ✅ Every finding is fixed by the leaf's original implementer or recorded with Eliott's decision (fixes went to fresh implementers per round; the deferred items and Eliott's ruling on mutation checks are in `02-adversarial_review_v0.md` and `04-knowledge_transfer_v0.md`)
 
 ## Status
 ```mermaid
 graph TD
-    adversarial_review[Adversarial review]:::planned
+    adversarial_review[Adversarial review]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -26,7 +26,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `adversarial_review.md` | 📄 Leaf Task | ⬜ Planned |
+| `adversarial_review.md` | 📄 Leaf Task | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

@@ -2,14 +2,14 @@
 
 **Goal**: A fresh verifier, briefed to assume something is wrong, attacks the store, lock, intent record and cache for silent data loss and relaxed rules, and the three-OS CI run is recorded.
 **Pre-conditions**:
-- [ ] `../crash_test.md` and `../hot_cache.md` are done
-- [ ] Eliott has allowed the push of `feat/m1-core-foundation`
+- [x] `../crash_test.md` and `../hot_cache.md` are done
+- [x] Eliott has allowed the push of `feat/m1-core-foundation`
 **Success Gates**:
-- ⬜ [static] `__reports__/m1-core-foundation/02-adversarial_review_v0.md` records, for every cornerstone guard (I3, I4, I7, I10, I12, the reverse index, the newer-file refusal), the mutation injected and that the guard went red
-- ⬜ [static] The report checks every leaf's gates as written against what was built, and names any rule an implementer relaxed
-- ⬜ [static] The report checks that every fixture comes from a real producer, and that the seams hold: `rev` in the store and in the cache, `RecordingFs` and `RealFs` effects, the error type across crates
-- ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes
-- ⬜ [static] The CI run on `feat/m1-core-foundation` is green on macOS, Linux and Windows, soak and MSRV included, and its URL is in the report
+- ✅ [static] `__reports__/m1-core-foundation/02-adversarial_review_v0.md` records, for every cornerstone guard (I3, I4, I7, I10, I12, the reverse index, the newer-file refusal), the mutation injected and that the guard went red (all but I7 and I12, whose mutations are not recorded; Eliott ruled the checks sufficient, 2026-11-25)
+- ✅ [static] The report checks every leaf's gates as written against what was built, and names any rule an implementer relaxed (two sustainability and two full-review lenses; see the report's table)
+- ✅ [static] The report checks that every fixture comes from a real producer, and that the seams hold: `rev` in the store and in the cache, `RecordingFs` and `RealFs` effects, the error type across crates
+- ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes
+- ✅ [static] The CI run on `feat/m1-core-foundation` is green on macOS, Linux and Windows, soak and MSRV included, and its URL is in the report (**not met for the Windows soak**: recorded in the report as a known limit, Eliott 2026-11-26)
 **References**: [M0b knowledge transfer](../../../../../../../../__reports__/m0b-domain-model-spec/) — verifiers challenge relaxed rules; [campaign README](../../../../../../../../__roadmap__/m1-core-foundation/README.md) — the test design and the mutations each guard names
 
 ## Step 1: Attack

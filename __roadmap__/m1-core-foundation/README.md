@@ -19,11 +19,11 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 
 ## Success Gates
 - ✅ Eliott has reviewed `__design__/rdm/store.md` and `__design__/rdm/contracts.md`, and R01 matches them in the same merge
-- ⬜ `cargo test --workspace --locked` and `cargo +1.88 check --workspace --locked` pass on `feat/m1-core-foundation`
-- ⬜ The three-OS CI matrix (macOS, Linux, Windows) and the MSRV job are green on `feat/m1-core-foundation`, soak included
-- ⬜ `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes: no confirm is left
-- ⬜ Every leaf's guards were seen red before green, each with its named bug, as recorded in the leaf reports and checked by `settle/build/codec/store/harden/verify/adversarial_review.md`
-- ⬜ The rescoped gates of the M1 leaf hold: contracts, version refusal, I3, I4, I7, I10, I12, declared links
+- ✅ `cargo test --workspace --locked` and `cargo +1.88 check --workspace --locked` pass on `feat/m1-core-foundation`
+- ✅ The three-OS CI matrix (macOS, Linux, Windows) and the MSRV job are green on `feat/m1-core-foundation`, soak included (**not met for the Windows soak**, cancelled at the 45-minute cap; Eliott ruled on 2026-11-26 that M1 merges with this recorded as a limit, and the read path is redesigned in its own PR: `__reports__/rdm_read_path_efficiency/`)
+- ✅ `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes: no confirm is left
+- ✅ Every leaf's guards were seen red before green, each with its named bug, as recorded in the leaf reports and checked by `settle/build/codec/store/harden/verify/adversarial_review.md` (I7 and I12 have no recorded mutation; Eliott ruled the mutation checks sufficient, 2026-11-25)
+- ✅ The rescoped gates of the M1 leaf hold: contracts, version refusal, I3, I4, I7, I10, I12, declared links
 
 ## Gotchas
 - **Rulings (Eliott, 2026-11-25), not to be reopened by an implementer:** flat `nodes/<id>.json` with `name`, `parent_id`, an order key, and depth computed from `parent_id`; Rust types are the contract and JSON is derived; a version chain of responsibility; a file newer than the binary is refused with `NewerFormat`; declared links, never a stored value derivable from an id; tracked data stays text; the cache is never the source of truth. A leaf that finds one of these wrong reports it as a finding. **Review rulings (Eliott, 2026-11-25, reply 5):** every newer file is refused, a higher X or a higher Y; unknown keys survive and each one yields an `unknown_key` diagnostic; `open` refuses per-file faults but loads and loudly reports cross-file merge damage, anchored on the root named by the expected slug, and refuses writes that build on an unvalidated node except repairs; `op_id` replay is the store's; `FORMAT_VERSION` stays `0.1.0` until M1 merges to `main`; `Reference.target` is relative to the root and `Change` holds no paths.
@@ -55,7 +55,7 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 graph TD
     store_design[Store design]:::done
     contracts_design[Contracts design]:::done
-    settle[Settle]:::inprogress
+    settle[Settle]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -68,7 +68,7 @@ graph TD
 |:-----|:-----|:-------|
 | `store_design.md` | 📄 Leaf Task | ✅ Done |
 | `contracts_design.md` | 📄 Leaf Task | ✅ Done |
-| `settle/` | 📁 Directory | 🔄 In Progress |
+| `settle/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

@@ -19,7 +19,7 @@ No kill loses an acknowledged write, and the long-lived process serves reads fro
 graph TD
     crash_test[Crash test]:::done
     hot_cache[Hot cache]:::done
-    verify[Verify]:::planned
+    verify[Verify]:::done
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -32,7 +32,7 @@ graph TD
 |:-----|:-----|:-------|
 | `crash_test.md` | 📄 Leaf Task | ✅ Done |
 | `hot_cache.md` | 📄 Leaf Task | ✅ Done |
-| `verify/` | 📁 Directory | ⬜ Planned |
+| `verify/` | 📁 Directory | ✅ Done |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
