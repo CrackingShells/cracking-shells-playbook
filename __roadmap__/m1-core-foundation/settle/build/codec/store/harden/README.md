@@ -10,15 +10,15 @@ No kill loses an acknowledged write, and the long-lived process serves reads fro
 - [ ] `../campaign_store.md` is done
 
 ## Success Gates
-- ⬜ `cargo test --workspace --locked` passes after both merges, the must-run set in under 30 seconds
+- ✅ `cargo test --workspace --locked` passes after both merges, the must-run set in under 30 seconds (11.5 s of test time on macOS)
 - ✅ Integration review by the coordinator: the effects `RecordingFs` logs are the effects `RealFs` performs, in the same order (the crash verifier read both: each effect is logged after it succeeds, syncs are logged and skipped on replay, and the lock file is the only `std::fs` use outside `Fs`; not modelled: a half-written temp file and the Windows retry)
-- ⬜ Eliott's go for the push of `feat/m1-core-foundation` is asked here, once, for the three-OS run
+- ✅ Eliott's go for the push of `feat/m1-core-foundation` is asked here, once, for the three-OS run (pushed at 6096ddf: ubuntu, macOS and MSRV green; Windows red on backslash snapshot keys, fixed in aa0f04f, re-run pending with the sustainability fix round)
 
 ## Status
 ```mermaid
 graph TD
     crash_test[Crash test]:::done
-    hot_cache[Hot cache]:::inprogress
+    hot_cache[Hot cache]:::done
     verify[Verify]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -31,7 +31,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `crash_test.md` | 📄 Leaf Task | ✅ Done |
-| `hot_cache.md` | 📄 Leaf Task | 🔄 In Progress |
+| `hot_cache.md` | 📄 Leaf Task | ✅ Done |
 | `verify/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
