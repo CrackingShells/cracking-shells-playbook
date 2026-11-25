@@ -22,7 +22,7 @@ graph TD
     schema_contracts[Schema contracts]:::done
     fs_primitives[Filesystem primitives]:::done
     ci_matrix[CI matrix]:::done
-    codec[Codec]:::planned
+    codec[Codec]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -36,7 +36,7 @@ graph TD
 | `schema_contracts.md` | 📄 Leaf Task | ✅ Done |
 | `fs_primitives.md` | 📄 Leaf Task | ✅ Done |
 | `ci_matrix.md` | 📄 Leaf Task | ✅ Done |
-| `codec/` | 📁 Directory | ⬜ Planned |
+| `codec/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |
