@@ -55,7 +55,7 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 graph TD
     store_design[Store design]:::done
     contracts_design[Contracts design]:::done
-    settle[Settle]:::planned
+    settle[Settle]:::inprogress
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
     classDef planned    fill:#374151,color:#e5e7eb
@@ -68,7 +68,7 @@ graph TD
 |:-----|:-----|:-------|
 | `store_design.md` | 📄 Leaf Task | ✅ Done |
 | `contracts_design.md` | 📄 Leaf Task | ✅ Done |
-| `settle/` | 📁 Directory | ⬜ Planned |
+| `settle/` | 📁 Directory | 🔄 In Progress |
 
 ## Amendment Log
 | ID | Date | Source | Nodes Added | Rationale |

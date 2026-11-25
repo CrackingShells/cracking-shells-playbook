@@ -21,7 +21,7 @@ The contracts exist as types, the primitives survive real processes on three ope
 graph TD
     schema_contracts[Schema contracts]:::planned
     fs_primitives[Filesystem primitives]:::planned
-    ci_matrix[CI matrix]:::planned
+    ci_matrix[CI matrix]:::done
     codec[Codec]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -35,7 +35,7 @@ graph TD
 |:-----|:-----|:-------|
 | `schema_contracts.md` | 📄 Leaf Task | ⬜ Planned |
 | `fs_primitives.md` | 📄 Leaf Task | ⬜ Planned |
-| `ci_matrix.md` | 📄 Leaf Task | ⬜ Planned |
+| `ci_matrix.md` | 📄 Leaf Task | ✅ Done |
 | `codec/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
