@@ -305,7 +305,10 @@ two directory listings when there is nothing to do.
    - `create`: if the destination holds exactly these bytes, skip it. If it holds other bytes the file was made by something else (a checkout, a merge) after the crash: stop, leave the record, and fail with `Invalid` naming the file. A create never overwrites.
    - `del`: unlink; a file already gone is skipped.
 3. Sync the touched directories, remove the record, sync `.rdm/intent/`.
-4. A record that does not decode (a power-loss artefact under the weak durability tier) is removed and reported; the ordering rules above mean the files it was meant to complete form a valid prefix anyway.
+4. A record that does not decode (a power-loss artefact under the weak durability tier) is removed and reported; the ordering rules above mean the files it was meant to complete form a valid prefix anyway. A record decodes only if every path is relative, has no `..` component and lies under `nodes/`, `_amendments/` or `_comments/`: recovery never touches a file outside the campaign's records.
+
+"Reported" holds on every path that runs recovery: `recover()` returns the report, and a write that
+ran recovery first keeps it on the store, where `last_recovered()` returns it until the next recovery.
 
 Recovery is itself restartable: every step is idempotent, so a kill during recovery is repaired by
 the next recovery. Not tested by a named guard (see Invariants and guards).

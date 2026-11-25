@@ -208,7 +208,7 @@ file or files and the rule. What cannot be done is validating the node against t
 | `parent_missing` | a `parent_id` names no node (an orphan) | the node and its subtree |
 | `parent_not_directory` | a `parent_id` names a leaf | the node and its subtree |
 | `cycle` | following `parent_id` never reaches a parentless node | every node on the cycle and every node below it |
-| `root_count` | no parentless node carries the expected slug, or more than one does | every node (no validated root); a second parentless node is itself unvalidated |
+| `root_count` | no parentless node carries the expected slug, or more than one does (one diagnostic, filed under the smallest of their ids, naming the others) | every node: there is no validated root, and none of the slug-named nodes is chosen as one |
 | `root_name_mismatch` | a parentless node carries another name than the slug | that node and its subtree |
 | `name_collision` | two children of one parent share a `name` | the colliding siblings and their subtrees (a path through them is ambiguous) |
 | `duplicate_id` | two node records hold one `NodeId` (reachable through `open` over nodes; through the store a copied file is already `file_id_mismatch`) | both records |
@@ -240,11 +240,20 @@ campaign loses its warnings and a damaged one keeps them.
 | comment on it | **allowed**: a comment is an append-only record that depends on the node's id, not its position; it is how a reader annotates the damage | |
 | relocate it into the validated tree (new `parent_id` validated) | **allowed**: a repair | |
 | relocate or rename a colliding sibling | **allowed**: a repair | |
-| delete it (its subtree) | **allowed**: a repair | |
+| delete it (its subtree) | **allowed**: a repair. A node on a cycle is deleted with every node below it, the whole cycle included | |
+| any other relocate of it (a rename of an orphan, say) | **allowed**: it builds nothing on the unverified position, and the rule below still holds | |
 
 A write never adds a defect: after it the set of diagnostics is a subset of the set before. A
 batch is checked as a whole under this rule, so a repair that fixes one defect and a write that
 opens another are refused.
+
+**The one exception, the root family.** While the campaign has **no validated root**, `root_count`
+and `root_name_mismatch` may change form in a repair: renaming one of two slug-named roots away
+turns one `root_count` into a `root_name_mismatch` on the renamed node, and that write is allowed.
+While a validated root exists, the two codes follow the rule above like every other code, so a write
+that takes the validated root away (a rename of a sound root, a second slug-named root) is refused.
+In particular **a sound root cannot be renamed**: renaming the campaign is renaming its directory
+first, after which the root is unsound (`root_name_mismatch`) and its rename is the repair.
 
 `open` builds the children index in one pass, then computes depth by walking from the root down
 with a memo and a visiting mark (a depth-first search with three colours), so a cycle is found,
@@ -536,8 +545,12 @@ How it works, with no state beyond the records:
 **Limits, stated.** (1) An edit that writes no `op_id`-bearing record (a progress edit, a mark, a
 step recorded done) is not replayed, but it is rev-guarded: a retry after success meets a changed
 `rev` and returns `Stale`, and the caller re-reads. (2) The store holds no fingerprint of the
-request, so it cannot detect the same `op_id` reused for a *different* request. An `op_id` is unique
-per logical operation, by the caller's contract. (3) Replay lasts as long as the records do.
+request, so it cannot detect every reuse of an `op_id` for a *different* request. An `op_id` is unique
+per logical operation, by the caller's contract. Where the records cannot rebuild the result the
+request asks for (the node a create or relocate names is not among the amendment's changes, a
+delete's subtree root is not among its `remove`s, a batch names more comments than carry the
+`op_id`, the records are of another kind than the request), the store never fabricates one: it
+refuses with `Invalid`, rule `op_id_reused`, and writes nothing. (3) Replay lasts as long as the records do.
 Choosing the records as the ledger over a separate store of operations keeps one source of truth
 and adds no file to any write order; the price is limit (1), which `expected_rev` already covers.
 
@@ -561,8 +574,8 @@ pub enum StoreError {
     InBatch { index: usize, source: Box<StoreError> },
 }
 pub enum Current {                                   // what the presented revision should have been
-    Node    { id: NodeId, rev: Option<Rev> },        // None: the node no longer exists
-    Subtree { id: NodeId, rev: Option<SubtreeRev> },
+    Node    { id: NodeId, rev: Rev },                // a node that no longer exists is NotFound, not Stale
+    Subtree { id: NodeId, rev: SubtreeRev },
     Tree    { tree_rev: TreeRev },
 }
 pub struct LockHolder { pub pid: u32, pub host: String, pub since: Ts }   // the record of store.md §Lock; advisory
@@ -578,7 +591,7 @@ impl StoreError {
 | `Locked { holder }` | the writer lock was not taken within the wait of store.md §Lock. `holder` is the advisory record, `None` if it is absent or unreadable | none | retry later |
 | `NewerFormat { found, supported, file }` | a file's `schema_version` is not readable by this binary (`Version chain`). Raised before anything else of the file is parsed, by a load or a write that must read it | none | upgrade; M7 may do it for the user |
 | `Invalid { file, rule, detail }` | a file or a request breaks a rule. `file` is the path relative to the campaign root (`nodes/<id>.json`), or `<request>` when the fault is in the request. `rule` is the code below | none | fix the input, or repair the file by hand |
-| `NotFound { target }` | a node a request names does not exist (an unknown `node_id` of a comment, an unknown `id` to replace, relocate or delete) | none | re-read |
+| `NotFound { target }` | a node a request names does not exist (an unknown `node_id` of a comment, an unknown `id` to replace, relocate or delete). Checked before any presented revision, so a node another writer removed is `NotFound`, never `Stale` | none | re-read |
 | `Io { file, message }` | the operating system refused a read or a write | maybe a recoverable prefix (store.md §Intent and recovery) | retry or report |
 | `InBatch { index, source }` | one op of a batch failed. `source` is any of the above | none: a batch is atomic | as `source` |
 
@@ -601,7 +614,7 @@ M2 may add codes without changing existing ones. A warning (`unknown_key`, `dang
 | `duplicate_id`, `root_count`, `root_name_mismatch`, `parent_missing`, `parent_not_directory`, `cycle`, `name_collision` | cross-file: reported by `open`, and refused as an `Invalid` when a write would introduce one | `Campaign model` |
 | `dangling_id`, `reference_target_derived` | see `Links` | `Links` |
 | `goal_line`, `criteria_required`, `steps_range`, `status_steps`, `status_reason`, `step_state`, `mark_target`, `correction_reason` | the rules of `stored-schema.md` (`Directory`, `Leaf`, `Step`, `Mark`, `History`), one code each, in the order they are listed there | `stored-schema.md` |
-| `expected_rev_required`, `note_required`, `note_forbidden`, `empty_edit`, `id_changed`, `use_relocate`, `leaf_has_children`, `nothing_to_do`, `position_not_sibling`, `root_delete_or_move` | request rules | `Operations` |
+| `expected_rev_required`, `note_required`, `note_forbidden`, `empty_edit`, `id_changed`, `use_relocate`, `leaf_has_children`, `nothing_to_do`, `position_not_sibling`, `root_delete_or_move`, `op_id_reused` | request rules | `Operations` |
 
 **Stale, replay and the lock.** `Locked` is the only error a caller retries unchanged. `Stale` is
 never retried unchanged: the intent is reapplied on the fresh state. A replayed write returns
