@@ -395,6 +395,10 @@ fn facts(row: &str, pre: &Files, post: &Files) {
             assert_eq!(node_ids(post).len(), node_ids(pre).len() + 1, "{row}");
         }
         "replace with a note" => assert_eq!(json_of(post, 3)["goal"], "edited goal", "{row}"),
+        "replace without a note (a criterion met)" => {
+            assert_eq!(json_of(pre, 4)["success_gates"][0]["met"], false, "{row}");
+            assert_eq!(json_of(post, 4)["success_gates"][0]["met"], true, "{row}");
+        }
         "relocate: move" => assert_eq!(json_of(post, 3)["parent_id"], nid(5).to_string(), "{row}"),
         "relocate: rename only" => {
             assert_eq!(json_of(post, 4)["name"], "beta2", "{row}");
@@ -425,7 +429,7 @@ fn facts(row: &str, pre: &Files, post: &Files) {
                 "{row}"
             );
         }
-        _ => {}
+        other => panic!("facts() has no oracle for the row {other:?}: add one beside the others"),
     }
 }
 
