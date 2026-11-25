@@ -354,17 +354,15 @@ its comments; the removing amendment's `snapshot` keeps them with it.
 | `op_id` | `OpId?` | no | The retry key of the write that made it |
 | `correction` | `bool?` | no | **new** (Eliott, 2026-11-16): `true` for an edit of a finished node, of a step recorded done, or of progress on a finished node. `description` is then its reason and is non-blank |
 | `changes` | `Change[]` | yes | What changed, one or more |
-| `snapshot` | `object?` | no | The removed subtree of a delete, as stored JSON keyed by node id, so it can be restored. A removed sub-item is kept the same way, with its id |
+| `snapshot` | `object?` | no | The removed subtree of a delete, as stored JSON keyed by `NodeId`, so it can be restored. The keys are links (contracts.md §Links); the values are historical copies and are not scanned. A removed sub-item is not here: its `remove` change holds it in `old` |
 
 `Change`:
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `node_id` | `string` | yes | The node the change names. A node's amendment log is the set of amendments whose `changes` name its id |
-| `op` | `"add"`, `"remove"`, `"set"`, `"rename"` or `"move"` | yes | R01's primitives. Composite operations expand to these. M2 owns any addition. With `item_id`, `add` and `remove` insert or delete the sub-item, and `move` reorders it: `old` and `new` hold its array position before and after, which is order data and not a reference |
-| `path_before` | `string?` | no | For `rename`, `move`, `remove` |
-| `path_after` | `string?` | no | For `rename`, `move`, `add` |
-| `item_id` | `string?` | no | **new**: the id of the sub-item (criterion, reference, step or check) the change names. Absent for a change of the node itself |
+| `node_id` | `NodeId` | yes | The node the change names. A node's amendment log is the set of amendments whose `changes` name its id |
+| `op` | `"add"`, `"remove"`, `"set"`, `"rename"` or `"move"` | yes | R01's primitives. Composite operations expand to these. M2 owns any addition. With `item_id`, `add` and `remove` insert or delete the sub-item (a `remove` holds the removed sub-item in `old`, so a mark that names it resolves), and `move` reorders it: `old` and `new` hold its array position before and after, which is order data and not a reference. Without `item_id`, on a node: `add` and `remove` create and delete the node (a `remove` keeps the subtree in `snapshot`), `rename` holds the old and new `name` in `old` and `new`, and `move` holds `{"parent_id", "order"}` in `old` and `new` |
+| `item_id` | `ItemId?` | no | **new**: the id of the sub-item (a criterion or a step) the change names. Absent for a change of the node itself. A check or a reference has no id: its edit is a `set` with `item_id` the step (or none, for the node) and `field` `/checks` or `/references`, `old` and `new` the whole arrays |
 | `field` | `string?` | no | A JSON pointer for `set`: into the node, or, with `item_id`, into that sub-item (`/commit_sha` of a step). Never an array index of a sub-item array |
 | `old` | JSON value? | no | The value before, for `set` |
 | `new` | JSON value? | no | The value after, for `set` |
@@ -418,7 +416,7 @@ goes to 1.0.0 by default), is M7's job. No CI check is added for versions.
 | Status | `blocked_reason?` | `status_reason?`; vocabulary per `statuses.md` |
 | History | `{ts, from, to, actor, note?, override?}` | `note` is `reason`; adds `op_id?`; `actor` is an object |
 | Comments | none | one file each, `_comments/<ulid>.json`, naming the node |
-| Amendment | `{… id, …}` | adds `legacy_id?`; the id is a ULID with a derived display id |
+| Amendment | `{… id, …}` | adds `legacy_id?`; the id is a ULID with a derived display id. `Change` drops `path_before` and `path_after` (a path is derived from ids and goes stale on a move; a rename or a move holds its old and new `name` or `parent_id` and `order`) and `item_id` names a criterion or a step only (revised 2026-11-25) |
 | Directory | no notes | adds `notes` |
 | Progress | `{branch?, notes}` | adds `commits?` (import only); `notes` is `lines` |
 | Gotchas, context | strings or lines unstated | `lines` |
