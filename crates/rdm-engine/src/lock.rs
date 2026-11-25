@@ -7,6 +7,7 @@
 //! chose; it is informational and the lock state never depends on it.
 
 use crate::fs::{Durability, Fs, RealFs, atomic_replace};
+use crate::layout;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -60,14 +61,6 @@ pub struct WriterLock {
     holder_path: PathBuf,
 }
 
-fn rdm_dir(root: &Path) -> PathBuf {
-    root.join(".rdm")
-}
-
-fn holder_path(root: &Path) -> PathBuf {
-    rdm_dir(root).join("holder.json")
-}
-
 impl WriterLock {
     /// Take the writer lock of the campaign at `root`, waiting up to `timeout`, then record
     /// `holder_record` in `.rdm/holder.json`.
@@ -80,15 +73,14 @@ impl WriterLock {
         timeout: Duration,
         holder_record: &[u8],
     ) -> Result<WriterLock, LockError> {
-        let dir = rdm_dir(root);
-        std::fs::create_dir_all(&dir).map_err(LockError::Io)?;
+        std::fs::create_dir_all(layout::rdm_dir(root)).map_err(LockError::Io)?;
         // Opened for writing only so that it can be created; its bytes are never touched.
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(dir.join("lock"))
+            .open(layout::lock_path(root))
             .map_err(LockError::Io)?;
 
         let deadline = Instant::now() + timeout;
@@ -103,7 +95,7 @@ impl WriterLock {
                     let left = deadline.saturating_duration_since(Instant::now());
                     if left.is_zero() {
                         return Err(LockError::Busy {
-                            holder: RealFs.read(&holder_path(root)).ok(),
+                            holder: RealFs.read(&layout::holder_path(root)).ok(),
                         });
                     }
                     std::thread::sleep(backoff.min(left));
@@ -112,11 +104,11 @@ impl WriterLock {
             }
         }
 
-        let holder_path = holder_path(root);
+        let holder_path = layout::holder_path(root);
         let _ = atomic_replace(
             &RealFs,
             &holder_path,
-            &dir.join("tmp"),
+            &layout::tmp_dir(root),
             holder_record,
             Durability::Process,
         );

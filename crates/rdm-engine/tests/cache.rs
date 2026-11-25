@@ -1,7 +1,7 @@
 //! Guards of the hot cache: a cached read equals a cold read at that moment, whatever changed
 //! the files, and a write is on disk when it returns.
 //!
-//! The oracle is a fresh `Store::open` of the same directory. Every external change is made by
+//! The oracle is a fresh `CachedCampaign::open` of the same directory. Every external change is made by
 //! what makes it in real life: another process using the store (this test binary run again as a
 //! child), an editor writing in place, `git checkout`, a copy, an `rm`. The campaign files come
 //! from the codec and from store writes.
@@ -286,14 +286,15 @@ fn delete_of(store: &Store, n: u32) -> DeleteOp {
 // ---------------------------------------------------------------------------------------------
 // The oracle: a cold open
 
-fn cold(root: &Path) -> Store {
-    Store::open(root, &name("demo"), Options::default()).expect("a cold open of the files")
+fn cold(root: &Path) -> CachedCampaign {
+    CachedCampaign::open(root, &name("demo"), Options::default()).expect("a cold open of the files")
 }
 
 /// Everything a reader can ask of a store, warm against the fresh open of the same directory:
 /// the model, the revisions, the diagnostics, the reverse index and the op index.
 fn assert_same_as_cold(row: &str, warm: &Store, root: &Path) {
-    let cold = cold(root);
+    let mut cold = cold(root);
+    let cold = cold.read().unwrap();
     assert_eq!(warm.campaign(), cold.campaign(), "{row}: campaign");
     assert_eq!(warm.diagnostics(), cold.diagnostics(), "{row}: diagnostics");
     assert_eq!(warm.comments(), cold.comments(), "{row}: comments");
@@ -378,7 +379,7 @@ fn sound() -> Disk {
 /// store of its own.
 fn child_job(root: &Path) {
     let mut store = cold(root);
-    let op = edit_goal(&store, 3, "written by the child");
+    let op = edit_goal(store.read().unwrap(), 3, "written by the child");
     store
         .replace(req(Some("child edit"), Some("child-op-1"), op))
         .unwrap();
@@ -543,8 +544,8 @@ fn cached_read_equals_cold_read() {
     {
         let mut store = cold(&disk.root);
         let (a, b) = (
-            edit_goal(&store, 3, "other a"),
-            edit_goal(&store, 4, "other b"),
+            edit_goal(store.read().unwrap(), 3, "other a"),
+            edit_goal(store.read().unwrap(), 4, "other b"),
         );
         store.replace(req(Some("a"), None, a)).unwrap();
         store.replace(req(Some("b"), None, b)).unwrap();
@@ -558,7 +559,7 @@ fn cached_read_equals_cold_read() {
                 },
             ))
             .unwrap();
-        let del = delete_of(&store, 5);
+        let del = delete_of(store.read().unwrap(), 5);
         store.delete_subtree(req(Some("gone"), None, del)).unwrap();
         store.comment(req(None, None, comment_on(3, "hi"))).unwrap();
     }
@@ -593,7 +594,7 @@ fn cached_read_equals_cold_read() {
     let other = sound();
     {
         let mut s = cold(&other.root);
-        let op = edit_goal(&s, 3, "elsewhere");
+        let op = edit_goal(s.read().unwrap(), 3, "elsewhere");
         s.replace(req(Some("edit"), Some("elsewhere-1"), op))
             .unwrap();
         s.comment(req(None, Some("elsewhere-2"), comment_on(3, "c")))
@@ -860,7 +861,7 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
     copy_tree(&disk.root, &pre.path().join("demo"));
     let rec = Arc::new(RecordingFs::new(&disk.root));
     let log = {
-        let mut s = Store::open(
+        let mut s = CachedCampaign::open(
             &disk.root,
             &name("demo"),
             Options {
@@ -871,8 +872,8 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
         .unwrap();
         let skip = rec.effects().len();
         let ops = vec![
-            Op::Delete(delete_of(&s, 5)),
-            Op::Replace(edit_goal(&s, 4, "batched")),
+            Op::Delete(delete_of(s.read().unwrap(), 5)),
+            Op::Replace(edit_goal(s.read().unwrap(), 4, "batched")),
         ];
         s.batch(req(
             Some("two kinds"),
@@ -1007,7 +1008,11 @@ fn write_through_visible_to_cold_reader_on_return() {
 
     let op = edit_goal(cache.read().unwrap(), 3, "durable");
     cache.replace(req(Some("e"), None, op)).unwrap();
-    assert_eq!(leaf_of(&cold(&root), 3).goal, "durable", "replace");
+    assert_eq!(
+        leaf_of(cold(&root).read().unwrap(), 3).goal,
+        "durable",
+        "replace"
+    );
 
     let created = cache
         .create(req(
@@ -1020,7 +1025,15 @@ fn write_through_visible_to_cold_reader_on_return() {
         ))
         .unwrap();
     assert!(exists(format!("nodes/{}.json", nid(40))), "create: file");
-    assert!(cold(&root).campaign().get(&nid(40)).is_some(), "create");
+    assert!(
+        cold(&root)
+            .read()
+            .unwrap()
+            .campaign()
+            .get(&nid(40))
+            .is_some(),
+        "create"
+    );
     assert!(
         exists(format!("_amendments/{}.json", created.amendment.unwrap())),
         "create: its amendment"
@@ -1033,7 +1046,13 @@ fn write_through_visible_to_cold_reader_on_return() {
         exists(format!("_comments/{}.json", commented.result.id)),
         "comment"
     );
-    assert!(cold(&root).comments().contains_key(&commented.result.id));
+    assert!(
+        cold(&root)
+            .read()
+            .unwrap()
+            .comments()
+            .contains_key(&commented.result.id)
+    );
 
     let mv = RelocateOp {
         id: nid(40),
@@ -1044,7 +1063,13 @@ fn write_through_visible_to_cold_reader_on_return() {
     };
     cache.move_node(req(Some("m"), None, mv)).unwrap();
     assert_eq!(
-        cold(&root).campaign().get(&nid(40)).unwrap().parent_id(),
+        cold(&root)
+            .read()
+            .unwrap()
+            .campaign()
+            .get(&nid(40))
+            .unwrap()
+            .parent_id(),
         Some(&nid(5)),
         "move"
     );
@@ -1052,7 +1077,15 @@ fn write_through_visible_to_cold_reader_on_return() {
     let del = delete_of(cache.read().unwrap(), 5);
     cache.delete_subtree(req(Some("d"), None, del)).unwrap();
     assert!(!exists(format!("nodes/{}.json", nid(5))), "delete: file");
-    assert!(cold(&root).campaign().get(&nid(5)).is_none(), "delete");
+    assert!(
+        cold(&root)
+            .read()
+            .unwrap()
+            .campaign()
+            .get(&nid(5))
+            .is_none(),
+        "delete"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1194,7 +1227,7 @@ fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_a
 
         // A cold open that races a delete.
         armed.store(true, std::sync::atomic::Ordering::SeqCst);
-        let store = Store::open(
+        let mut store = CachedCampaign::open(
             &disk.root,
             &name("demo"),
             Options {
@@ -1203,8 +1236,12 @@ fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_a
             },
         )
         .expect("a file gone before its read is absent, not an error");
-        assert!(store.campaign().get(&nid(4)).is_none());
-        assert_same_as_cold("a cold open that raced a delete", &store, &disk.root);
+        assert!(store.read().unwrap().campaign().get(&nid(4)).is_none());
+        assert_same_as_cold(
+            "a cold open that raced a delete",
+            store.read().unwrap(),
+            &disk.root,
+        );
 
         // A warm read that races a delete of a file it holds an entry for.
         let disk = sound();
@@ -1286,6 +1323,8 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
         .iter()
         .map(|n| {
             cold(&disk.root)
+                .read()
+                .unwrap()
                 .campaign()
                 .get(&nid(*n))
                 .unwrap()
@@ -1299,5 +1338,5 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
         keys.windows(2).all(|w| w[0] < w[1]),
         "renumbered in order: {keys:?}"
     );
-    assert_eq!(leaf_of(&cold(&disk.root), 4).goal, "b goal");
+    assert_eq!(leaf_of(cold(&disk.root).read().unwrap(), 4).goal, "b goal");
 }

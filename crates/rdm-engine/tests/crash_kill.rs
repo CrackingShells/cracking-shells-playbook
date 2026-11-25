@@ -25,6 +25,7 @@ use std::time::Duration;
 
 use common::campaign::*;
 use common::{ChildProc, child_role, spawn_child};
+use rdm_engine::cache::CachedCampaign;
 use rdm_engine::ids::mint_id;
 use rdm_engine::store::{Options, Store};
 use rdm_schema::error::StoreError;
@@ -64,8 +65,8 @@ fn base() -> Vec<Node> {
     ]
 }
 
-fn open_default(root: &Path) -> Result<Store, StoreError> {
-    Store::open(root, &name("demo"), Options::default())
+fn open_default(root: &Path) -> Result<CachedCampaign, StoreError> {
+    CachedCampaign::open(root, &name("demo"), Options::default())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -100,7 +101,7 @@ struct Worker {
 
 /// A store as it is on disk now. A reader that races a delete finds the file absent, never an
 /// error, so a campaign a kill left loads at once.
-fn open_fresh(root: &Path) -> Store {
+fn open_fresh(root: &Path) -> CachedCampaign {
     open_default(root).unwrap_or_else(|e| panic!("a campaign a kill left must load: {e:?}"))
 }
 
@@ -119,20 +120,22 @@ impl Worker {
         format!("{stem}{}x{}x{}", self.id, self.incarnation, self.counter)
     }
 
-    fn hot_dir(store: &Store, n: u32) -> Directory {
-        match store.campaign().get(&nid(n)).unwrap() {
+    fn hot_dir(view: &Store, n: u32) -> Directory {
+        match view.campaign().get(&nid(n)).unwrap() {
             Node::Directory(d) => d.clone(),
             Node::Leaf(_) => unreachable!("the hot nodes are directories"),
         }
     }
 
     /// A replace of a hot directory that adds one token to its `context`: an update that is lost
-    /// if another writer's replace lands between this one's revision check and its write.
-    fn token_replace(&self, store: &Store, hot: u32, token: &str) -> ReplaceOp {
-        let mut dir = Self::hot_dir(store, hot);
+    /// if another writer's replace lands between this one's revision check and its write. The
+    /// directory and its revision come from one read, so they describe the same file.
+    fn token_replace(&self, store: &mut CachedCampaign, hot: u32, token: &str) -> ReplaceOp {
+        let view = store.read().unwrap();
+        let mut dir = Self::hot_dir(view, hot);
         dir.context.push(token.to_owned());
         ReplaceOp {
-            expected_rev: store.rev(&nid(hot)).cloned(),
+            expected_rev: view.rev(&nid(hot)).cloned(),
             node: Node::Directory(dir),
         }
     }
@@ -175,7 +178,7 @@ impl Worker {
         match kind {
             "tok" => {
                 self.acks.line(&["B", &op_id, "tok"]);
-                let op = self.token_replace(&store, hot, &op_id);
+                let op = self.token_replace(&mut store, hot, &op_id);
                 let r = store.replace(Request {
                     header: request(note),
                     op,
@@ -223,7 +226,7 @@ impl Worker {
                 self.acks.line(&["B", &op_id, "rename", id.as_str()]);
                 let op = RelocateOp {
                     id: id.clone(),
-                    expected_rev: store.rev(&id).cloned(),
+                    expected_rev: store.read().unwrap().rev(&id).cloned(),
                     parent_id: None,
                     name: Some(name(&new_name)),
                     position: None,
@@ -247,7 +250,7 @@ impl Worker {
                 self.acks.line(&["B", &op_id, "delete", id.as_str()]);
                 let op = DeleteOp {
                     id: id.clone(),
-                    expected_subtree_rev: store.subtree_rev(&id),
+                    expected_subtree_rev: store.read().unwrap().subtree_rev(&id),
                 };
                 let r = store.delete_subtree(Request {
                     header: request(note),
@@ -269,7 +272,7 @@ impl Worker {
                 self.acks.line(&["B", &op_id, "batch", id.as_str()]);
                 let ops = vec![
                     Op::Create(create),
-                    Op::Replace(self.token_replace(&store, other, &op_id)),
+                    Op::Replace(self.token_replace(&mut store, other, &op_id)),
                     Op::Comment(CommentOp {
                         node_id: nid(other),
                         text: vec![format!("batch {op_id}")],
@@ -470,7 +473,7 @@ fn killed_workers_lose_no_acknowledged_write() {
     let disk = Disk::with(&base());
     let acks_dir = disk._tmp.path().join("acks");
     std::fs::create_dir_all(&acks_dir).unwrap();
-    let initial = diagnostic_keys(&open_default(&disk.root).unwrap());
+    let initial = diagnostic_keys(&mut open_default(&disk.root).unwrap());
 
     // The handles kill and reap their child when dropped, so a panic below leaves nothing running.
     let mut incarnations = vec![0u64; workers];
@@ -510,20 +513,22 @@ fn killed_workers_lose_no_acknowledged_write() {
 
     // The campaign as the kills left it, then as recovery leaves it.
     let mut store = open_default(&disk.root).expect("the campaign a kill left loads");
-    assert_no_new_diagnostics("after the kills", &initial, &store);
+    assert_no_new_diagnostics("after the kills", &initial, &mut store);
     store.recover().unwrap();
     assert!(
         scratch_is_empty(&disk.root),
         ".rdm/tmp or .rdm/intent is not empty after recovery"
     );
-    let store = open_default(&disk.root).unwrap();
-    assert_no_new_diagnostics("after recovery", &initial, &store);
+    let mut store = open_default(&disk.root).unwrap();
+    assert_no_new_diagnostics("after recovery", &initial, &mut store);
 
-    check_acks(&store, &acks_dir, workers);
+    check_acks(store.read().unwrap(), &acks_dir, workers);
 }
 
-fn diagnostic_keys(store: &Store) -> BTreeSet<(String, rdm_schema::error::Rule)> {
+fn diagnostic_keys(store: &mut CachedCampaign) -> BTreeSet<(String, rdm_schema::error::Rule)> {
     store
+        .read()
+        .unwrap()
         .diagnostics()
         .iter()
         .map(|d| (d.file.clone(), d.rule))
@@ -533,7 +538,7 @@ fn diagnostic_keys(store: &Store) -> BTreeSet<(String, rdm_schema::error::Rule)>
 fn assert_no_new_diagnostics(
     when: &str,
     initial: &BTreeSet<(String, rdm_schema::error::Rule)>,
-    store: &Store,
+    store: &mut CachedCampaign,
 ) {
     let now = diagnostic_keys(store);
     let new: Vec<_> = now.difference(initial).collect();

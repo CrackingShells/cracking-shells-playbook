@@ -349,9 +349,11 @@ only a stale read, and only in the one case named below. The other files a write
 (`expected_tree_rev` over untouched nodes, the reverse index, the op index) come from a revalidation
 made under the lock, so they rely on the signature like any read.
 
-**What a read returns.** The `Store` accessors return the campaign as of the last revalidation; the
-cached handle (`CachedCampaign::read`, which takes `&mut self`) revalidates and then answers, so its
-readers are serialized. The M4 server holds it behind a mutex; a read costs one revalidation, so the
+**What a read returns.** There is one public handle, `CachedCampaign`: it opens the campaign, carries
+the seven writes and the recovery, and its `read` (which takes `&mut self`) revalidates and then
+answers, so its readers are serialized. `Store` is the state it holds and the only thing `read`
+returns; its accessors answer as of that revalidation, and it has no public way to open or write, so
+no read skips the revalidation. The M4 server holds it behind a mutex; a read costs one revalidation, so the
 lock is held for milliseconds.
 
 **An entry** holds, per file: the decoded record, its `rev`, a **signature** `(identity, mtime, size, ctime)`

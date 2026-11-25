@@ -5,6 +5,7 @@
 //! belongs to the store. What survives a kill is guarded by `crash_test`, not here.
 
 use crate::fs::{Durability, Fs, atomic_replace};
+use crate::layout;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
@@ -24,6 +25,18 @@ pub enum IntentEffect {
     Create { path: String, bytes: String },
     /// Unlink the file; a missing one is skipped.
     Del { path: String },
+}
+
+impl IntentEffect {
+    /// The campaign-relative, `/`-separated path the effect touches.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        match self {
+            IntentEffect::Put { path, .. }
+            | IntentEffect::Create { path, .. }
+            | IntentEffect::Del { path } => path,
+        }
+    }
 }
 
 /// An intent record: its format version and the effects in the order they are applied.
@@ -67,10 +80,6 @@ fn is_ulid(s: &str) -> bool {
     rdm_schema::ids::AmendmentId::parse(s).is_ok()
 }
 
-fn intent_dir(root: &Path) -> std::path::PathBuf {
-    root.join(".rdm").join("intent")
-}
-
 /// Publish the intent `<ulid>` under `root`: written under `.rdm/tmp/`, synced, renamed into
 /// `.rdm/intent/`. Its rename is the commit point of the operation. Refuses a `ulid` that is not
 /// a ULID (`InvalidInput`) and never overwrites a record (`AlreadyExists`); the writer lock is
@@ -89,8 +98,7 @@ pub fn begin(
         ));
     }
     let bytes = serde_json::to_vec(intent).map_err(io::Error::other)?;
-    let dir = intent_dir(root);
-    let record = dir.join(format!("{ulid}.json"));
+    let record = layout::intent_record(root, ulid);
     match fs.read(&record) {
         Ok(_) => {
             return Err(io::Error::new(
@@ -101,14 +109,14 @@ pub fn begin(
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err),
     }
-    fs.create_dir_all(&dir)?;
-    atomic_replace(fs, &record, &root.join(".rdm").join("tmp"), &bytes, tier)
+    fs.create_dir_all(&layout::intent_dir(root))?;
+    atomic_replace(fs, &record, &layout::tmp_dir(root), &bytes, tier)
 }
 
 /// Remove the intent `<ulid>` and sync `.rdm/intent/`. A record already gone is not an error.
 pub fn complete(fs: &dyn Fs, root: &Path, ulid: &str, tier: Durability) -> io::Result<()> {
-    let dir = intent_dir(root);
-    match fs.remove_file(&dir.join(format!("{ulid}.json"))) {
+    let dir = layout::intent_dir(root);
+    match fs.remove_file(&layout::intent_record(root, ulid)) {
         Ok(()) => {}
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err),
@@ -119,7 +127,7 @@ pub fn complete(fs: &dyn Fs, root: &Path, ulid: &str, tier: Durability) -> io::R
 /// The records in `.rdm/intent/`, oldest ULID first (the ULID is the order). Entries that are
 /// not a ULID with `.json` are ignored. A missing directory holds nothing.
 pub fn pending(fs: &dyn Fs, root: &Path) -> io::Result<Vec<Pending>> {
-    let dir = intent_dir(root);
+    let dir = layout::intent_dir(root);
     let names = match fs.list_dir(&dir) {
         Ok(names) => names,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -127,7 +135,7 @@ pub fn pending(fs: &dyn Fs, root: &Path) -> io::Result<Vec<Pending>> {
     };
     let mut found = Vec::new();
     for name in names {
-        let Some(ulid) = name.strip_suffix(".json").filter(|u| is_ulid(u)) else {
+        let Some(ulid) = layout::intent_ulid(&name).filter(|u| is_ulid(u)) else {
             continue;
         };
         let bytes = match fs.read(&dir.join(&name)) {

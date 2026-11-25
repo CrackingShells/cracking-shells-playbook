@@ -1,6 +1,8 @@
 //! The campaign store (`store.md`): opens a campaign from disk into the pure
 //! [`rdm_schema::campaign::Campaign`] model, validates it, computes revisions, keeps the reverse
-//! link index, and applies every primitive through ordered writes under the writer lock.
+//! link index, and applies every primitive through ordered writes under the writer lock. It is
+//! not opened or written to directly outside the crate: the one public handle is
+//! [`crate::cache::CachedCampaign`], whose `read` hands out a revalidated `&Store`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -162,7 +164,7 @@ impl Store {
     /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
     /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
     /// Damage between files loads, and is in [`Store::diagnostics`].
-    pub fn open(
+    pub(crate) fn open(
         root: impl Into<PathBuf>,
         slug: &Name,
         options: Options,
@@ -202,9 +204,8 @@ impl Store {
     }
 
     /// The model: nodes, tree, validated set. Like every accessor of a `Store`, it answers with
-    /// the state as of the last revalidation (`open`, a write, `recover`, or
-    /// [`crate::cache::CachedCampaign::read`]); only the cached handle revalidates before it
-    /// answers.
+    /// the state as of the last revalidation. The only way to a `Store` outside the crate is
+    /// [`crate::cache::CachedCampaign::read`], which revalidates first (I10).
     #[must_use]
     pub fn campaign(&self) -> &Campaign {
         &self.state.campaign

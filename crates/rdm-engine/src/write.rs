@@ -7,9 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
 
-use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
+use rdm_schema::campaign::{Campaign, node_file};
 use rdm_schema::diff::{diff, is_state};
 use rdm_schema::error::LockHolder;
 use rdm_schema::error::{Current, Rule, StoreError};
@@ -19,7 +18,7 @@ use rdm_schema::ops::{
     BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, Header, Op, OpResult, Position,
     Receipt, RelocateOp, ReplaceOp, Request, Written,
 };
-use rdm_schema::stored::{Actor, Amendment, Change, ChangeOp, Comment, Node};
+use rdm_schema::stored::{Amendment, Change, ChangeOp, Comment, Node};
 use rdm_schema::validate::check_node;
 use rdm_schema::{FORMAT_VERSION, version_string};
 use serde_json::Value;
@@ -29,6 +28,7 @@ use crate::clock::{rfc3339, unix_ms};
 use crate::codec::{decode, encode};
 use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
+use crate::layout;
 use crate::links::Record;
 use crate::lock::{LockError, WriterLock};
 use crate::order::{MAX_KEY_LEN, between, spread};
@@ -70,6 +70,16 @@ fn stamp(node: &mut Node) {
     }
 }
 
+/// What an existing target of a `Create` effect means to [`Store::apply_effect`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExistingCreate {
+    /// A live write: the file is somebody else's, so the create is a `duplicate_id` collision.
+    Collision,
+    /// A recovery: the interrupted run may have written the file already. A put or a create whose
+    /// destination holds these bytes is skipped, and a create over other bytes stops recovery.
+    Resume,
+}
+
 /// What a recovery did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Recovered {
@@ -90,7 +100,8 @@ struct Working {
     /// Nodes created by this batch, in creation order (parents first).
     created: Vec<NodeId>,
     changes: Vec<Change>,
-    comments: Vec<(NodeId, Vec<String>)>,
+    /// The comments the ops add: the id minted for each, the node it is on, its text.
+    comments: Vec<(CommentId, NodeId, Vec<String>)>,
     results: Vec<OpResult>,
     /// A create, relocate or delete was applied: the batch needs a note.
     structural: bool,
@@ -114,10 +125,6 @@ impl Store {
         &*self.options.fs
     }
 
-    fn tmp_dir(&self) -> PathBuf {
-        self.root.join(".rdm").join("tmp")
-    }
-
     fn now(&self) -> std::time::SystemTime {
         (self.options.clock)()
     }
@@ -125,6 +132,12 @@ impl Store {
     fn ulid(&mut self) -> String {
         let ms = unix_ms((self.options.clock)());
         self.ulids.mint(ms, &mut *self.options.rng)
+    }
+
+    /// A minted ULID as the id type of a record. The minter builds 26 characters of the ULID
+    /// alphabet, which always parse.
+    fn mint<T, E: std::fmt::Debug>(&mut self, parse: impl FnOnce(&str) -> Result<T, E>) -> T {
+        parse(&self.ulid()).expect("a minted ULID is well formed")
     }
 
     /// Takes the writer lock, naming the holder in the record it leaves.
@@ -145,24 +158,24 @@ impl Store {
                     holder: holder.and_then(|b| serde_json::from_slice(&b).ok()),
                 })
             }
-            Err(LockError::Io(e)) => Err(io_error(".rdm/lock", &e)),
+            Err(LockError::Io(e)) => Err(io_error(layout::LOCK_NAME, &e)),
         }
     }
 
     /// Makes sure `.rdm/.gitignore` holds `*`, so the repository needs no entry of its own.
     fn ignore_scratch(&self) -> Result<(), StoreError> {
-        let path = self.root.join(".rdm").join(".gitignore");
+        let path = layout::gitignore_path(&self.root);
         match self.fs().read(&path) {
             Ok(_) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => publish::put(
                 self.fs(),
                 &path,
-                &self.tmp_dir(),
+                &layout::tmp_dir(&self.root),
                 b"*\n",
                 self.options.durability,
             )
-            .map_err(|e| io_error(".rdm/.gitignore", &e)),
-            Err(e) => Err(io_error(".rdm/.gitignore", &e)),
+            .map_err(|e| io_error(layout::GITIGNORE_NAME, &e)),
+            Err(e) => Err(io_error(layout::GITIGNORE_NAME, &e)),
         }
     }
 
@@ -172,23 +185,24 @@ impl Store {
         let fs = self.fs();
         let tier = self.options.durability;
         let mut report = Recovered::default();
-        let tmp = self.tmp_dir();
+        let tmp = layout::tmp_dir(&self.root);
         match fs.list_dir(&tmp) {
             Ok(names) => {
                 for name in names {
                     match fs.remove_file(&tmp.join(&name)) {
                         Ok(()) => report.stray_temp_files += 1,
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                        Err(e) => return Err(io_error(&format!(".rdm/tmp/{name}"), &e)),
+                        Err(e) => return Err(io_error(&layout::tmp_file_name(&name), &e)),
                     }
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => return Err(io_error(".rdm/tmp", &e)),
+            Err(e) => return Err(io_error(layout::TMP_NAME, &e)),
         }
-        let pending = intent::pending(fs, &self.root).map_err(|e| io_error(".rdm/intent", &e))?;
+        let pending =
+            intent::pending(fs, &self.root).map_err(|e| io_error(layout::INTENT_NAME, &e))?;
         for p in pending {
-            let file = format!(".rdm/intent/{}.json", p.ulid());
+            let file = layout::intent_record_name(p.ulid());
             match p {
                 Pending::Newer { found, .. } => {
                     let found = u16::try_from(found).unwrap_or(u16::MAX);
@@ -217,7 +231,7 @@ impl Store {
                 }
                 Pending::Record { ulid, intent } => {
                     for effect in &intent.effects {
-                        self.redo(effect)?;
+                        self.apply_effect(effect, ExistingCreate::Resume)?;
                     }
                     intent::complete(fs, &self.root, &ulid, tier)
                         .map_err(|e| io_error(&file, &e))?;
@@ -228,38 +242,55 @@ impl Store {
         Ok(report)
     }
 
-    /// Applies one recorded effect again: a put or a create whose destination already holds
-    /// these bytes is skipped; a create over other bytes stops recovery.
-    fn redo(&self, effect: &IntentEffect) -> Result<(), StoreError> {
-        let (fs, tier, tmp) = (self.fs(), self.options.durability, self.tmp_dir());
+    /// Applies one effect of a plan, live or recovered. A put replaces. A delete skips a file that
+    /// is gone. A create over an existing file is what `existing` says.
+    fn apply_effect(
+        &self,
+        effect: &IntentEffect,
+        existing: ExistingCreate,
+    ) -> Result<(), StoreError> {
+        let (fs, tier) = (self.fs(), self.options.durability);
+        let tmp = layout::tmp_dir(&self.root);
+        let path = effect.path();
+        let dest = layout::record_path(&self.root, path);
+        let io_err = |e: io::Error| io_error(path, &e);
+        let holds = |bytes: &str| fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes());
         match effect {
-            IntentEffect::Put { path, bytes } => {
-                let dest = self.root.join(path);
-                if fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes()) {
+            IntentEffect::Put { bytes, .. } => {
+                if existing == ExistingCreate::Resume && holds(bytes) {
                     return Ok(());
                 }
-                publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier)
-                    .map_err(|e| io_error(path, &e))
+                publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(io_err)
             }
-            IntentEffect::Create { path, bytes } => {
-                let dest = self.root.join(path);
-                match fs.read(&dest) {
-                    Ok(b) if b == bytes.as_bytes() => Ok(()),
-                    Ok(_) => Err(StoreError::Invalid {
-                        file: path.clone(),
-                        rule: Rule::DuplicateId,
-                        detail: "recovery found other bytes where it must create a file".to_owned(),
-                    }),
-                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier)
-                            .map_err(|e| io_error(path, &e))
+            IntentEffect::Create { bytes, .. } => {
+                if existing == ExistingCreate::Resume {
+                    match fs.read(&dest) {
+                        Ok(b) if b == bytes.as_bytes() => return Ok(()),
+                        Ok(_) => {
+                            return Err(StoreError::Invalid {
+                                file: path.to_owned(),
+                                rule: Rule::DuplicateId,
+                                detail: "recovery found other bytes where it must create a file"
+                                    .to_owned(),
+                            });
+                        }
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(io_err(e)),
                     }
-                    Err(e) => Err(io_error(path, &e)),
                 }
+                publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(|e| {
+                    if e.kind() == io::ErrorKind::AlreadyExists {
+                        StoreError::Invalid {
+                            file: path.to_owned(),
+                            rule: Rule::DuplicateId,
+                            detail: "the file already exists".to_owned(),
+                        }
+                    } else {
+                        io_err(e)
+                    }
+                })
             }
-            IntentEffect::Del { path } => {
-                publish::del(fs, &self.root.join(path), tier).map_err(|e| io_error(path, &e))
-            }
+            IntentEffect::Del { .. } => publish::del(fs, &dest, tier).map_err(io_err),
         }
     }
 
@@ -314,7 +345,7 @@ impl Store {
                 });
             }
         }
-        let (mut w, plan) = loop {
+        let (w, plan) = loop {
             let mut w = Working {
                 campaign: self.state.campaign.clone(),
                 disk_revs: self.state.revs.clone(),
@@ -353,14 +384,6 @@ impl Store {
             let slug = self.state.campaign.slug().clone();
             self.state = self.entries.build(&slug)?;
         };
-        let mut minted = plan.comments.iter().map(|c| c.id.clone());
-        for r in &mut w.results {
-            if let OpResult::Commented(c) = r
-                && let Some(id) = minted.next()
-            {
-                c.id = id;
-            }
-        }
         if dry_run {
             return Ok(Receipt {
                 result: w.results,
@@ -375,12 +398,7 @@ impl Store {
             // Whatever was written is on disk: drop the entries of every path the plan touched,
             // not guessed, and read them again.
             for effect in &plan.effects {
-                let path = match effect {
-                    IntentEffect::Put { path, .. }
-                    | IntentEffect::Create { path, .. }
-                    | IntentEffect::Del { path } => path,
-                };
-                self.entries.forget(path);
+                self.entries.forget(effect.path());
             }
             let _ = self.refresh();
             return Err(e);
@@ -612,7 +630,7 @@ impl Store {
             Op::Create(op) => op_create(w, op),
             Op::Relocate(op) => self.op_relocate(w, op, in_batch),
             Op::Delete(op) => self.op_delete(w, op, in_batch),
-            Op::Comment(op) => op_comment(w, header, op, in_batch),
+            Op::Comment(op) => self.op_comment(w, header, op, in_batch),
         }
     }
 
@@ -781,14 +799,15 @@ impl Store {
             .filter(|id| before.get(id).is_some() && seen.insert((*id).clone()))
             .cloned()
             .collect();
-        deletes.sort_by_key(|id| std::cmp::Reverse(chain_depth(before, id)));
+        let depths = chain_depths(before, &deletes);
+        deletes.sort_by_cached_key(|id| std::cmp::Reverse(depths[id]));
         let ts = rfc3339(self.now());
         let comments: Vec<Comment> = w
             .comments
             .iter()
-            .map(|(node_id, text)| Comment {
+            .map(|(id, node_id, text)| Comment {
                 schema_version: stamped.clone(),
-                id: CommentId::parse(&self.ulid()).unwrap_or_else(|_| minted_ulid_invalid()),
+                id: id.clone(),
                 node_id: node_id.clone(),
                 ts: ts.clone(),
                 actor: header.actor.clone(),
@@ -803,7 +822,7 @@ impl Store {
             .filter(|_| !w.changes.is_empty())
             .map(|note| Amendment {
                 schema_version: stamped.clone(),
-                id: AmendmentId::parse(&self.ulid()).unwrap_or_else(|_| minted_ulid_invalid()),
+                id: self.mint(AmendmentId::parse),
                 legacy_id: None,
                 ts: ts.clone(),
                 actor: header.actor.clone(),
@@ -865,45 +884,16 @@ impl Store {
                 &Intent::new(plan.effects.clone()),
                 tier,
             )
-            .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
+            .map_err(|e| io_error(&layout::intent_record_name(ulid), &e))?;
         }
         for effect in &plan.effects {
-            self.redo_fresh(effect)?;
+            self.apply_effect(effect, ExistingCreate::Collision)?;
         }
         if let Some(ulid) = &intent_ulid {
             intent::complete(fs, &self.root, ulid, tier)
-                .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
+                .map_err(|e| io_error(&layout::intent_record_name(ulid), &e))?;
         }
         Ok(())
-    }
-
-    /// Applies one effect of a live write. A create over an existing file is a collision.
-    fn redo_fresh(&self, effect: &IntentEffect) -> Result<(), StoreError> {
-        let (fs, tier, tmp) = (self.fs(), self.options.durability, self.tmp_dir());
-        match effect {
-            IntentEffect::Put { path, bytes } => {
-                publish::put(fs, &self.root.join(path), &tmp, bytes.as_bytes(), tier)
-                    .map_err(|e| io_error(path, &e))
-            }
-            IntentEffect::Create { path, bytes } => {
-                publish::create(fs, &self.root.join(path), &tmp, bytes.as_bytes(), tier).map_err(
-                    |e| {
-                        if e.kind() == io::ErrorKind::AlreadyExists {
-                            StoreError::Invalid {
-                                file: path.clone(),
-                                rule: Rule::DuplicateId,
-                                detail: "the file already exists".to_owned(),
-                            }
-                        } else {
-                            io_error(path, &e)
-                        }
-                    },
-                )
-            }
-            IntentEffect::Del { path } => {
-                publish::del(fs, &self.root.join(path), tier).map_err(|e| io_error(path, &e))
-            }
-        }
     }
 
     /// Step 6: the cache is updated from what was written, never before it is on disk. The entries
@@ -967,7 +957,7 @@ impl Store {
     // -----------------------------------------------------------------------------------------
     // The primitives
 
-    /// What the last recovery did: the one a write ran on taking the lock, or [`Store::recover`].
+    /// What the last recovery did: the one a write ran on taking the lock, or a recovery on request.
     /// `None` until a recovery has run; it holds the report until the next one replaces it.
     #[must_use]
     pub fn last_recovered(&self) -> Option<&Recovered> {
@@ -981,7 +971,7 @@ impl Store {
     /// # Errors
     /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
     /// create finds other bytes where it must create a file, `Io`.
-    pub fn recover(&mut self) -> Result<Recovered, StoreError> {
+    pub(crate) fn recover(&mut self) -> Result<Recovered, StoreError> {
         let _lock = self.lock()?;
         self.ignore_scratch()?;
         let report = self.recover_locked()?;
@@ -995,7 +985,10 @@ impl Store {
     ///
     /// # Errors
     /// `Stale`, `Locked`, `NotFound`, `Invalid` with the rule that is broken, `Io`.
-    pub fn replace(&mut self, req: Request<ReplaceOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn replace(
+        &mut self,
+        req: Request<ReplaceOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Replace(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1013,7 +1006,10 @@ impl Store {
     /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
     /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
     /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
-    pub fn create(&mut self, req: Request<CreateOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn create(
+        &mut self,
+        req: Request<CreateOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Create(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1027,7 +1023,10 @@ impl Store {
     /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
     /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
     /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
-    pub fn move_node(&mut self, req: Request<RelocateOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn move_node(
+        &mut self,
+        req: Request<RelocateOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Relocate(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1041,7 +1040,7 @@ impl Store {
     /// # Errors
     /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
     /// `expected_rev_required`), `Io`.
-    pub fn delete_subtree(
+    pub(crate) fn delete_subtree(
         &mut self,
         req: Request<DeleteOp>,
     ) -> Result<Receipt<Deleted>, StoreError> {
@@ -1056,7 +1055,10 @@ impl Store {
     ///
     /// # Errors
     /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
-    pub fn comment(&mut self, req: Request<CommentOp>) -> Result<Receipt<Commented>, StoreError> {
+    pub(crate) fn comment(
+        &mut self,
+        req: Request<CommentOp>,
+    ) -> Result<Receipt<Commented>, StoreError> {
         let one = self.run(&req.header, &[Op::Comment(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Commented(c) => Some(c),
@@ -1071,7 +1073,10 @@ impl Store {
     /// # Errors
     /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
     /// `expected_tree_rev`; `Locked`; `Io`.
-    pub fn batch(&mut self, req: Request<BatchOp>) -> Result<Receipt<Vec<OpResult>>, StoreError> {
+    pub(crate) fn batch(
+        &mut self,
+        req: Request<BatchOp>,
+    ) -> Result<Receipt<Vec<OpResult>>, StoreError> {
         let BatchOp {
             expected_tree_rev,
             ops,
@@ -1385,31 +1390,29 @@ fn op_create(w: &mut Working, op: &CreateOp) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn op_comment(
-    w: &mut Working,
-    header: &Header,
-    op: &CommentOp,
-    in_batch: bool,
-) -> Result<(), StoreError> {
-    if !in_batch && header.note.is_some() {
-        return Err(request_fault(
-            Rule::NoteForbidden,
-            "a comment carries no note",
-        ));
+impl Store {
+    fn op_comment(
+        &mut self,
+        w: &mut Working,
+        header: &Header,
+        op: &CommentOp,
+        in_batch: bool,
+    ) -> Result<(), StoreError> {
+        if !in_batch && header.note.is_some() {
+            return Err(request_fault(
+                Rule::NoteForbidden,
+                "a comment carries no note",
+            ));
+        }
+        if w.campaign.get(&op.node_id).is_none() {
+            return Err(not_found(&op.node_id));
+        }
+        let id = self.mint(CommentId::parse);
+        w.comments
+            .push((id.clone(), op.node_id.clone(), op.text.clone()));
+        w.results.push(OpResult::Commented(Commented { id }));
+        Ok(())
     }
-    if w.campaign.get(&op.node_id).is_none() {
-        return Err(not_found(&op.node_id));
-    }
-    w.comments.push((op.node_id.clone(), op.text.clone()));
-    // The id is minted with the plan; the placeholder is replaced before the result is returned.
-    w.results.push(OpResult::Commented(Commented {
-        id: placeholder_comment_id(),
-    }));
-    Ok(())
-}
-
-fn placeholder_comment_id() -> CommentId {
-    CommentId::parse("00000000000000000000000000").unwrap_or_else(|_| minted_ulid_invalid())
 }
 
 /// Sets the place fields of a node. A root takes no parent and no order.
@@ -1567,10 +1570,7 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
 /// `nodes/`, `_amendments/` or `_comments/`.
 fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     use std::path::{Component, Path};
-    let (IntentEffect::Put { path, .. }
-    | IntentEffect::Create { path, .. }
-    | IntentEffect::Del { path }) = effect;
-    let mut parts = Path::new(path).components();
+    let mut parts = Path::new(effect.path()).components();
     let under = matches!(
         parts.next(),
         Some(Component::Normal(d)) if ["nodes", "_amendments", "_comments"].iter().any(|k| d == *k)
@@ -1579,20 +1579,57 @@ fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
 }
 
-/// How many ancestors a node has along its `parent_id` chain in `campaign`, counting each node
-/// once: a chain that ends at a missing parent stops there, and one that comes back on itself (a
-/// cycle) stops at the repeat. A child is always deeper than its parent unless a cycle is in
-/// between, which has no order to give.
-fn chain_depth(campaign: &Campaign, id: &NodeId) -> usize {
-    let mut seen = BTreeSet::from([id]);
-    let mut at = campaign.get(id).and_then(Node::parent_id);
-    while let Some(parent) = at {
-        if !seen.insert(parent) {
-            break;
+/// How many ancestors each of `ids` has along its `parent_id` chain in `campaign`, counting each
+/// node once: a chain that ends at a missing parent stops there (the missing parent counts), and
+/// one that comes back on itself (a cycle) stops at the repeat, so every member of a cycle has
+/// the cycle's length minus one. A child is always deeper than its parent unless a cycle is in
+/// between, which has no order to give. Each node on a walked chain is computed once, so the
+/// whole map costs one step per node reached, however many `ids` share a chain.
+fn chain_depths(campaign: &Campaign, ids: &[NodeId]) -> BTreeMap<NodeId, usize> {
+    let mut depth: BTreeMap<NodeId, usize> = BTreeMap::new();
+    for start in ids {
+        // The chain from `start` up to the first node whose depth is known, or whose parent is
+        // missing, or that repeats a node of this chain.
+        let mut chain: Vec<&NodeId> = Vec::new();
+        let mut on_chain: BTreeMap<&NodeId, usize> = BTreeMap::new();
+        let mut at = Some(start);
+        // The depth of what the chain ends on; `None` when it ends on a cycle.
+        let mut below = 0;
+        let mut cycle_from = None;
+        while let Some(id) = at {
+            if let Some(known) = depth.get(id) {
+                below = *known + 1;
+                break;
+            }
+            if let Some(&index) = on_chain.get(id) {
+                cycle_from = Some(index);
+                break;
+            }
+            on_chain.insert(id, chain.len());
+            chain.push(id);
+            match campaign.get(id).and_then(Node::parent_id) {
+                Some(parent) if campaign.get(parent).is_none() => {
+                    // The missing parent counts as one ancestor and has none of its own.
+                    below = 1;
+                    break;
+                }
+                next => at = next,
+            }
         }
-        at = campaign.get(parent).and_then(Node::parent_id);
+        if let Some(index) = cycle_from {
+            let members = chain.len() - index;
+            for id in &chain[index..] {
+                depth.insert((*id).clone(), members - 1);
+            }
+            below = members;
+            chain.truncate(index);
+        }
+        for id in chain.into_iter().rev() {
+            depth.insert(id.clone(), below);
+            below += 1;
+        }
     }
-    seen.len() - 1
+    depth
 }
 
 /// An op that is a batch of one returns exactly one result of its own kind.
@@ -1619,11 +1656,6 @@ fn single<R>(
             "the operation returned no result",
         )),
     }
-}
-
-/// The minter builds 26 characters of the ULID alphabet, which always parse.
-fn minted_ulid_invalid() -> ! {
-    unreachable!("a minted ULID always parses")
 }
 
 /// Rules that report damage between files: a write may not add one.
@@ -1684,7 +1716,3 @@ fn introduced_references_exist(
     }
     Ok(())
 }
-
-/// The actor type is part of the header every request carries.
-#[allow(dead_code)]
-fn _actor(_: &Actor, _: &Diagnostic) {}

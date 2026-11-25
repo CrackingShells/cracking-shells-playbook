@@ -8,9 +8,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
 use rdm_engine::ids::{IdRng, MAX_COLLISIONS, MintError, mint_id};
-use rdm_engine::store::{Options, Store};
+use rdm_engine::store::Options;
 use rdm_schema::error::{Current, Rule, StoreError};
 use rdm_schema::ids::*;
 use rdm_schema::links::RecordRef;
@@ -175,8 +176,8 @@ impl Disk {
         self.root.join(rel)
     }
 
-    fn open(&self) -> Result<Store, StoreError> {
-        Store::open(&self.root, &name("demo"), Options::default())
+    fn open(&self) -> Result<CachedCampaign, StoreError> {
+        CachedCampaign::open(&self.root, &name("demo"), Options::default())
     }
 }
 
@@ -263,15 +264,17 @@ fn file(n: u32) -> String {
     format!("nodes/{}.json", nid(n))
 }
 
-fn rules(store: &Store) -> Vec<(String, Rule)> {
+fn rules(store: &mut CachedCampaign) -> Vec<(String, Rule)> {
     store
+        .read()
+        .unwrap()
         .diagnostics()
         .iter()
         .map(|d| (d.file.clone(), d.rule))
         .collect()
 }
 
-fn refused(r: Result<Store, StoreError>) -> (String, Rule) {
+fn refused(r: Result<CachedCampaign, StoreError>) -> (String, Rule) {
     match r {
         Err(StoreError::Invalid { file, rule, .. }) => (file, rule),
         Err(other) => panic!("want Invalid, got {other:?}"),
@@ -287,12 +290,12 @@ fn edit_file(disk: &Disk, n: u32, f: impl FnOnce(&mut Value)) {
     std::fs::write(path, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
 }
 
-fn validated(store: &Store) -> BTreeSet<NodeId> {
-    store
-        .campaign()
+fn validated(store: &mut CachedCampaign) -> BTreeSet<NodeId> {
+    let campaign = store.read().unwrap().campaign();
+    campaign
         .nodes()
         .map(|n| n.id().clone())
-        .filter(|id| store.campaign().is_validated(id))
+        .filter(|id| campaign.is_validated(id))
         .collect()
 }
 
@@ -301,16 +304,23 @@ fn open_names_invalid_campaigns() {
     // A sound campaign opens clean and is entirely validated.
     let disk = Disk::new();
     disk.write_all(&base());
-    let store = disk.open().unwrap();
-    assert_eq!(store.diagnostics(), &[], "a sound campaign reports nothing");
-    assert_eq!(validated(&store).len(), 5);
+    let mut store = disk.open().unwrap();
     assert_eq!(
-        store.campaign().path(&nid(3)).as_deref(),
+        store.read().unwrap().diagnostics(),
+        &[],
+        "a sound campaign reports nothing"
+    );
+    assert_eq!(validated(&mut store).len(), 5);
+    assert_eq!(
+        store.read().unwrap().campaign().path(&nid(3)).as_deref(),
         Some("core/alpha")
     );
-    assert_eq!(store.campaign().depth(&nid(3)), Some(1));
-    assert_eq!(store.campaign().depth(&nid(2)), Some(0));
-    assert_eq!(store.campaign().resolve("core/beta"), Some(&nid(4)));
+    assert_eq!(store.read().unwrap().campaign().depth(&nid(3)), Some(1));
+    assert_eq!(store.read().unwrap().campaign().depth(&nid(2)), Some(0));
+    assert_eq!(
+        store.read().unwrap().campaign().resolve("core/beta"),
+        Some(&nid(4))
+    );
 
     // A leftover temporary file, an editor's backup and the store's own scratch are not nodes.
     std::fs::write(disk.path("nodes/n_00000099.json.tmp"), "{").unwrap();
@@ -323,9 +333,9 @@ fn open_names_invalid_campaigns() {
     .unwrap();
     std::fs::create_dir_all(disk.path(".rdm/tmp")).unwrap();
     std::fs::write(disk.path(".rdm/tmp/1-0.tmp"), "{").unwrap();
-    let store = disk.open().unwrap();
+    let mut store = disk.open().unwrap();
     assert_eq!(
-        store.diagnostics(),
+        store.read().unwrap().diagnostics(),
         &[],
         "a leftover temp file is ignored, not an error"
     );
@@ -380,12 +390,12 @@ fn open_names_invalid_campaigns() {
     // node loads, none is validated, and the defect is reported.
     let disk = Disk::new();
     disk.write_all(&base());
-    let renamed = Store::open(&disk.root, &name("other"), Options::default()).unwrap();
-    assert_eq!(renamed.campaign().nodes().count(), 5);
-    assert_eq!(validated(&renamed), BTreeSet::new());
-    assert_eq!(renamed.campaign().root(), None);
+    let mut renamed = CachedCampaign::open(&disk.root, &name("other"), Options::default()).unwrap();
+    assert_eq!(renamed.read().unwrap().campaign().nodes().count(), 5);
+    assert_eq!(validated(&mut renamed), BTreeSet::new());
+    assert_eq!(renamed.read().unwrap().campaign().root(), None);
     assert_eq!(
-        rules(&renamed),
+        rules(&mut renamed),
         vec![
             ("nodes/".to_owned(), Rule::RootCount),
             (file(1), Rule::RootNameMismatch)
@@ -400,32 +410,32 @@ fn open_names_invalid_campaigns() {
         vec![Edit::Remove(2)],
         vec![Edit::new(leaf_node(6, "gamma", 2, "s"))],
     );
-    let store = disk.open().unwrap();
+    let mut store = disk.open().unwrap();
     assert_eq!(
-        rules(&store),
+        rules(&mut store),
         vec![
             (file(3), Rule::ParentMissing),
             (file(4), Rule::ParentMissing),
             (file(6), Rule::ParentMissing)
         ]
     );
-    assert_eq!(validated(&store), BTreeSet::from([nid(1), nid(5)]));
+    assert_eq!(validated(&mut store), BTreeSet::from([nid(1), nid(5)]));
     assert_eq!(
-        store.campaign().nodes().count(),
+        store.read().unwrap().campaign().nodes().count(),
         5,
         "the orphans are loaded"
     );
-    assert_eq!(store.campaign().path(&nid(3)), None);
+    assert_eq!(store.read().unwrap().campaign().path(&nid(3)), None);
 
     // One branch makes a directory out of a leaf's id while the other adds a child under it.
     let disk = merged(
         vec![Edit::new(leaf_node(5, "spare", 1, "k"))],
         vec![Edit::new(leaf_node(6, "gamma", 5, "s"))],
     );
-    let store = disk.open().unwrap();
-    assert_eq!(rules(&store), vec![(file(6), Rule::ParentNotDirectory)]);
+    let mut store = disk.open().unwrap();
+    assert_eq!(rules(&mut store), vec![(file(6), Rule::ParentNotDirectory)]);
     assert_eq!(
-        validated(&store),
+        validated(&mut store),
         BTreeSet::from([nid(1), nid(2), nid(3), nid(4), nid(5)])
     );
 
@@ -434,18 +444,18 @@ fn open_names_invalid_campaigns() {
         vec![Edit::new(dir_node(2, "core", Some(5), "V"))],
         vec![Edit::new(dir_node(5, "spare", Some(2), "V"))],
     );
-    let store = disk.open().unwrap();
+    let mut store = disk.open().unwrap();
     assert_eq!(
-        rules(&store),
+        rules(&mut store),
         vec![(file(2), Rule::Cycle)],
         "one diagnostic for the cycle"
     );
     assert_eq!(
-        validated(&store),
+        validated(&mut store),
         BTreeSet::from([nid(1)]),
         "the cycle and everything below it is unvalidated"
     );
-    assert_eq!(store.campaign().nodes().count(), 5);
+    assert_eq!(store.read().unwrap().campaign().nodes().count(), 5);
 
     // Two branches each add a node of one name under one parent: the files differ, so git sees no
     // conflict, and the colliding siblings and their subtrees are unvalidated.
@@ -453,21 +463,25 @@ fn open_names_invalid_campaigns() {
         vec![Edit::new(leaf_node(6, "gamma", 2, "s"))],
         vec![Edit::new(leaf_node(7, "gamma", 2, "t"))],
     );
-    let store = disk.open().unwrap();
-    assert_eq!(rules(&store), vec![(file(6), Rule::NameCollision)]);
+    let mut store = disk.open().unwrap();
+    assert_eq!(rules(&mut store), vec![(file(6), Rule::NameCollision)]);
     assert_eq!(
-        validated(&store),
+        validated(&mut store),
         BTreeSet::from([nid(1), nid(2), nid(3), nid(4), nid(5)])
     );
 
     // Two branches each add a campaign root: the two roots are one defect, no tree is picked,
     // and every node is unvalidated until a root is renamed.
     let disk = merged(vec![Edit::new(dir_node(8, "demo", None, ""))], vec![]);
-    let store = disk.open().unwrap();
-    assert_eq!(rules(&store), vec![(file(1), Rule::RootCount)]);
-    assert_eq!(store.campaign().root(), None, "two roots, no root");
-    assert_eq!(validated(&store), BTreeSet::new());
-    assert!(!store.campaign().is_validated(&nid(8)));
+    let mut store = disk.open().unwrap();
+    assert_eq!(rules(&mut store), vec![(file(1), Rule::RootCount)]);
+    assert_eq!(
+        store.read().unwrap().campaign().root(),
+        None,
+        "two roots, no root"
+    );
+    assert_eq!(validated(&mut store), BTreeSet::new());
+    assert!(!store.read().unwrap().campaign().is_validated(&nid(8)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -513,8 +527,9 @@ fn spell(id: &NodeId) -> Vec<u8> {
 fn minting_retries_on_collision() {
     let disk = Disk::new();
     disk.write_all(&base());
-    let store = disk.open().unwrap();
-    let taken = |id: &NodeId| store.campaign().get(id).is_some();
+    let mut store = disk.open().unwrap();
+    let campaign = store.read().unwrap().campaign();
+    let taken = |id: &NodeId| campaign.get(id).is_some();
 
     // The first draw is an id of the campaign, the second is free: the second is returned.
     let mut bytes = spell(&nid(3));
@@ -610,8 +625,8 @@ fn snapshot(disk: &Disk) -> std::collections::BTreeMap<String, Vec<u8>> {
     out
 }
 
-fn leaf_of(store: &Store, n: u32) -> Leaf {
-    match store.campaign().get(&nid(n)).unwrap() {
+fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
+    match store.read().unwrap().campaign().get(&nid(n)).unwrap() {
         Node::Leaf(l) => l.clone(),
         Node::Directory(_) => panic!("not a leaf"),
     }
@@ -646,6 +661,8 @@ fn rev_tracks_value_not_formatting() {
     let rev_of = |text: &str| {
         std::fs::write(disk.path(&file(3)), text).unwrap();
         disk.open()
+            .unwrap()
+            .read()
             .unwrap()
             .rev(&nid(3))
             .unwrap()
@@ -695,8 +712,8 @@ fn stale_replace_changes_nothing() {
     disk.write_all(&base());
     let mut a = disk.open().unwrap();
     let mut b = disk.open().unwrap();
-    let old = a.rev(&nid(3)).unwrap().clone();
-    let mut changed = leaf_of(&b, 3);
+    let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
+    let mut changed = leaf_of(&mut b, 3);
     changed.goal = "b was here".into();
     let won = b
         .replace(replace_req(
@@ -709,7 +726,7 @@ fn stale_replace_changes_nothing() {
     let before = snapshot(&disk);
 
     // `a` still holds the old revision in memory; the write is judged against the disk.
-    let mut mine = leaf_of(&a, 3);
+    let mut mine = leaf_of(&mut a, 3);
     mine.goal = "a was here".into();
     let err = a
         .replace(replace_req(
@@ -740,8 +757,8 @@ fn replayed_op_id_writes_nothing() {
     let disk = Disk::new();
     disk.write_all(&base());
     let mut store = disk.open().unwrap();
-    let old = store.rev(&nid(3)).unwrap().clone();
-    let mut changed = leaf_of(&store, 3);
+    let old = store.read().unwrap().rev(&nid(3)).unwrap().clone();
+    let mut changed = leaf_of(&mut store, 3);
     changed.goal = "retry me".into();
     let req = replace_req(
         header(Some("edit"), Some("op-1")),
@@ -777,12 +794,12 @@ fn requests_breaking_a_rule_are_refused() {
     disk.write_all(&nodes);
     let mut store = disk.open().unwrap();
     let before = snapshot(&disk);
-    let rev3 = store.rev(&nid(3)).unwrap().clone();
-    let rev2 = store.rev(&nid(2)).unwrap().clone();
-    let rev6 = store.rev(&nid(6)).unwrap().clone();
+    let rev3 = store.read().unwrap().rev(&nid(3)).unwrap().clone();
+    let rev2 = store.read().unwrap().rev(&nid(2)).unwrap().clone();
+    let rev6 = store.read().unwrap().rev(&nid(6)).unwrap().clone();
 
-    let edit = |f: &dyn Fn(&mut Leaf)| {
-        let mut l = leaf_of(&store, 3);
+    let mut edit = |f: &dyn Fn(&mut Leaf)| {
+        let mut l = leaf_of(&mut store, 3);
         f(&mut l);
         Node::Leaf(l)
     };
@@ -801,17 +818,17 @@ fn requests_breaking_a_rule_are_refused() {
         })
     });
     let edited = edit(&|l| l.goal = "edited".into());
-    let mut as_leaf = leaf_of(&store, 3);
+    let mut as_leaf = leaf_of(&mut store, 3);
     as_leaf.id = nid(2);
     as_leaf.parent_id = nid(1);
     as_leaf.name = name("core");
     as_leaf.order = OrderKey::new("V");
-    let mut orphan = leaf_of(&store, 3);
+    let mut orphan = leaf_of(&mut store, 3);
     orphan.id = nid(6);
     orphan.name = name("orphan");
     orphan.parent_id = nid(99);
     orphan.goal = "x".into();
-    let mut missing = leaf_of(&store, 3);
+    let mut missing = leaf_of(&mut store, 3);
     missing.id = nid(42);
 
     let note = Some("why");
@@ -839,7 +856,7 @@ fn requests_breaking_a_rule_are_refused() {
             replace_req(
                 header(note, None),
                 Some(&rev3),
-                Node::Leaf(leaf_of(&store, 3)),
+                Node::Leaf(leaf_of(&mut store, 3)),
             ),
             "<request>".to_owned(),
             Rule::EmptyEdit,
@@ -907,7 +924,7 @@ fn requests_breaking_a_rule_are_refused() {
 
     // The accepted side: a state-only edit needs no note and leaves no amendment; a content edit
     // with a note writes exactly one.
-    let mut done = leaf_of(&store, 3);
+    let mut done = leaf_of(&mut store, 3);
     done.status = Status::Ongoing;
     done.steps[0].done = true;
     done.steps[0].commit_sha = Some("abc1234".into());
@@ -923,14 +940,14 @@ fn requests_breaking_a_rule_are_refused() {
         state_only.amendment.is_none(),
         "a state change is not an amendment"
     );
-    assert!(leaf_of(&store, 3).steps[0].done);
+    assert!(leaf_of(&mut store, 3).steps[0].done);
     let rev3 = state_only.result.rev;
     let content = store
         .replace(replace_req(header(note, None), Some(&rev3), edited))
         .unwrap();
     assert!(content.amendment.is_some());
-    assert_eq!(store.amendments().len(), 1);
-    assert_eq!(disk.open().unwrap().amendments().len(), 1);
+    assert_eq!(store.read().unwrap().amendments().len(), 1);
+    assert_eq!(disk.open().unwrap().read().unwrap().amendments().len(), 1);
     structure_rows();
 }
 
@@ -1028,12 +1045,18 @@ fn req<T>(note: Option<&str>, op: T) -> Request<T> {
     }
 }
 
-fn rev_of(store: &Store, n: u32) -> Rev {
-    store.rev(&nid(n)).unwrap().clone()
+fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
+    store.read().unwrap().rev(&nid(n)).unwrap().clone()
 }
 
-fn ids_of(store: &Store) -> BTreeSet<NodeId> {
-    store.campaign().nodes().map(|n| n.id().clone()).collect()
+fn ids_of(store: &mut CachedCampaign) -> BTreeSet<NodeId> {
+    store
+        .read()
+        .unwrap()
+        .campaign()
+        .nodes()
+        .map(|n| n.id().clone())
+        .collect()
 }
 
 fn create_op(node: Node, position: Option<Position>) -> CreateOp {
@@ -1041,7 +1064,7 @@ fn create_op(node: Node, position: Option<Position>) -> CreateOp {
 }
 
 fn relocate_op(
-    store: &Store,
+    store: &mut CachedCampaign,
     n: u32,
     name_to: Option<&str>,
     parent: Option<u32>,
@@ -1056,10 +1079,10 @@ fn relocate_op(
     }
 }
 
-fn delete_op(store: &Store, n: u32) -> DeleteOp {
+fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
     DeleteOp {
         id: nid(n),
-        expected_subtree_rev: store.subtree_rev(&nid(n)),
+        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
     }
 }
 
@@ -1105,7 +1128,7 @@ fn move_writes_one_file_and_keeps_ids() {
     let disk = Disk::new();
     disk.write_all(&nodes);
     let rec = Arc::new(RecordingFs::new(&disk.root));
-    let mut store = Store::open(
+    let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
         Options {
@@ -1114,7 +1137,7 @@ fn move_writes_one_file_and_keeps_ids() {
         },
     )
     .unwrap();
-    let ids = ids_of(&store);
+    let ids = ids_of(&mut store);
 
     // (what moves, the request, where it is afterwards)
     type Row = (
@@ -1138,7 +1161,7 @@ fn move_writes_one_file_and_keeps_ids() {
     ];
     for (n, new_name, parent, position, path) in rows {
         let before = snapshot(&disk);
-        let op = relocate_op(&store, n, new_name, parent, position);
+        let op = relocate_op(&mut store, n, new_name, parent, position);
         let skip = rec.effects().len();
         let done = store.move_node(req(Some("tidy"), op)).unwrap();
         let after = snapshot(&disk);
@@ -1154,17 +1177,17 @@ fn move_writes_one_file_and_keeps_ids() {
         assert_eq!(nodes_changed(&before, &after), vec![file(n)]);
         assert_eq!(new_files(&before, &after, "_amendments/"), 1);
         assert!(done.amendment.is_some());
-        assert_eq!(ids_of(&store), ids, "no id changes");
-        assert_eq!(ids_of(&disk.open().unwrap()), ids);
+        assert_eq!(ids_of(&mut store), ids, "no id changes");
+        assert_eq!(ids_of(&mut disk.open().unwrap()), ids);
         assert_eq!(
-            store.campaign().path(&nid(n)).as_deref(),
+            store.read().unwrap().campaign().path(&nid(n)).as_deref(),
             Some(path),
             "the path follows the moved node"
         );
-        assert!(store.campaign().is_validated(&nid(n)));
+        assert!(store.read().unwrap().campaign().is_validated(&nid(n)));
     }
     // What the amendment records: a rename, then a move.
-    let first = store.amendments().values().next().unwrap();
+    let first = store.read().unwrap().amendments().values().next().unwrap();
     assert_eq!(
         first
             .changes
@@ -1192,16 +1215,19 @@ fn tree_rev_changes_on_node_ops_not_comments() {
     //   for f in n_*.json; do echo "${f%.json} $(jq 'del(.schema_version)' $f | shasum -a 256 | cut -c1-16)"; done > revs
     //   (printf 'rdm-tree\n'; cat revs) | shasum -a 256 | cut -c1-16                          # 4d9d2d44c7bc77b4
     //   (printf 'rdm-subtree\n'; grep -E 'n_0000000[234]' revs) | shasum -a 256 | cut -c1-16  # cfe39e89990ef78c
-    assert_eq!(store.tree_rev().as_str(), "4d9d2d44c7bc77b4");
     assert_eq!(
-        store.subtree_rev(&nid(2)).unwrap().as_str(),
+        store.read().unwrap().tree_rev().as_str(),
+        "4d9d2d44c7bc77b4"
+    );
+    assert_eq!(
+        store.read().unwrap().subtree_rev(&nid(2)).unwrap().as_str(),
         "cfe39e89990ef78c"
     );
-    let mut seen = BTreeSet::from([store.tree_rev()]);
+    let mut seen = BTreeSet::from([store.read().unwrap().tree_rev()]);
 
-    let mut changed = leaf_of(&store, 3);
+    let mut changed = leaf_of(&mut store, 3);
     changed.goal = "edited".into();
-    type TreeOp = Box<dyn Fn(&mut Store) -> TreeRev>;
+    type TreeOp = Box<dyn Fn(&mut CachedCampaign) -> TreeRev>;
     let ops: Vec<(&str, TreeOp)> = vec![
         (
             "create",
@@ -1253,7 +1279,7 @@ fn tree_rev_changes_on_node_ops_not_comments() {
         ),
     ];
     for (row, op) in ops {
-        let before = store.tree_rev();
+        let before = store.read().unwrap().tree_rev();
         let after = op(&mut store);
         assert_ne!(after, before, "{row} changes the tree_rev");
         assert!(
@@ -1261,26 +1287,26 @@ fn tree_rev_changes_on_node_ops_not_comments() {
             "{row}: a tree_rev never comes back"
         );
         assert_eq!(
-            store.tree_rev(),
+            store.read().unwrap().tree_rev(),
             after,
             "{row}: the receipt names the tree_rev the store holds"
         );
         assert_eq!(
-            disk.open().unwrap().tree_rev(),
+            disk.open().unwrap().read().unwrap().tree_rev(),
             after,
             "{row}: a cold open agrees; the amendment is not counted"
         );
     }
     // A comment writes a file and changes no rev.
-    let before = store.tree_rev();
+    let before = store.read().unwrap().tree_rev();
     let c = CommentOp {
         node_id: nid(3),
         text: vec!["noted".into()],
     };
     let done = store.comment(req(None, c)).unwrap();
     assert_eq!(done.tree_rev, before);
-    assert_eq!(disk.open().unwrap().tree_rev(), before);
-    assert_eq!(store.comments().len(), 1);
+    assert_eq!(disk.open().unwrap().read().unwrap().tree_rev(), before);
+    assert_eq!(store.read().unwrap().comments().len(), 1);
 }
 
 #[test]
@@ -1289,7 +1315,7 @@ fn failed_batch_writes_nothing() {
     disk.write_all(&base());
     let mut store = disk.open().unwrap();
     let before = snapshot(&disk);
-    let good = |store: &Store| {
+    let good = |store: &mut CachedCampaign| {
         let mut edited = leaf_of(store, 3);
         edited.goal = "batch edit".into();
         vec![
@@ -1302,7 +1328,7 @@ fn failed_batch_writes_nothing() {
     };
 
     // The third op breaks a rule: the first two are not written.
-    let mut ops = good(&store);
+    let mut ops = good(&mut store);
     ops.push(Op::Create(create_op(leaf_node(21, "alpha", 2, "V"), None)));
     let err = store
         .batch(req(
@@ -1332,28 +1358,28 @@ fn failed_batch_writes_nothing() {
     }
     assert_eq!(snapshot(&disk), before, "a failed batch writes nothing");
     assert!(
-        store.campaign().get(&nid(20)).is_none(),
+        store.read().unwrap().campaign().get(&nid(20)).is_none(),
         "and the store holds nothing of it"
     );
 
     // A stale tree_rev is Stale and writes nothing.
-    let stale = disk.open().unwrap().tree_rev();
+    let stale = disk.open().unwrap().read().unwrap().tree_rev();
+    let rev3 = rev_of(&mut store, 3);
+    let mut l = leaf_of(&mut store, 3);
+    l.steps[0].done = false;
+    l.status = Status::Planned;
+    l.progress.notes = vec!["p".into()];
     store
-        .replace(replace_req(header(None, None), Some(&rev_of(&store, 3)), {
-            let mut l = leaf_of(&store, 3);
-            l.steps[0].done = false;
-            l.status = Status::Planned;
-            l.progress.notes = vec!["p".into()];
-            Node::Leaf(l)
-        }))
+        .replace(replace_req(header(None, None), Some(&rev3), Node::Leaf(l)))
         .unwrap();
     let before = snapshot(&disk);
+    let ops = good(&mut store);
     let err = store
         .batch(req(
             Some("b"),
             BatchOp {
                 expected_tree_rev: Some(stale),
-                ops: good(&store),
+                ops,
                 dry_run: false,
             },
         ))
@@ -1370,24 +1396,26 @@ fn failed_batch_writes_nothing() {
     assert_eq!(snapshot(&disk), before);
 
     // A dry run checks everything and writes nothing; the same batch then writes one amendment.
+    let ops = good(&mut store);
     let dry = store
         .batch(req(
             Some("b"),
             BatchOp {
                 expected_tree_rev: None,
-                ops: good(&store),
+                ops,
                 dry_run: true,
             },
         ))
         .unwrap();
     assert_eq!(dry.result.len(), 2);
     assert_eq!(snapshot(&disk), before, "a dry run writes nothing");
+    let ops = good(&mut store);
     let real = store
         .batch(req(
             Some("b"),
             BatchOp {
                 expected_tree_rev: None,
-                ops: good(&store),
+                ops,
                 dry_run: false,
             },
         ))
@@ -1399,7 +1427,7 @@ fn failed_batch_writes_nothing() {
         "one amendment for the whole batch"
     );
     assert_eq!(nodes_changed(&before, &after), vec![file(3), file(20)]);
-    let amendment = &store.amendments()[real.amendment.as_ref().unwrap()];
+    let amendment = &store.read().unwrap().amendments()[real.amendment.as_ref().unwrap()];
     assert_eq!(
         amendment
             .changes
@@ -1445,7 +1473,7 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
         .unwrap();
     let before = snapshot(&disk);
 
-    let op = delete_op(&store, 5);
+    let op = delete_op(&mut store, 5);
     let done = store.delete_subtree(req(Some("drop spare"), op)).unwrap();
     assert_eq!(
         done.result.removed,
@@ -1481,11 +1509,11 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
         "the referrer is not rewritten"
     );
     assert_eq!(
-        store.comments().len(),
+        store.read().unwrap().comments().len(),
         1,
         "a comment on a removed node stays"
     );
-    let amendment = &store.amendments()[done.amendment.as_ref().unwrap()];
+    let amendment = &store.read().unwrap().amendments()[done.amendment.as_ref().unwrap()];
     let snapshot_keys: Vec<&String> = amendment.snapshot.as_ref().unwrap().keys().collect();
     assert_eq!(
         snapshot_keys,
@@ -1508,8 +1536,8 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
         ]
     );
     // The dangling reference is now a diagnostic, and the node is gone from every read.
-    assert!(rules(&store).contains(&(file(3), Rule::DanglingReference)));
-    assert_eq!(ids_of(&store), ids_of(&disk.open().unwrap()));
+    assert!(rules(&mut store).contains(&(file(3), Rule::DanglingReference)));
+    assert_eq!(ids_of(&mut store), ids_of(&mut disk.open().unwrap()));
 }
 
 /// The published names an operation leaves, in order: the links and renames into a published
@@ -1535,7 +1563,7 @@ fn write_order_follows_the_three_rules() {
     let disk = Disk::new();
     disk.write_all(&nodes);
     let rec = Arc::new(RecordingFs::new(&disk.root));
-    let mut store = Store::open(
+    let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
         Options {
@@ -1545,12 +1573,12 @@ fn write_order_follows_the_three_rules() {
     )
     .unwrap();
     let skip = rec.effects().len();
-    let mut edited = leaf_of(&store, 4);
+    let mut edited = leaf_of(&mut store, 4);
     edited.goal = "edit".into();
     let ops = vec![
-        Op::Delete(delete_op(&store, 5)),
+        Op::Delete(delete_op(&mut store, 5)),
         Op::Replace(ReplaceOp {
-            expected_rev: Some(rev_of(&store, 4)),
+            expected_rev: Some(rev_of(&mut store, 4)),
             node: Node::Leaf(edited),
         }),
         Op::Create(create_op(dir_node(20, "made", Some(2), ""), None)),
@@ -1617,13 +1645,12 @@ fn rebalance_keeps_order_and_length() {
             .create(req(Some("grow"), create_op(node, Some(Position::First))))
             .unwrap();
         order.insert(0, nid(n));
-        let keys: Vec<String> = store
-            .campaign()
+        let campaign = store.read().unwrap().campaign();
+        let keys: Vec<String> = campaign
             .children(&nid(5))
             .iter()
             .map(|c| {
-                store
-                    .campaign()
+                campaign
                     .get(c)
                     .unwrap()
                     .order()
@@ -1640,11 +1667,13 @@ fn rebalance_keeps_order_and_length() {
         assert!(keys.windows(2).all(|w| w[0] <= w[1]));
     }
     assert_eq!(
-        store.campaign().children(&nid(5)),
+        store.read().unwrap().campaign().children(&nid(5)),
         order.as_slice(),
         "the listed order is the insert order"
     );
     let rebalances = store
+        .read()
+        .unwrap()
         .amendments()
         .values()
         .filter(|a| {
@@ -1658,7 +1687,12 @@ fn rebalance_keeps_order_and_length() {
         "a rebalance recorded its `set` of `/order`"
     );
     assert_eq!(
-        disk.open().unwrap().campaign().children(&nid(5)),
+        disk.open()
+            .unwrap()
+            .read()
+            .unwrap()
+            .campaign()
+            .children(&nid(5)),
         order.as_slice()
     );
 }
@@ -1732,9 +1766,9 @@ fn scan(disk: &Disk) -> BTreeSet<(String, String, String)> {
     out
 }
 
-fn held(store: &Store) -> BTreeSet<(String, String, String)> {
+fn held(store: &mut CachedCampaign) -> BTreeSet<(String, String, String)> {
     let mut out = BTreeSet::new();
-    for (target, referrers) in store.reverse().entries() {
+    for (target, referrers) in store.read().unwrap().reverse().entries() {
         for r in referrers {
             let from = match &r.from {
                 RecordRef::Node(n) => format!("node:{n}"),
@@ -1779,12 +1813,12 @@ mod reverse {
         Node::Directory(d)
     }
 
-    fn apply(store: &mut Store, step: (u8, u8, u8), next: &mut u32) {
+    fn apply(store: &mut CachedCampaign, step: (u8, u8, u8), next: &mut u32) {
         let ids: Vec<NodeId> = ids_of(store).into_iter().collect();
         let pick = |x: u8| ids[x as usize % ids.len()].clone();
         let number = |id: &NodeId| (1..400).find(|n| nid(*n) == *id).unwrap_or(0);
         let (kind, a, b) = step;
-        let of = |id: &NodeId| store.campaign().get(id).cloned();
+        let mut of = |id: &NodeId| store.read().unwrap().campaign().get(id).cloned();
         let leaves: Vec<NodeId> = ids
             .iter()
             .filter(|i| matches!(of(i), Some(Node::Leaf(_))))
@@ -1795,8 +1829,8 @@ mod reverse {
             .filter(|i| matches!(of(i), Some(Node::Directory(_))))
             .cloned()
             .collect();
-        let replace = |store: &mut Store, node: Node| {
-            let rev = store.rev(node.id()).cloned();
+        let replace = |store: &mut CachedCampaign, node: Node| {
+            let rev = store.read().unwrap().rev(node.id()).cloned();
             let _ = store.replace(Request {
                 header: header(Some("r"), None),
                 op: ReplaceOp {
@@ -1834,7 +1868,7 @@ mod reverse {
                 let parent = dirs[b as usize % dirs.len()].clone();
                 let op = RelocateOp {
                     id: id.clone(),
-                    expected_rev: store.rev(&id).cloned(),
+                    expected_rev: store.read().unwrap().rev(&id).cloned(),
                     parent_id: Some(parent),
                     name: None,
                     position: None,
@@ -1845,7 +1879,7 @@ mod reverse {
                 let id = pick(a);
                 let op = DeleteOp {
                     id: id.clone(),
-                    expected_subtree_rev: store.subtree_rev(&id),
+                    expected_subtree_rev: store.read().unwrap().subtree_rev(&id),
                 };
                 let _ = store.delete_subtree(req(Some("d"), op));
             }
@@ -1893,7 +1927,7 @@ mod reverse {
                 let id = pick(a);
                 let op = RelocateOp {
                     id: id.clone(),
-                    expected_rev: store.rev(&id).cloned(),
+                    expected_rev: store.read().unwrap().rev(&id).cloned(),
                     parent_id: None,
                     name: Some(name(&format!("r{next}"))),
                     position: None,
@@ -1926,13 +1960,13 @@ mod reverse {
             let disk = Disk::new();
             disk.write_all(&nodes);
             let mut store = disk.open().unwrap();
-            prop_assert_eq!(held(&store), scan(&disk));
+            prop_assert_eq!(held(&mut store), scan(&disk));
             let mut next = 100;
             for step in steps {
                 apply(&mut store, step, &mut next);
                 let oracle = scan(&disk);
-                prop_assert_eq!(&held(&store), &oracle, "the index kept up with the write");
-                prop_assert_eq!(&held(&disk.open().unwrap()), &oracle, "a cold build agrees");
+                prop_assert_eq!(&held(&mut store), &oracle, "the index kept up with the write");
+                prop_assert_eq!(&held(&mut disk.open().unwrap()), &oracle, "a cold build agrees");
             }
         }
     }
@@ -1940,7 +1974,7 @@ mod reverse {
 
 type Row<'a> = (
     &'a str,
-    Box<dyn Fn(&mut Store) -> Result<(), StoreError> + 'a>,
+    Box<dyn Fn(&mut CachedCampaign) -> Result<(), StoreError> + 'a>,
     String,
     Rule,
 );
@@ -2195,7 +2229,7 @@ fn structure_rows() {
         assert_eq!(snapshot(&disk), before, "{row}: nothing was written");
     }
     // Stale and missing.
-    let wrong = store.subtree_rev(&nid(2));
+    let wrong = store.read().unwrap().subtree_rev(&nid(2));
     match store.delete_subtree(req(
         note,
         DeleteOp {
@@ -2206,7 +2240,10 @@ fn structure_rows() {
         Err(StoreError::Stale {
             current: Current::Subtree { id, rev },
         }) => {
-            assert_eq!((id, Some(rev)), (nid(5), store.subtree_rev(&nid(5))));
+            assert_eq!(
+                (id, Some(rev)),
+                (nid(5), store.read().unwrap().subtree_rev(&nid(5)))
+            );
         }
         other => panic!("a stale subtree: want Stale, got {other:?}"),
     }
@@ -2243,16 +2280,22 @@ fn structure_rows() {
             },
         ))
         .unwrap();
-    let op = relocate_op(&store, 6, None, Some(2), None);
+    let op = relocate_op(&mut store, 6, None, Some(2), None);
     store.move_node(req(note, op)).unwrap();
-    assert!(store.campaign().is_validated(&nid(6)));
-    assert!(!store.campaign().is_validated(&nid(8)), "still colliding");
-    let op = relocate_op(&store, 8, Some("twin2"), None, None);
+    assert!(store.read().unwrap().campaign().is_validated(&nid(6)));
+    assert!(
+        !store.read().unwrap().campaign().is_validated(&nid(8)),
+        "still colliding"
+    );
+    let op = relocate_op(&mut store, 8, Some("twin2"), None, None);
     store.move_node(req(note, op)).unwrap();
-    assert!(store.campaign().is_validated(&nid(7)) && store.campaign().is_validated(&nid(8)));
-    let op = delete_op(&store, 9);
+    assert!(
+        store.read().unwrap().campaign().is_validated(&nid(7))
+            && store.read().unwrap().campaign().is_validated(&nid(8))
+    );
+    let op = delete_op(&mut store, 9);
     store.delete_subtree(req(note, op)).unwrap();
-    let damage: Vec<Rule> = rules(&store)
+    let damage: Vec<Rule> = rules(&mut store)
         .into_iter()
         .map(|(_, r)| r)
         .filter(|r| {
@@ -2267,14 +2310,14 @@ fn structure_rows() {
         })
         .collect();
     assert_eq!(damage, vec![], "every defect was repaired");
-    assert_eq!(rules(&disk.open().unwrap()), rules(&store));
+    assert_eq!(rules(&mut disk.open().unwrap()), rules(&mut store));
 
     // The root. A healthy campaign cannot lose its root name, a renamed campaign repairs it.
     let healthy = Disk::new();
     healthy.write_all(&base());
     let mut store = healthy.open().unwrap();
     let before = snapshot(&healthy);
-    let op = relocate_op(&store, 1, Some("other"), None, None);
+    let op = relocate_op(&mut store, 1, Some("other"), None, None);
     match store.move_node(req(note, op)) {
         Err(StoreError::Invalid {
             rule: Rule::RootCount | Rule::RootNameMismatch,
@@ -2290,9 +2333,9 @@ fn structure_rows() {
     nodes.push(dir_node(8, "other", None, ""));
     stray.write_all(&nodes);
     let mut store = stray.open().unwrap();
-    assert_eq!(store.campaign().root(), Some(&nid(1)));
+    assert_eq!(store.read().unwrap().campaign().root(), Some(&nid(1)));
     let before = snapshot(&stray);
-    let op = relocate_op(&store, 1, Some("zzz"), None, None);
+    let op = relocate_op(&mut store, 1, Some("zzz"), None, None);
     match store.move_node(req(note, op)) {
         Err(StoreError::Invalid {
             rule: Rule::RootCount | Rule::RootNameMismatch,
@@ -2304,40 +2347,41 @@ fn structure_rows() {
     }
     assert_eq!(snapshot(&stray), before);
     assert_eq!(
-        validated(&store).len(),
+        validated(&mut store).len(),
         5,
         "the sound root is still the root"
     );
-    let mut renamed = Store::open(&healthy.root, &name("other"), Options::default()).unwrap();
-    assert_eq!(renamed.campaign().root(), None);
-    let op = relocate_op(&renamed, 1, Some("other"), None, None);
+    let mut renamed =
+        CachedCampaign::open(&healthy.root, &name("other"), Options::default()).unwrap();
+    assert_eq!(renamed.read().unwrap().campaign().root(), None);
+    let op = relocate_op(&mut renamed, 1, Some("other"), None, None);
     renamed.move_node(req(note, op)).unwrap();
     assert_eq!(
-        renamed.campaign().root(),
+        renamed.read().unwrap().campaign().root(),
         Some(&nid(1)),
         "the rename repaired the root"
     );
-    assert_eq!(validated(&renamed).len(), 5);
+    assert_eq!(validated(&mut renamed).len(), 5);
 
     // Two roots after a merge of two inits: every node is unvalidated; renaming or deleting one
     // of them is the repair.
     for (row, rename) in [("rename", true), ("delete", false)] {
         let disk = merged(vec![Edit::new(dir_node(8, "demo", None, ""))], vec![]);
         let mut store = disk.open().unwrap();
-        assert_eq!(store.campaign().root(), None);
+        assert_eq!(store.read().unwrap().campaign().root(), None);
         if rename {
-            let op = relocate_op(&store, 8, Some("second"), None, None);
+            let op = relocate_op(&mut store, 8, Some("second"), None, None);
             store.move_node(req(note, op)).unwrap();
         } else {
-            let op = delete_op(&store, 8);
+            let op = delete_op(&mut store, 8);
             store.delete_subtree(req(note, op)).unwrap();
         }
         assert_eq!(
-            store.campaign().root(),
+            store.read().unwrap().campaign().root(),
             Some(&nid(1)),
             "{row}: one root is left"
         );
-        assert_eq!(validated(&store).len(), 5, "{row}");
+        assert_eq!(validated(&mut store).len(), 5, "{row}");
     }
 
     // A cycle that a merge of two branches leaves: core under spare on one branch, spare under
@@ -2347,8 +2391,8 @@ fn structure_rows() {
         vec![Edit::new(dir_node(5, "spare", Some(2), "k"))],
     );
     let mut store = disk.open().unwrap();
-    assert!(rules(&store).iter().any(|(_, r)| *r == Rule::Cycle));
-    let op = delete_op(&store, 5);
+    assert!(rules(&mut store).iter().any(|(_, r)| *r == Rule::Cycle));
+    let op = delete_op(&mut store, 5);
     let done = store.delete_subtree(req(note, op)).unwrap();
     assert_eq!(done.result.removed, vec![nid(5), nid(2), nid(3), nid(4)]);
     for n in [2, 3, 4, 5] {
@@ -2356,21 +2400,21 @@ fn structure_rows() {
     }
     assert!(disk.path(&file(1)).exists());
     assert_eq!(
-        ids_of(&store),
+        ids_of(&mut store),
         BTreeSet::from([nid(1)]),
         "and from the store"
     );
-    let amendment = &store.amendments()[done.amendment.as_ref().unwrap()];
+    let amendment = &store.read().unwrap().amendments()[done.amendment.as_ref().unwrap()];
     let listed: BTreeSet<NodeId> = amendment
         .changes
         .iter()
         .map(|c| c.node_id.clone())
         .collect();
     assert_eq!(listed, BTreeSet::from([nid(2), nid(3), nid(4), nid(5)]));
-    let reopened = disk.open().unwrap();
-    assert_eq!(ids_of(&reopened), ids_of(&store));
+    let mut reopened = disk.open().unwrap();
+    assert_eq!(ids_of(&mut reopened), ids_of(&mut store));
     assert!(
-        rules(&reopened).iter().all(|(_, r)| *r != Rule::Cycle),
+        rules(&mut reopened).iter().all(|(_, r)| *r != Rule::Cycle),
         "no cycle is reported"
     );
 }
@@ -2404,18 +2448,18 @@ fn marks_name_criteria() {
     disk.write_all(&nodes);
     let mut store = disk.open().unwrap();
     assert_eq!(
-        rules(&store),
+        rules(&mut store),
         vec![],
         "a mark that names a criterion of its file is sound"
     );
 
     // A request that leaves a new mark naming a missing criterion is refused.
-    let mut bad = leaf_of(&store, 3);
+    let mut bad = leaf_of(&mut store, 3);
     let mut stray = bad.marks[0].clone();
     stray.criterion_id = cid(999);
     bad.marks.push(stray);
     let before = snapshot(&disk);
-    let rev = rev_of(&store, 3);
+    let rev = rev_of(&mut store, 3);
     match store.replace(replace_req(header(None, None), Some(&rev), Node::Leaf(bad))) {
         Err(StoreError::Invalid {
             file: f,
@@ -2427,7 +2471,7 @@ fn marks_name_criteria() {
     assert_eq!(snapshot(&disk), before);
 
     // A removal through the store leaves the amendment that explains the mark; no diagnostic.
-    let mut fewer = leaf_of(&store, 3);
+    let mut fewer = leaf_of(&mut store, 3);
     fewer.success_gates.retain(|c| c.id != cid(39));
     store
         .replace(replace_req(
@@ -2436,8 +2480,8 @@ fn marks_name_criteria() {
             Node::Leaf(fewer),
         ))
         .unwrap();
-    assert_eq!(rules(&store), vec![]);
-    assert_eq!(rules(&disk.open().unwrap()), vec![]);
+    assert_eq!(rules(&mut store), vec![]);
+    assert_eq!(rules(&mut disk.open().unwrap()), vec![]);
 
     // The same removal by an editor, with no amendment, is reported on open.
     let hand = Disk::new();
@@ -2449,7 +2493,7 @@ fn marks_name_criteria() {
             .retain(|c| c["id"] != json!(cid(39).to_string()));
     });
     assert_eq!(
-        rules(&hand.open().unwrap()),
+        rules(&mut hand.open().unwrap()),
         vec![(file(3), Rule::MarkTarget)]
     );
 }
@@ -2483,7 +2527,7 @@ fn snapshot_dir(root: &Path) -> BTreeMap<String, Vec<u8>> {
 type Snap = BTreeMap<String, Vec<u8>>;
 type Recorded = (tempfile::TempDir, Snap, Snap, Vec<Effect>);
 
-fn recorded(run: impl FnOnce(&mut Store)) -> Recorded {
+fn recorded(run: impl FnOnce(&mut CachedCampaign)) -> Recorded {
     let mut nodes = base();
     nodes.push(leaf_node(6, "child", 5, "V"));
     let disk = Disk::new();
@@ -2491,7 +2535,7 @@ fn recorded(run: impl FnOnce(&mut Store)) -> Recorded {
     let pre_dir = tempfile::tempdir().unwrap();
     copy_tree(&disk.root, &pre_dir.path().join("demo"));
     let rec = Arc::new(RecordingFs::new(&disk.root));
-    let mut store = Store::open(
+    let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
         Options {
@@ -2556,7 +2600,7 @@ fn recover_redoes_an_interrupted_operation() {
     std::fs::create_dir_all(work.join(".rdm/tmp")).unwrap();
     std::fs::write(work.join(".rdm/tmp/stray"), b"half").unwrap();
     assert_eq!(snapshot_dir(&work), pre, "a reader sees the state before");
-    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     let report = store.recover().unwrap();
     assert_eq!(
         (
@@ -2573,7 +2617,7 @@ fn recover_redoes_an_interrupted_operation() {
     );
     assert!(scratch_is_empty(&work));
     assert_eq!(
-        store.campaign().get(&nid(5)),
+        store.read().unwrap().campaign().get(&nid(5)),
         None,
         "and the store holds the result"
     );
@@ -2611,7 +2655,7 @@ fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
     std::fs::write(&dest, encode(&Node::Leaf(other))).unwrap();
     let theirs = std::fs::read(&dest).unwrap();
 
-    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     for attempt in ["first", "second"] {
         match store.recover() {
             Err(StoreError::Invalid { file: f, rule, .. }) => {
@@ -2664,14 +2708,14 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
         })
         .unwrap();
     assert!(!c.replayed);
-    let op = relocate_op(&store, 3, Some("moved"), None, None);
+    let op = relocate_op(&mut store, 3, Some("moved"), None, None);
     store
         .move_node(Request {
             header: header(note, Some("op-move")),
             op,
         })
         .unwrap();
-    let op = delete_op(&store, 5);
+    let op = delete_op(&mut store, 5);
     store
         .delete_subtree(Request {
             header: header(note, Some("op-delete")),
@@ -2698,7 +2742,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
             op: create_op(leaf_node(21, "other", 2, "V"), None),
         }),
     );
-    let op = relocate_op(&store, 4, Some("beta2"), None, None);
+    let op = relocate_op(&mut store, 4, Some("beta2"), None, None);
     reused(
         "relocate of another node",
         store.move_node(Request {
@@ -2707,7 +2751,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
         }),
     );
     // A delete of a node the amendment did not remove: it would have returned no node.
-    let op = delete_op(&store, 4);
+    let op = delete_op(&mut store, 4);
     reused(
         "delete of another node",
         store.delete_subtree(Request {
@@ -2757,7 +2801,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
     );
     assert_eq!(snapshot(&disk), before, "no refusal wrote anything");
     // The node of the first create is gone: its rev cannot be rebuilt.
-    let op = delete_op(&store, 20);
+    let op = delete_op(&mut store, 20);
     store.delete_subtree(req(note, op)).unwrap();
     let before_gone = snapshot(&disk);
     reused(
@@ -2897,7 +2941,7 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
     let work = at_prefix(pre_dir.path(), &log, intent_at + 1, work_dir.path());
-    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     assert!(store.last_recovered().is_none(), "no recovery has run yet");
     // An unrelated write: a comment on a node the interrupted operation does not touch.
     store
@@ -2918,7 +2962,7 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
     let mut now = snapshot_dir(&work);
     now.retain(|k, _| !k.starts_with("_comments/"));
     assert_eq!(now, post, "the interrupted operation is complete");
-    assert_eq!(store.campaign().get(&nid(5)), None);
+    assert_eq!(store.read().unwrap().campaign().get(&nid(5)), None);
     // The next write recovers nothing, and the store says so.
     store
         .comment(req(
@@ -2956,9 +3000,9 @@ fn an_intent_newer_than_this_binary_refuses_recovery_and_every_write() {
         other => panic!("want NewerFormat, got {other:?}"),
     };
     want(store.recover().unwrap_err());
-    let mut edited = leaf_of(&store, 3);
+    let mut edited = leaf_of(&mut store, 3);
     edited.goal = "edit".into();
-    let rev = rev_of(&store, 3);
+    let rev = rev_of(&mut store, 3);
     want(
         store
             .replace(replace_req(
@@ -2980,7 +3024,7 @@ fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
     let disk = Disk::new();
     disk.write_all(&base());
     let held = WriterLock::acquire(&disk.root, Duration::from_secs(1), b"\xff garbage").unwrap();
-    let mut store = Store::open(
+    let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
         Options {
@@ -2990,9 +3034,9 @@ fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
     )
     .unwrap();
     let before = snapshot(&disk);
-    let mut edited = leaf_of(&store, 3);
+    let mut edited = leaf_of(&mut store, 3);
     edited.goal = "edit".into();
-    let rev = rev_of(&store, 3);
+    let rev = rev_of(&mut store, 3);
     let err = store
         .replace(replace_req(
             header(Some("e"), None),
@@ -3026,9 +3070,9 @@ fn diagnostics_are_sorted_across_their_producers() {
             "met": true
         }]);
     });
-    let store = disk.open().unwrap();
+    let mut store = disk.open().unwrap();
     assert_eq!(
-        rules(&store),
+        rules(&mut store),
         vec![
             (file(3), Rule::UnknownKey),
             (file(4), Rule::MarkTarget),
@@ -3077,9 +3121,9 @@ fn every_write_stamps_the_current_format_version() {
     stamped_ok(&disk, &before, "create");
 
     let before = snapshot(&disk);
-    let mut edited = leaf_of(&store, 3);
+    let mut edited = leaf_of(&mut store, 3);
     edited.goal = "edit".into();
-    let rev = rev_of(&store, 3);
+    let rev = rev_of(&mut store, 3);
     store
         .replace(replace_req(
             header(Some("e"), None),
@@ -3090,7 +3134,7 @@ fn every_write_stamps_the_current_format_version() {
     stamped_ok(&disk, &before, "replace");
 
     let before = snapshot(&disk);
-    let op = relocate_op(&store, 4, Some("beta2"), None, None);
+    let op = relocate_op(&mut store, 4, Some("beta2"), None, None);
     store.move_node(req(Some("m"), op)).unwrap();
     stamped_ok(&disk, &before, "relocate");
 
@@ -3107,12 +3151,12 @@ fn every_write_stamps_the_current_format_version() {
     stamped_ok(&disk, &before, "comment");
 
     let before = snapshot(&disk);
-    let op = delete_op(&store, 5);
+    let op = delete_op(&mut store, 5);
     store.delete_subtree(req(Some("d"), op)).unwrap();
     stamped_ok(&disk, &before, "delete");
 
     let before = snapshot(&disk);
-    let mut edited = leaf_of(&store, 4);
+    let mut edited = leaf_of(&mut store, 4);
     edited.goal = "again".into();
     let ops = vec![
         Op::Create(create_op(
@@ -3120,7 +3164,7 @@ fn every_write_stamps_the_current_format_version() {
             None,
         )),
         Op::Replace(ReplaceOp {
-            expected_rev: Some(rev_of(&store, 4)),
+            expected_rev: Some(rev_of(&mut store, 4)),
             node: with_stamp(&Node::Leaf(edited), stale),
         }),
     ];
