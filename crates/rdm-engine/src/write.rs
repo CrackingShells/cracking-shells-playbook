@@ -676,15 +676,19 @@ impl Store {
                 puts.push(n.clone());
             }
         }
-        // Deepest first, as `op_delete` listed them: a cycle has no root to start from, so the
-        // removed ids themselves are the list.
+        // Deepest first along the `parent_id` chain as it is on disk before this write: a node
+        // that a batch moved between two deleted subtrees still hangs from its old parent on
+        // disk (it is deleted, so it is not rewritten), and the old parent must outlive it. A
+        // cycle has no root to start from, so the removed ids themselves are the list. The sort
+        // is stable: nodes of one depth keep the order `op_delete` listed them in.
         let mut seen = BTreeSet::new();
-        let deletes: Vec<NodeId> = w
+        let mut deletes: Vec<NodeId> = w
             .removed
             .iter()
             .filter(|id| before.get(id).is_some() && seen.insert((*id).clone()))
             .cloned()
             .collect();
+        deletes.sort_by_key(|id| std::cmp::Reverse(chain_depth(before, id)));
         let ts = rfc3339(self.now());
         let comments: Vec<Comment> = w
             .comments
@@ -1464,6 +1468,22 @@ fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     );
     let rest: Vec<Component> = parts.collect();
     under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// How many ancestors a node has along its `parent_id` chain in `campaign`, counting each node
+/// once: a chain that ends at a missing parent stops there, and one that comes back on itself (a
+/// cycle) stops at the repeat. A child is always deeper than its parent unless a cycle is in
+/// between, which has no order to give.
+fn chain_depth(campaign: &Campaign, id: &NodeId) -> usize {
+    let mut seen = BTreeSet::from([id]);
+    let mut at = campaign.get(id).and_then(Node::parent_id);
+    while let Some(parent) = at {
+        if !seen.insert(parent) {
+            break;
+        }
+        at = campaign.get(parent).and_then(Node::parent_id);
+    }
+    seen.len() - 1
 }
 
 /// An op that is a batch of one returns exactly one result of its own kind.
