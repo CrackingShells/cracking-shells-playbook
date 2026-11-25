@@ -16,7 +16,7 @@ use rdm_schema::stored::{Amendment, Comment, Node};
 use rdm_schema::{FORMAT_VERSION, Version, is_newer, parse_version, version_string};
 use serde_json::Value;
 
-use crate::codec::Record;
+use crate::codec::{current_amendment, current_comment, current_node};
 
 /// The root of the chain: every behaviour is `NotInVersion`.
 pub struct Nothing;
@@ -59,10 +59,7 @@ pub trait FormatLayer: Sync {
 }
 
 fn not_in_version<T>(behaviour: &'static str) -> Behaviour<T> {
-    Err(NotInVersion {
-        behaviour,
-        version: (0, 0, 0),
-    })
+    Err(NotInVersion { behaviour })
 }
 
 impl FormatLayer for Nothing {
@@ -104,7 +101,7 @@ impl FormatLayer for V0_1 {
     }
 
     fn decode_node(&self, file: &str, raw: Value) -> Behaviour<Result<Decoded<Node>, StoreError>> {
-        Ok(Node::decode_current(file, raw))
+        Ok(current_node(file, raw))
     }
 
     fn decode_comment(
@@ -112,7 +109,7 @@ impl FormatLayer for V0_1 {
         file: &str,
         raw: Value,
     ) -> Behaviour<Result<Decoded<Comment>, StoreError>> {
-        Ok(Comment::decode_current(file, raw))
+        Ok(current_comment(file, raw))
     }
 
     fn decode_amendment(
@@ -120,7 +117,7 @@ impl FormatLayer for V0_1 {
         file: &str,
         raw: Value,
     ) -> Behaviour<Result<Decoded<Amendment>, StoreError>> {
-        Ok(Amendment::decode_current(file, raw))
+        Ok(current_amendment(file, raw))
     }
 }
 
@@ -157,13 +154,16 @@ pub fn read_version(file: &str, raw: &Value) -> Result<Version, StoreError> {
     }
 }
 
-/// The layer that reads the parsed file, chosen from its stamp alone.
+/// The version a parsed file carries and the layer that reads it, chosen from its stamp alone.
 ///
 /// # Errors
 /// `Invalid` with the rule `schema_version` (see [`read_version`]); `NewerFormat` when the file
 /// is newer than [`FORMAT_VERSION`], a higher patch included, with nothing else of it looked at;
 /// `Invalid` with the rule `unknown_format` when it is older than the first layer.
-pub fn layer_of(file: &str, raw: &Value) -> Result<&'static dyn FormatLayer, StoreError> {
+pub fn layer_of(
+    file: &str,
+    raw: &Value,
+) -> Result<(Version, &'static dyn FormatLayer), StoreError> {
     let found = read_version(file, raw)?;
     if is_newer(found, FORMAT_VERSION) {
         return Err(StoreError::NewerFormat {
@@ -172,9 +172,11 @@ pub fn layer_of(file: &str, raw: &Value) -> Result<&'static dyn FormatLayer, Sto
             file: file.to_owned(),
         });
     }
-    layer_for(found).ok_or_else(|| StoreError::Invalid {
-        file: file.to_owned(),
-        rule: Rule::UnknownFormat,
-        detail: format!("no layer reads format {}", version_string(found)),
-    })
+    layer_for(found)
+        .map(|layer| (found, layer))
+        .ok_or_else(|| StoreError::Invalid {
+            file: file.to_owned(),
+            rule: Rule::UnknownFormat,
+            detail: format!("no layer reads format {}", version_string(found)),
+        })
 }

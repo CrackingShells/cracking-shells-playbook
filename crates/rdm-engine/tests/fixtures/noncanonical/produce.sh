@@ -26,6 +26,18 @@ jq -a . $C/comment_escapes.json > unicode_escapes_comment.json
 jq '.status_reason = null | .steps[0].commit_sha = null | .steps[0].done_at = null | .references[1].target = null | .history[0].override = null' \
   $C/leaf.json > explicit_nulls_leaf.json
 
+# An editor that writes a UTF-8 byte order mark: Windows PowerShell 5 (`Out-File -Encoding utf8`,
+# `Set-Content -Encoding UTF8`) and older Notepad. EF BB BF in front of the canonical bytes.
+printf '\357\273\277' | cat - $C/leaf.json > bom_leaf.json
+
+# A formatter that sorts keys (`jq -S`) over a leaf that carries unknown keys at two levels: the
+# unknown keys come out sorted too. The expectation is the canonical leaf with the same unknown
+# keys added in that sorted order (an unknown object value is sorted by jq as well: a before b).
+jq '.x_zeta = {"b": 1, "a": 2} | .x_alpha = [1, 2] | .steps[0].x_note = "n"' $C/leaf.json \
+  | jq -S . > sorted_unknown_keys_leaf.json
+jq '.x_alpha = [1, 2] | .x_zeta = {"a": 2, "b": 1} | .steps[0].x_note = "n"' $C/leaf.json \
+  > sorted_unknown_keys_leaf.expected.json
+
 # Two branches edit one node file and git merges them: one retypes the title by hand (no space
 # after the colon), the other appends a progress note. `base` is the canonical leaf; each side
 # is a change to its own lines, so the merge is clean and keeps the hand-typed spacing.

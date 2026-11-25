@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use rdm_engine::codec::{Record, decode, encode};
+use rdm_engine::codec::{Stored, decode, encode};
 use rdm_schema::Version;
 use rdm_schema::campaign::Diagnostic;
 use rdm_schema::error::{Rule, StoreError};
@@ -125,80 +125,139 @@ fn canonical_files_round_trip_byte_for_byte() {
 
 /// Each row is a file a person, an editor or git writes, made by the command in
 /// `fixtures/noncanonical/produce.sh`, and the canonical text it must re-encode to.
-const NONCANONICAL: &[(&str, &str, &str, &str, Kind)] = &[
-    (
+struct Row {
+    what: &'static str,
+    file: &'static str,
+    expected_dir: &'static str,
+    expected_file: &'static str,
+    kind: Kind,
+    /// The JSON pointers of the unknown keys the file holds, each reported once.
+    unknown: &'static [&'static str],
+}
+
+const fn row(
+    what: &'static str,
+    file: &'static str,
+    expected_dir: &'static str,
+    expected_file: &'static str,
+    kind: Kind,
+) -> Row {
+    Row {
+        what,
+        file,
+        expected_dir,
+        expected_file,
+        kind,
+        unknown: &[],
+    }
+}
+
+const NONCANONICAL: &[Row] = &[
+    row(
         "reordered keys (`jq -S`)",
         "reordered_keys_leaf.json",
         "canonical",
         "leaf.json",
         Kind::Node,
     ),
-    (
+    row(
         "four-space indent (`jq --indent 4`)",
         "four_space_indent_directory.json",
         "canonical",
         "directory.json",
         Kind::Node,
     ),
-    (
+    row(
         "CRLF (`unix2dos`)",
         "crlf_comment.json",
         "canonical",
         "comment.json",
         Kind::Comment,
     ),
-    (
+    row(
         "no trailing newline",
         "no_trailing_newline_leaf_paused.json",
         "canonical",
         "leaf_paused.json",
         Kind::Node,
     ),
-    (
+    row(
         "`\\u` escapes (`jq -a`)",
         "unicode_escapes_comment.json",
         "canonical",
         "comment_escapes.json",
         Kind::Comment,
     ),
-    (
+    row(
         "explicit nulls on absent optionals",
         "explicit_nulls_leaf.json",
         "canonical",
         "leaf.json",
         Kind::Node,
     ),
-    (
+    row(
         "`git merge-file` on two edits",
         "merge_leaf.json",
         "noncanonical",
         "merge_leaf.expected.json",
         Kind::Node,
     ),
+    row(
+        "UTF-8 byte order mark (PowerShell 5, old Notepad)",
+        "bom_leaf.json",
+        "canonical",
+        "leaf.json",
+        Kind::Node,
+    ),
+    Row {
+        what: "`jq -S` over a leaf with unknown keys at two levels",
+        file: "sorted_unknown_keys_leaf.json",
+        expected_dir: "noncanonical",
+        expected_file: "sorted_unknown_keys_leaf.expected.json",
+        kind: Kind::Node,
+        unknown: &["/x_alpha", "/x_zeta", "/steps/0/x_note"],
+    },
 ];
 
 #[test]
 fn noncanonical_valid_input_reads_and_reencodes_canonically() {
-    for (row, file, expected_dir, expected_file, kind) in NONCANONICAL {
+    for r in NONCANONICAL {
+        let (what, file) = (r.what, r.file);
         let input = read("noncanonical", file);
-        let want = read(expected_dir, expected_file);
+        let want = read(r.expected_dir, r.expected_file);
         assert_ne!(
             input, want,
-            "{row}: the fixture is canonical already, so it proves nothing"
+            "{what}: the fixture is canonical already, so it proves nothing"
         );
         let (got, diagnostics) =
-            reencode(*kind, file, input.as_bytes()).unwrap_or_else(|e| panic!("{row}: {e}"));
+            reencode(r.kind, file, input.as_bytes()).unwrap_or_else(|e| panic!("{what}: {e}"));
         same_bytes(
-            &format!("{row}: {file} does not re-encode to {expected_file}"),
+            &format!("{what}: {file} does not re-encode to {}", r.expected_file),
             &got,
             &want,
         );
-        assert_eq!(diagnostics, vec![], "{row}: nothing in the file is unknown");
+        let mut got: Vec<_> = diagnostics
+            .iter()
+            .map(|d| (d.file.as_str(), d.rule, d.detail.as_str()))
+            .collect();
+        got.sort_unstable();
+        let mut want: Vec<_> = r
+            .unknown
+            .iter()
+            .map(|p| (file, Rule::UnknownKey, *p))
+            .collect();
+        want.sort_unstable();
+        assert_eq!(
+            got, want,
+            "{what}: the unknown keys the file holds, once each"
+        );
+        // An expectation outside `canonical/` is itself canonical.
+        if r.expected_dir != "canonical" {
+            let text = read(r.expected_dir, r.expected_file);
+            let (again, _) = reencode(r.kind, r.expected_file, text.as_bytes()).unwrap();
+            same_bytes(&format!("{} is canonical", r.expected_file), &again, &text);
+        }
     }
-    // The expectation that is not in `canonical/` is itself canonical.
-    let want = read("noncanonical", "merge_leaf.expected.json");
-    let (again, _) = reencode(Kind::Node, "merge_leaf.expected.json", want.as_bytes()).unwrap();
-    same_bytes("merge_leaf.expected.json is canonical", &again, &want);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -773,7 +832,7 @@ fn amendment() -> impl Strategy<Value = Amendment> {
 
 /// The value reads back equal from its text, and the text of the read value is the same text:
 /// the second half also holds the order of keys, which `==` on a JSON map ignores.
-fn identity<T: Record + PartialEq + Debug>(value: &T) -> Result<(), TestCaseError> {
+fn identity<T: Stored + PartialEq + Debug>(value: &T) -> Result<(), TestCaseError> {
     let text = encode(value);
     prop_assert!(
         text.ends_with("}\n") && !text.ends_with("\n\n"),
@@ -1080,6 +1139,46 @@ fn refused_files_name_their_rule_and_file() {
                 "stamp before id".to_owned(),
             )
         },
+        // A key written twice, at any level: the later one must not win silently.
+        {
+            let t = read("canonical", "leaf.json").replace(
+                "  \"title\": \"M1 Core foundation\",\n",
+                "  \"title\": \"M1 Core foundation\",\n  \"title\": \"again\",\n",
+            );
+            (
+                Kind::Node,
+                "leaf.json",
+                t,
+                Rule::Parse,
+                "duplicate key at /title".to_owned(),
+            )
+        },
+        {
+            let t = read("canonical", "comment.json").replace(
+                "  \"op_id\": \"op2\"\n",
+                "  \"op_id\": \"op2\",\n  \"x_a\": 1,\n  \"x_a\": 2\n",
+            );
+            (
+                Kind::Comment,
+                "comment.json",
+                t,
+                Rule::Parse,
+                "duplicate key at /x_a".to_owned(),
+            )
+        },
+        {
+            let t = read("canonical", "leaf.json").replace(
+                "        \"breaking\": false,\n",
+                "        \"breaking\": false,\n        \"breaking\": true,\n",
+            );
+            (
+                Kind::Node,
+                "leaf.json",
+                t,
+                Rule::Parse,
+                "duplicate key at /steps/0/commit/breaking".to_owned(),
+            )
+        },
         // A name that is not a path segment.
         bad(
             Kind::Node,
@@ -1102,8 +1201,18 @@ fn refused_files_name_their_rule_and_file() {
             Err(StoreError::Invalid {
                 file: named,
                 rule: got,
-                ..
+                detail,
             }) => {
+                assert!(
+                    !detail.starts_with(MALFORMED_ID_TAG) && !detail.starts_with(NAME_FORMAT_TAG),
+                    "{fixture} at {what}: the detail carries a tag: {detail}"
+                );
+                if what.starts_with("duplicate key at ") {
+                    assert!(
+                        detail.contains(&what),
+                        "{fixture}: the detail does not name {what}: {detail}"
+                    );
+                }
                 assert_eq!(
                     (named.as_str(), got),
                     (file.as_str(), rule),

@@ -15,21 +15,19 @@ use rdm_schema::stored::{
     Actor, Amendment, Change, Check, Comment, Commit, Criterion, Directory, Extra, History, Leaf,
     Mark, Node, Progress, Reference, Step,
 };
+use rdm_schema::version_string;
+use std::fmt;
+
 use serde::Serialize;
-use serde::de::DeserializeOwned;
+use serde::de::{
+    DeserializeOwned, DeserializeSeed, Deserializer, Error as _, MapAccess, SeqAccess, Visitor,
+};
 use serde_json::Value;
 
 use crate::version::{FormatLayer, layer_of};
 
 /// A stored record the codec reads and writes: a node, a comment or an amendment.
-pub trait Record: Serialize + Sized {
-    /// Reads the record from a JSON value of the current format, as the current layer does.
-    /// A layer of the chain calls it; a caller reads through [`decode`].
-    ///
-    /// # Errors
-    /// `Invalid` naming `file` and the rule the value breaks.
-    fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError>;
-
+pub trait Stored: Serialize + Sized {
     /// Asks `layer` to read the record: the behaviour of that layer for this kind of file.
     fn decode_by(
         layer: &dyn FormatLayer,
@@ -38,7 +36,7 @@ pub trait Record: Serialize + Sized {
     ) -> Behaviour<Result<Decoded<Self>, StoreError>>;
 }
 
-impl Record for Node {
+impl Stored for Node {
     fn decode_by(
         layer: &dyn FormatLayer,
         file: &str,
@@ -46,24 +44,9 @@ impl Record for Node {
     ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
         layer.decode_node(file, raw)
     }
-
-    fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
-        match raw.get("kind").and_then(Value::as_str) {
-            Some("leaf") => {
-                typed::<Leaf>(file, raw).map(|l| scanned(file, l, scan_leaf, Self::Leaf))
-            }
-            Some("campaign" | "directory") => typed::<Directory>(file, raw)
-                .map(|d| scanned(file, d, scan_directory, Self::Directory)),
-            _ => Err(invalid(
-                file,
-                Rule::Kind,
-                "`kind` is not `leaf`, `directory` or `campaign`",
-            )),
-        }
-    }
 }
 
-impl Record for Comment {
+impl Stored for Comment {
     fn decode_by(
         layer: &dyn FormatLayer,
         file: &str,
@@ -71,13 +54,9 @@ impl Record for Comment {
     ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
         layer.decode_comment(file, raw)
     }
-
-    fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
-        typed::<Self>(file, raw).map(|c| scanned(file, c, scan_comment, |c| c))
-    }
 }
 
-impl Record for Amendment {
+impl Stored for Amendment {
     fn decode_by(
         layer: &dyn FormatLayer,
         file: &str,
@@ -85,15 +64,36 @@ impl Record for Amendment {
     ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
         layer.decode_amendment(file, raw)
     }
+}
 
-    fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
-        typed::<Self>(file, raw).map(|a| scanned(file, a, scan_amendment, |a| a))
+// The readers of the current format. Crate-private: only a layer of the chain calls them, so no
+// caller can read a file without the version being checked first.
+
+pub(crate) fn current_node(file: &str, raw: Value) -> Result<Decoded<Node>, StoreError> {
+    match raw.get("kind").and_then(Value::as_str) {
+        Some("leaf") => typed::<Leaf>(file, raw).map(|l| scanned(file, l, scan_leaf, Node::Leaf)),
+        Some("campaign" | "directory") => {
+            typed::<Directory>(file, raw).map(|d| scanned(file, d, scan_directory, Node::Directory))
+        }
+        _ => Err(invalid(
+            file,
+            Rule::Kind,
+            "`kind` is not `leaf`, `directory` or `campaign`",
+        )),
     }
+}
+
+pub(crate) fn current_comment(file: &str, raw: Value) -> Result<Decoded<Comment>, StoreError> {
+    typed::<Comment>(file, raw).map(|c| scanned(file, c, scan_comment, |c| c))
+}
+
+pub(crate) fn current_amendment(file: &str, raw: Value) -> Result<Decoded<Amendment>, StoreError> {
+    typed::<Amendment>(file, raw).map(|a| scanned(file, a, scan_amendment, |a| a))
 }
 
 /// The canonical text of a record: ends with exactly one newline.
 #[must_use]
-pub fn encode<T: Record>(value: &T) -> String {
+pub fn encode<T: Stored>(value: &T) -> String {
     // Cannot fail: every key of a stored type is a string and every value is JSON.
     let mut text = serde_json::to_string_pretty(value).expect("a stored record serialises to JSON");
     text.push('\n');
@@ -111,23 +111,111 @@ pub fn encode<T: Record>(value: &T) -> String {
 /// `schema_version` or `unknown_format` for the stamp, `kind`, `malformed_id` or `name_format`
 /// when that field is the fault, `not_in_version` when the layer lacks the behaviour;
 /// `NewerFormat` when the file is newer than the binary.
-pub fn decode<T: Record>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreError> {
-    let raw: Value =
-        serde_json::from_slice(bytes).map_err(|e| invalid(file, Rule::Parse, &e.to_string()))?;
+pub fn decode<T: Stored>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreError> {
+    // Editors that write a UTF-8 byte order mark (PowerShell 5, older Notepad): one is skipped.
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    let raw = parse(bytes).map_err(|e| invalid(file, Rule::Parse, &e.to_string()))?;
     if !raw.is_object() {
         return Err(invalid(file, Rule::Parse, "the file is not a JSON object"));
     }
-    let layer = layer_of(file, &raw)?;
+    let (found, layer) = layer_of(file, &raw)?;
     match T::decode_by(layer, file, raw) {
         Ok(decoded) => decoded,
-        Err(NotInVersion { behaviour, .. }) => {
-            let (major, minor) = layer.line();
-            Err(invalid(
-                file,
-                Rule::NotInVersion,
-                &format!("`{behaviour}` is not in format {major}.{minor}"),
-            ))
+        Err(NotInVersion { behaviour }) => Err(invalid(
+            file,
+            Rule::NotInVersion,
+            &format!("`{behaviour}` is not in format {}", version_string(found)),
+        )),
+    }
+}
+
+/// Parses the text once into a value, refusing a key written twice in one object, at any level:
+/// the later value would win silently, even for a known field, and a clean git merge can leave
+/// two. The error names the key's JSON pointer.
+fn parse(bytes: &[u8]) -> Result<Value, serde_json::Error> {
+    let mut de = serde_json::Deserializer::from_slice(bytes);
+    let value = Unique {
+        pointer: String::new(),
+    }
+    .deserialize(&mut de)?;
+    de.end()?;
+    Ok(value)
+}
+
+/// Builds a [`Value`] like `Value::deserialize` does, and fails on a duplicate key.
+struct Unique {
+    pointer: String,
+}
+
+impl<'de> DeserializeSeed<'de> for Unique {
+    type Value = Value;
+
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Value, D::Error> {
+        d.deserialize_any(self)
+    }
+}
+
+impl<'de> Visitor<'de> for Unique {
+    type Value = Value;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("any valid JSON value")
+    }
+
+    fn visit_unit<E>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<Value, E> {
+        Ok(Value::Bool(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Value, E> {
+        Ok(Value::from(v))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Value, E> {
+        Ok(Value::from(v))
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<Value, E> {
+        Ok(Value::from(v))
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Value, E> {
+        Ok(Value::String(v.to_owned()))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Value, E> {
+        Ok(Value::String(v))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element_seed(Unique {
+            pointer: format!("{}/{}", self.pointer, items.len()),
+        })? {
+            items.push(item);
         }
+        Ok(Value::Array(items))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+        let mut object = serde_json::Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            // RFC 6901: `~` is `~0` and `/` is `~1`, in that order.
+            let pointer = format!(
+                "{}/{}",
+                self.pointer,
+                key.replace('~', "~0").replace('/', "~1")
+            );
+            if object.contains_key(&key) {
+                return Err(A::Error::custom(format!("duplicate key at {pointer}")));
+            }
+            let value = map.next_value_seed(Unique { pointer })?;
+            object.insert(key, value);
+        }
+        Ok(Value::Object(object))
     }
 }
 
@@ -144,14 +232,14 @@ fn invalid(file: &str, rule: Rule, detail: &str) -> StoreError {
 fn typed<T: DeserializeOwned>(file: &str, raw: Value) -> Result<T, StoreError> {
     serde_json::from_value(raw).map_err(|e| {
         let message = e.to_string();
-        let rule = if message.starts_with(MALFORMED_ID_TAG) {
-            Rule::MalformedId
-        } else if message.starts_with(NAME_FORMAT_TAG) {
-            Rule::NameFormat
+        let (rule, detail) = if let Some(rest) = message.strip_prefix(MALFORMED_ID_TAG) {
+            (Rule::MalformedId, rest)
+        } else if let Some(rest) = message.strip_prefix(NAME_FORMAT_TAG) {
+            (Rule::NameFormat, rest)
         } else {
-            Rule::Parse
+            (Rule::Parse, message.as_str())
         };
-        invalid(file, rule, &message)
+        invalid(file, rule, detail)
     })
 }
 
