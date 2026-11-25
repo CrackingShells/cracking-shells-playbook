@@ -13,3 +13,7 @@ __pycache__/
 # macOS
 .DS_Store
 /target
+
+# rdm store scratch and property-test regressions
+.rdm/
+proptest-regressions/
