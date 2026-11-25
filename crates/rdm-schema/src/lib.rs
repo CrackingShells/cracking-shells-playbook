@@ -3,7 +3,10 @@
 //! This crate holds types only. It has no I/O and no store. Canonical serialisation
 //! and the store belong to M1.
 
+pub mod campaign;
+pub mod error;
 pub mod ids;
+pub mod moves;
 pub mod read;
 pub mod stored;
 

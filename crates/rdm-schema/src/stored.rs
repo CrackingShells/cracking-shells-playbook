@@ -126,6 +126,67 @@ pub struct Leaf {
     pub extra: Extra,
 }
 
+/// A node of the campaign: a directory (or the campaign root) or a leaf.
+///
+/// Not a serde-tagged enum: `Directory.kind` already holds `campaign` or `directory`, so the
+/// deserialiser reads `kind` and picks the type.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Node {
+    Directory(Directory),
+    Leaf(Leaf),
+}
+
+impl Node {
+    /// The node's identity, immutable (I7).
+    #[must_use]
+    pub fn id(&self) -> &NodeId {
+        match self {
+            Self::Directory(d) => &d.id,
+            Self::Leaf(l) => &l.id,
+        }
+    }
+
+    /// The node's path segment; for the campaign root, the campaign slug.
+    #[must_use]
+    pub fn name(&self) -> &Name {
+        match self {
+            Self::Directory(d) => &d.name,
+            Self::Leaf(l) => &l.name,
+        }
+    }
+
+    /// The directory the node is in; `None` for the campaign root.
+    #[must_use]
+    pub fn parent_id(&self) -> Option<&NodeId> {
+        match self {
+            Self::Directory(d) => d.parent_id.as_ref(),
+            Self::Leaf(l) => Some(&l.parent_id),
+        }
+    }
+
+    /// The node's position among its siblings; `None` for the campaign root.
+    #[must_use]
+    pub fn order(&self) -> Option<&OrderKey> {
+        match self {
+            Self::Directory(d) => d.order.as_ref(),
+            Self::Leaf(l) => Some(&l.order),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Node {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let raw = Value::deserialize(d)?;
+        match raw.get("kind").and_then(Value::as_str) {
+            Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(D::Error::custom),
+            Some("campaign" | "directory") => serde_json::from_value(raw).map(Self::Directory).map_err(D::Error::custom),
+            _ => Err(D::Error::custom("`kind` is not `leaf`, `directory` or `campaign`")),
+        }
+    }
+}
+
 /// `Leaf.progress`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Progress {
