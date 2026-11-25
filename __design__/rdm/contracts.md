@@ -339,3 +339,184 @@ assertion in the same guard: a `snapshot` key that is not a `NodeId` is refused.
 **Reference.target is derived, not stored, when `node_id` is set** (`stored-schema.md`,
 `Reference`). A record holding both is `Invalid` (rule `reference_target_derived`). The derived
 value is the path of the node (`Campaign model`), relative to the campaign root.
+
+## Operations
+
+One request type and one result type per store primitive. These are the signatures M2 composes
+and M4 wraps as tool inputs (tool envelopes, names and output budgets are M4's). The types live in
+`rdm-schema` and derive `Serialize`, `Deserialize` and `JsonSchema`, so M4 builds its input schemas
+from them. The trait that implements them lives in `rdm-engine`, because `rdm-schema` holds no I/O.
+
+**The split of work.** The store is persistence, structural validity, the revision check (I4),
+the amendment record (I5), atomicity and replay. It does **not** decide whether a status move is
+legal, whether a finished node needs a reason, or what an operation means for the ready set: M2
+computes the new node values and calls the store. A caller that states a rule the store does not
+check (the FSM) cannot get it from the store; a rule the store checks (a shape rule, a stale
+revision) cannot be skipped by a caller.
+
+```rust
+pub struct Rev(String);        // one node: hash of its canonical encoding. Format: store.md §Revisions
+pub struct SubtreeRev(String); // a node and every descendant, same hash over their (id, rev) pairs
+pub struct TreeRev(String);    // the campaign. Consumers compare for equality, never parse
+
+pub struct Request<T> { pub header: Header, pub op: T }
+pub struct Header {
+    pub op_id: Option<OpId>,         // the retry key; see `op_id replay`
+    pub actor: Actor,                // stamped on the amendment or comment the operation writes
+    pub note: Option<EditNote>,      // the amendment's words; see `The amendment rule`
+}
+pub struct EditNote { pub description: String, pub source: Option<String>, pub correction: bool }
+
+pub enum Position { First, Last, Before(NodeId), After(NodeId) }   // a sibling, resolved to an OrderKey by the store
+
+pub struct CreateOp   { pub node: Node, pub position: Option<Position> }
+pub struct ReplaceOp  { pub expected_rev: Option<Rev>, pub node: Node }
+pub struct RelocateOp { pub id: NodeId, pub expected_rev: Option<Rev>,
+                        pub parent_id: Option<NodeId>, pub name: Option<Name>, pub position: Option<Position> }
+pub struct DeleteOp   { pub id: NodeId, pub expected_subtree_rev: Option<SubtreeRev> }
+pub struct CommentOp  { pub node_id: NodeId, pub text: Lines }
+pub struct BatchOp    { pub expected_tree_rev: Option<TreeRev>, pub ops: Vec<Op>, pub dry_run: bool }
+pub enum Op { Create(CreateOp), Replace(ReplaceOp), Relocate(RelocateOp), Delete(DeleteOp), Comment(CommentOp) }
+
+pub struct Written   { pub id: NodeId, pub rev: Rev }
+pub struct Deleted   { pub removed: Vec<NodeId>, pub referrers: Vec<Referrer> }   // pre-order; `Report` links only
+pub struct Commented { pub id: CommentId }
+pub enum OpResult { Written(Written), Deleted(Deleted), Commented(Commented) }
+pub struct Receipt<R> {
+    pub result: R,
+    pub amendment: Option<AmendmentId>,   // the one amendment the operation wrote, if any
+    pub tree_rev: TreeRev,                // after the write
+    pub replayed: bool,                   // true: nothing was written, the first outcome is returned
+}
+```
+
+**`expected_rev` is `Option` only for a batch.** Outside a batch it is required (a `None` is
+`Invalid`, rule `expected_rev_required`). Inside a batch, `None` is allowed solely for a node the
+same batch created earlier, which has no revision yet. The same holds for `expected_subtree_rev`.
+
+| Primitive | Request, result | What it does | Refused (`Invalid` rule) |
+|:--|:--|:--|:--|
+| create | `Request<CreateOp>` → `Receipt<Written>` | writes a new node file. The ids in `node` (its own, its criteria and its steps) are minted **by the caller** from the engine's minter (store.md §Ids), so a batch can name a node it creates, an importer can build a campaign, and a replay returns the same ids. `node.order` is **not read**: the store sets it from `position`. `parent_id` is `None` only for the campaign root, which is created into an empty campaign (`position` is then `None`) | `duplicate_id`, `parent_missing`, `parent_not_directory`, `name_collision`, `root_count`, any shape or stored-schema rule, `position_not_sibling`, `note_required` |
+| replace | `Request<ReplaceOp>` → `Receipt<Written>` | replaces one node file with `node` if its current `rev` equals `expected_rev` (I4). It cannot change `id`, `name`, `parent_id` or `order`. `kind` may change (promoting a leaf to a directory keeps the id, I7) | `id_changed`, `use_relocate`, `note_required`, `empty_edit`, `leaf_has_children`, any shape or stored-schema rule |
+| relocate | `Request<RelocateOp>` → `Receipt<Written>` | **rename or move**: one primitive that changes `name`, `parent_id` and `order` of one node. A field left `None` is kept; a new `parent_id` with no `position` means `Last`. At least one of the three is given. It writes **one node file** and one amendment, and renames no directory (I7). Children follow because they point at the id | `nothing_to_do`, `parent_missing`, `parent_not_directory`, `cycle` (the new parent is in the node's own subtree), `name_collision`, `position_not_sibling`, `root_delete_or_move`, `note_required` |
+| delete | `Request<DeleteOp>` → `Receipt<Deleted>` | removes the node and every descendant if the `SubtreeRev` matches. Writes one amendment whose `snapshot` holds the removed nodes. Reports the `Report`-class referrers outside the subtree (`Links`); rewrites nothing outside it | `root_delete_or_move`, `note_required` |
+| comment | `Request<CommentOp>` → `Receipt<Commented>` | writes one comment file. It has no `expected_rev`: it is append-only and never conflicts, and a comment never changes a `rev` (`stored-schema.md`) | `NotFound` for a missing node; `note_forbidden` when `header.note` is set |
+| batch | `Request<BatchOp>` → `Receipt<Vec<OpResult>>` | applies `ops` in order as **one transaction**. Each op is checked against the state the earlier ops produced, then the whole result is checked once (shape rules, I3). All or nothing: a failed op leaves nothing written. `dry_run` runs every check and writes nothing, for M2's impact report. The batch writes **one amendment** carrying every change of its ops | the first failing op, as `InBatch { index, source }`; `expected_tree_rev` stale is `Stale` |
+
+A single-op request behaves as a batch of one; the write algorithm for each primitive is the row of
+the same name in store.md §Write order. A batch has no nested batch.
+
+### The amendment rule (I5)
+
+The store enforces the half of I5 that is mechanical: no content change goes unrecorded. M2 decides
+when a state edit also carries a note.
+
+Let the **diff** of a replace be the changes between the old and the new node, computed by one pure
+function in `rdm-schema` (`diff(&Node, &Node) -> Vec<Change>`), not by the caller. It reports
+`criteria` and `steps` by id (`add`, `remove`, `move`, `set` with `item_id`), every other array as
+one `set` of the whole array, and every other field as a `set` at its pointer. It leaves out
+`/schema_version`, `/history`, `/marks`, `/status` and `/status_reason`: those are state moves,
+recorded by the history and mark entries themselves. A diff entry is **state** when its pointer is
+under `/progress`, or is a criterion's `/met`, or a step's `/done`, `/commit_sha` or `/done_at`
+(`statuses.md`, `Finished nodes`); every other entry is **content**.
+
+| `header.note` | Diff | Result |
+|:--|:--|:--|
+| absent | no content entry | applied, **no amendment** (a status move, a mark, a step recorded done) |
+| absent | a content entry | `Invalid`, rule `note_required` |
+| present | at least one entry | applied, **one amendment**: `description`, `source`, `correction` from the note, `actor` and `op_id` from the header, `changes` = the whole diff (state entries included: a correction of a finished node's progress is recorded) |
+| present | none | `Invalid`, rule `empty_edit` (no amendment with nothing in it) |
+
+Create, relocate and delete are structure edits: the note is required, and their `changes` are
+`add`, `move` or `rename`, and `remove` as `stored-schema.md` (`Change`) defines. A comment forbids a
+note. A note's `description` is non-blank and, when `correction` is true, is the reason.
+
+### `op_id` replay
+
+**The store owns it, not M2.** A retried write must be checked and applied inside one critical
+section: the check "has this `op_id` been applied" and the write are one step under the writer lock
+(store.md §Lock), and only the store holds the lock and the records. M2 sits above the lock and
+could only check and then write, which two processes retrying the same `op_id` race through.
+
+How it works, with no state beyond the records:
+
+- Every write that is not rev-guarded leaves a record that carries the `op_id`: an amendment
+  (create, relocate, delete, a noted replace) or a comment. A status move carries it in the
+  `History.op_id` that M2 sets; a directory pause or cancel writes one entry per leaf with the
+  same `op_id`, which is how the store recognises the whole batch (it was atomic).
+- Under the lock, before applying, the store looks the `op_id` up in an **op index** (built on load
+  with the reverse index, kept in step by write-through: store.md §Cache). If any record carries it,
+  the store writes nothing and returns `Receipt { replayed: true, .. }` with the result rebuilt from
+  those records (created ids from the amendment's `add` changes, `removed` from its `remove`
+  changes, the comment id) and the *current* `tree_rev`.
+- A write that carries no `op_id` is never replayed.
+
+**Limits, stated.** (1) An edit that writes no `op_id`-bearing record (a progress edit, a mark, a
+step recorded done) is not replayed, but it is rev-guarded: a retry after success meets a changed
+`rev` and returns `Stale`, and the caller re-reads. (2) The store holds no fingerprint of the
+request, so it cannot detect the same `op_id` reused for a *different* request. An `op_id` is unique
+per logical operation, by the caller's contract. (3) Replay lasts as long as the records do.
+Choosing the records as the ledger over a separate store of operations keeps one source of truth
+and adds no file to any write order; the price is limit (1), which `expected_rev` already covers.
+
+M2 keeps what only it can: choosing the `op_id` of a composite, setting it on every history entry
+the composite writes, and finding the leaves of a directory `uncancel` through it.
+
+## Errors
+
+One error type for every store operation and load. M4 maps its variants to tool errors, the CLI to
+exit codes; nothing maps a message string.
+
+```rust
+#[non_exhaustive]
+pub enum StoreError {
+    Stale { current: Current },
+    Locked { holder: Option<LockHolder> },
+    NewerFormat { found: Version, supported: Version, file: String },
+    Invalid { file: String, rule: Rule, detail: String },
+    NotFound { target: RecordRef },
+    Io { file: String, message: String },
+    InBatch { index: usize, source: Box<StoreError> },
+}
+pub enum Current {                                   // what the presented revision should have been
+    Node    { id: NodeId, rev: Option<Rev> },        // None: the node no longer exists
+    Subtree { id: NodeId, rev: Option<SubtreeRev> },
+    Tree    { tree_rev: TreeRev },
+}
+pub struct LockHolder { pub pid: u32, pub host: String, pub since: Ts }   // the record of store.md §Lock; advisory
+impl StoreError {
+    pub fn root(&self) -> &StoreError;               // unwraps `InBatch`
+    pub fn code(&self) -> &'static str;              // of the root: STALE, LOCKED, NEWER_FORMAT, INVALID, NOT_FOUND, IO
+}
+```
+
+| Variant | Raised when | Writes happened | Consumer's move |
+|:--|:--|:--|:--|
+| `Stale { current }` | a presented `expected_rev`, `expected_subtree_rev` or `expected_tree_rev` is not the current one (I4). `current` holds the one that should have been presented | none | re-read, reapply the intent |
+| `Locked { holder }` | the writer lock was not taken within the wait of store.md §Lock. `holder` is the advisory record, `None` if it is absent or unreadable | none | retry later |
+| `NewerFormat { found, supported, file }` | a file's `schema_version` is not readable by this binary (`Version chain`). Raised before anything else of the file is parsed, by a load or a write that must read it | none | upgrade; M7 may do it for the user |
+| `Invalid { file, rule, detail }` | a file or a request breaks a rule. `file` is the path relative to the campaign root (`nodes/<id>.json`), or `<request>` when the fault is in the request. `rule` is the code below | none | fix the input, or repair the file by hand |
+| `NotFound { target }` | a node a request names does not exist (an unknown `node_id` of a comment, an unknown `id` to replace, relocate or delete) | none | re-read |
+| `Io { file, message }` | the operating system refused a read or a write | maybe a recoverable prefix (store.md §Intent and recovery) | retry or report |
+| `InBatch { index, source }` | one op of a batch failed. `source` is any of the above | none: a batch is atomic | as `source` |
+
+`Rule` is a closed enum **per document version**, `#[non_exhaustive]`, with a stable snake-case code.
+M2 may add codes without changing existing ones. A warning (`dangling_reference`,
+`references_empty`) is a diagnostic of `validate`, not a `StoreError`.
+
+| Rule code | Statement | Defined in |
+|:--|:--|:--|
+| `parse` | the file is not JSON, or not an object of the expected type | codec |
+| `schema_version` | `schema_version` is missing, not a string, or not `N.N.N` | `Version chain` |
+| `unknown_format` | no layer reads this version though it is not newer (older than the first layer) | `Version chain` |
+| `kind` | `kind` is not `leaf`, `directory` or `campaign` | `Node fields` |
+| `malformed_id` | an id field does not parse as its type | `Id types` |
+| `root_shape`, `name_format` | see `Node fields` | `Node fields` |
+| `file_id_mismatch`, `duplicate_id`, `root_count`, `parent_missing`, `parent_not_directory`, `cycle`, `name_collision` | see `Campaign model` | `Campaign model` |
+| `dangling_id`, `reference_target_derived` | see `Links` | `Links` |
+| `goal_line`, `criteria_required`, `steps_range`, `status_steps`, `status_reason`, `step_state`, `mark_target`, `correction_reason`, `sub_item_id_unique` | the rules of `stored-schema.md` (`Directory`, `Leaf`, `Step`, `Mark`, `History`), one code each, in the order they are listed there | `stored-schema.md` |
+| `expected_rev_required`, `note_required`, `note_forbidden`, `empty_edit`, `id_changed`, `use_relocate`, `leaf_has_children`, `nothing_to_do`, `position_not_sibling`, `root_delete_or_move` | request rules | `Operations` |
+
+**Stale, replay and the lock.** `Locked` is the only error a caller retries unchanged. `Stale` is
+never retried unchanged: the intent is reapplied on the fresh state. A replayed write returns
+`Ok`, never `Stale`.
