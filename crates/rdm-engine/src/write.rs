@@ -304,7 +304,7 @@ impl Store {
             return Ok(receipt);
         }
         // 3.2 The files the operations touch are read from the disk, never served from the cache.
-        self.read_touched(ops)?;
+        let mut read = self.read_touched(ops)?;
         // The revision of the whole campaign, when presented.
         if let Some(expected) = expected_tree_rev {
             let current = self.tree_rev();
@@ -314,24 +314,45 @@ impl Store {
                 });
             }
         }
-        let mut w = Working {
-            campaign: self.state.campaign.clone(),
-            disk_revs: self.state.revs.clone(),
-            created: Vec::new(),
-            changes: Vec::new(),
-            comments: Vec::new(),
-            results: Vec::new(),
-            structural: false,
-            snapshot: serde_json::Map::new(),
-            removed: Vec::new(),
+        let (mut w, plan) = loop {
+            let mut w = Working {
+                campaign: self.state.campaign.clone(),
+                disk_revs: self.state.revs.clone(),
+                created: Vec::new(),
+                changes: Vec::new(),
+                comments: Vec::new(),
+                results: Vec::new(),
+                structural: false,
+                snapshot: serde_json::Map::new(),
+                removed: Vec::new(),
+            };
+            for (i, op) in ops.iter().enumerate() {
+                self.apply_op(&mut w, header, op, in_batch)
+                    .map_err(|e| wrap(i, e))?;
+            }
+            self.check_whole(&w, header).map_err(|e| wrap(0, e))?;
+            // 4. Every after-image, the amendment's ULID.
+            let plan = self.plan(&w, header);
+            // A file the plan rewrites that was not read from the disk yet (a sibling a rebalance
+            // renumbers) is read now; if it differs from its entry the request is computed again.
+            let extra: BTreeSet<NodeId> = plan
+                .puts
+                .iter()
+                .map(|n| n.id().clone())
+                .filter(|id| !read.contains(id))
+                .collect();
+            if extra.is_empty() {
+                break (w, plan);
+            }
+            self.entries
+                .reread_nodes(&*self.options.fs, &self.root, &extra)?;
+            read.extend(extra);
+            if !self.entries.is_stale() {
+                break (w, plan);
+            }
+            let slug = self.state.campaign.slug().clone();
+            self.state = self.entries.build(&slug)?;
         };
-        for (i, op) in ops.iter().enumerate() {
-            self.apply_op(&mut w, header, op, in_batch)
-                .map_err(|e| wrap(i, e))?;
-        }
-        self.check_whole(&w, header).map_err(|e| wrap(0, e))?;
-        // 4. Every after-image, the amendment's ULID.
-        let plan = self.plan(&w, header);
         let mut minted = plan.comments.iter().map(|c| c.id.clone());
         for r in &mut w.results {
             if let OpResult::Commented(c) = r
@@ -373,16 +394,13 @@ impl Store {
         })
     }
 
-    /// The nodes a request reads or rewrites: the ones it names, their parents and siblings
-    /// (a position or a rebalance rewrites them), and a deleted node's subtree.
+    /// The nodes a request reads or rewrites: the ones it names, their parents, and a deleted
+    /// node's subtree. The siblings a rebalance renumbers are found by the plan and read then.
     fn touched(&self, ops: &[Op]) -> BTreeSet<NodeId> {
         let campaign = &self.state.campaign;
         let mut out = BTreeSet::new();
         let family = |out: &mut BTreeSet<NodeId>, parent: Option<&NodeId>| {
-            if let Some(p) = parent {
-                out.insert(p.clone());
-                out.extend(campaign.children(p).iter().cloned());
-            }
+            out.extend(parent.cloned());
         };
         for op in ops {
             match op {
@@ -412,9 +430,9 @@ impl Store {
     }
 
     /// Reads the files of [`Store::touched`] from the disk and rebuilds the views if any differs
-    /// from its entry. Run twice, because what a stale entry said about a subtree or a family
-    /// can name files the first pass did not read.
-    fn read_touched(&mut self, ops: &[Op]) -> Result<(), StoreError> {
+    /// from its entry. Run twice, because what a stale entry said about a subtree can name files the
+    /// first pass did not read. Returns the ids read.
+    fn read_touched(&mut self, ops: &[Op]) -> Result<BTreeSet<NodeId>, StoreError> {
         let mut read = BTreeSet::new();
         for _ in 0..2 {
             let wanted: BTreeSet<NodeId> = self.touched(ops).difference(&read).cloned().collect();
@@ -429,7 +447,7 @@ impl Store {
                 self.state = self.entries.build(&slug)?;
             }
         }
-        Ok(())
+        Ok(read)
     }
 
     /// 3.1: the first outcome of a known `op_id`, with nothing written. The result is rebuilt from
