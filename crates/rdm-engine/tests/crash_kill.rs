@@ -6,9 +6,14 @@
 //! against the records.
 //!
 //! Knobs: `RDM_CRASH_ITERS` is the number of kill rounds (default 25, a few seconds; the CI soak
-//! sets thousands), `RDM_CRASH_SEED` seeds the kill schedule and the workers' choices (default 1, one that
-//! catches a lock released after the revision check on every run tried),
+//! sets thousands), `RDM_CRASH_SEED` seeds the kill schedule and the workers' choices (default 1),
 //! `RDM_CRASH_WORKERS` is the worker count (default 3).
+//!
+//! What a short run catches: a revision check made against a read taken before the lock is red on
+//! every default run (a lost update). A lock released after the check but before the write
+//! collides only when two writers interleave there, which a default run hits in about one run of
+//! three; the soak is what makes that case reliable. No seed is tuned to it, because any change to
+//! the code moves the interleavings.
 
 mod common;
 
