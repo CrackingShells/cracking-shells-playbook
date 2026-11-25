@@ -10,6 +10,12 @@ Where this document departs from a default of the M0b plan, a one-line note says
 (Eliott or the coordinator, 2026-11-16). Two recorded objections stand, with the default kept.
 Fields new against R01 are marked **new**.
 
+**Revision, 2026-11-25 (A2, Eliott's rulings).** The layout is flat and id-addressed, a node holds
+its own `name`, `parent_id` and `order`, and the Rust types in [contracts.md](contracts.md) are the
+contract this document describes. Checks and references lose their ids (`Stable identity`), and the
+id types, the id string format and the order key are named in contracts.md and
+[store.md](store.md). Edited sections carry a "Revised 2026-11-25" note.
+
 Notation:
 
 | Type | Meaning |
@@ -25,23 +31,24 @@ Notation:
 
 ```
 __roadmap__/<campaign>/
-  _dir.json                   campaign root              (Directory, kind: campaign)
+  nodes/<id>.json             one file per node          (Directory or Leaf)
   _amendments/<ulid>.json     one file per amendment     (Amendment)
-  <leaf>.json                 leaf node                  (Leaf)
-  <dir>/_dir.json             directory node             (Directory, kind: directory)
-  <dir>/<leaf>.json
-  _comments/<ulid>.json       one file per comment      (Comment)
-  .rdm/                       untracked scratch: lock, journal/, staging/
+  _comments/<ulid>.json       one file per comment       (Comment)
+  .rdm/                       untracked: lock, intent/, cache/ (store.md §Layout)
 ```
+
+Revised 2026-11-25: the files no longer mirror the tree. A node is `nodes/<id>.json`, whatever its
+kind, and its place in the tree is data inside it (`name`, `parent_id`, `order`). The campaign root
+is the node whose `kind` is `campaign`. A rename or a move writes one file and renames no directory.
 
 | Rule | Detail |
 |:--|:--|
-| Names are paths | A node's name is its path segment, `^[a-z][a-z0-9_-]*$`. It is not stored in the file |
-| Identity | Every node and every addressable sub-item has an immutable `id`. The id format and its minting belong to M1. The schema types it as `string`. Sub-items: `Stable identity` |
+| Names are paths | A node's `name` is its path segment, `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. It is stored in the node file (revised 2026-11-25: it used to be the file's own name). The path is derived from the `parent_id` chain and never stored. The campaign root has no name |
+| Identity | Every node, criterion and step has an immutable `id`, typed `NodeId`, `CriterionId` and `StepId` in [contracts.md](contracts.md) §Id types. The string format and the minting are [store.md](store.md)'s §Ids. Checks and references have none: `Stable identity` |
 | Version stamp | Every file carries `schema_version` (see `Format version`) |
 | Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12. Keys keep their order, so the crate enables `serde_json`'s `preserve_order`. Numbers outside the `i64`, `u64` and `f64` range are not preserved exactly, because `arbitrary_precision` is not enabled. `Envelope` (read model) has no `extra` of its own: it is flattened into each view, whose `extra` keeps the unknown keys |
 | Canonical order | The order of the rows in each field table is the canonical field order. Two-space indent, LF, trailing newline. M1 owns the serialiser |
-| Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number, the display id of an amendment, a leaf's commit count when the engine recorded the steps |
+| Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number, the display id of an amendment, a leaf's commit count when the engine recorded the steps, a node's children, depth and path, and a `Reference.target` when `Reference.node_id` is set. No stored field holds a value that can be derived from an id |
 
 ## Stable identity
 
@@ -55,16 +62,20 @@ reorder, move) leaves existing references valid.
 | Sub-item | Id field | Pointed at by |
 |:--|:--|:--|
 | Criterion (`preconditions[]`, `success_gates[]`) | `Criterion.id` | `Mark.criterion_id`, `Change.item_id` |
-| Reference | `Reference.id` | `Change.item_id` |
 | Step | `Step.id` | `Change.item_id` (an edit or a correction of the step) |
-| Check | `Check.id` | `Change.item_id` |
 
-- **Minting.** An id is minted when the sub-item is created, by the engine, or by the importer at import. It has the format of node ids (M1 fixes it), is unique within its node file, and is immutable.
+Revised 2026-11-25. The rule for an id is "it is pointed at from outside, and its natural key can
+change" ([contracts.md](contracts.md) §Id inventory). A check and a reference are pointed at by no
+record, so they have no id. Their edits are recorded at the array level: a `set` change on the
+owner's `/checks` or `/references`, with the whole old and new array. A reference that names a
+node points *out* through `node_id`; nothing points in.
+
+- **Minting.** An id is minted when the sub-item is created, by the engine, or by the importer at import, with the format and the minter of [store.md](store.md) §Ids. It is unique within its node file, and is immutable.
 - **Never reused, never derived.** An id is not computed from position, text or a counter, and the id of a deleted sub-item is never given to another. A delete keeps the item in its amendment's `snapshot`, so a record that still names the id resolves there.
 - **Order is separate.** The order of a sub-item is the order of its array, and a reorder changes that order only. Nothing stored holds an order as an identity. A step's `number` is derived from the array for display, and is never a reference.
 - **No records point by position.** A record that names a sub-item carries its id: `Mark` uses `criterion_id`, and `Change` uses `item_id` with a `field` pointer relative to that item. A node is named by `node_id`, never by its path.
 - **Append-only logs** (`history`, `marks`, comments, amendments) are never reordered or edited, and their entries are not pointed at by position. The one reading of order, "the last cancel entry", reads the end of an append-only log.
-- **Not addressable.** `Commit` and `Progress` are single objects reached through their step or leaf, so they have no id.
+- **Not addressable.** `Commit` and `Progress` are single objects reached through their step or leaf, so they have no id. Neither have a check, a reference, a history entry or a mark.
 
 **Audit of positional and path-based references**, fixed the same way:
 
@@ -73,7 +84,7 @@ reorder, move) leaves existing references valid.
 | `Mark.index` and `Mark.kind` | reorder, or a move of a criterion between `preconditions` and `success_gates` | `Mark.criterion_id`; the kind is derived by looking up the criterion |
 | `Change.field` as a JSON pointer with an array index (`/steps/1/goal`) | insert, delete or reorder of steps and criteria | `Change.item_id` names the sub-item, and `field` is a pointer inside it (`/goal`) |
 | `Amendment.snapshot` keyed by path | a move or rename of the removed subtree's nodes | keyed by node id |
-| `Reference.target`, a relative path, when it names a node of the campaign | a move of the node | optional `Reference.node_id`; a reader follows `node_id` over `target` |
+| `Reference.target`, a relative path, when it names a node of the campaign | a move of the node | optional `Reference.node_id`; when it is set `target` is absent and derived on read (revised 2026-11-25) |
 
 ## Directory
 
@@ -83,8 +94,11 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
 | `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
-| `id` | `string` | yes | Immutable node id |
-| `kind` | `"campaign"` or `"directory"` | yes | `campaign` for the root file only |
+| `id` | `NodeId` | yes | Immutable node id |
+| `kind` | `"campaign"` or `"directory"` | yes | `campaign` for the root only, which is the node with no `parent_id` |
+| `name` | `Name?` | no | **new**: the path segment. Absent exactly for the campaign root. Unique among the children of one parent |
+| `parent_id` | `NodeId?` | no | **new**: the directory this node is in. Absent exactly for the campaign root |
+| `order` | `OrderKey?` | no | **new**: position among siblings, an opaque key (store.md §Order key). Absent exactly for the campaign root |
 | `title` | `string` | yes | The H1 of the legacy README |
 | `context` | `lines` | yes | Where the node fits; legacy `## Context`, one or more lines |
 | `references` | `Reference[]` | yes | Legacy `## Reference Documents`. May be empty (the section is optional in the legacy grammar) |
@@ -96,7 +110,9 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | `marks` | `Mark[]` | yes | **new**: the trace of every change of a criterion mark of this directory, oldest first. Empty on a new or imported directory |
 
 Rules for `validate`: `goal` has no line break; `preconditions` and `success_gates` each have at
-least one entry; `kind` is `campaign` exactly when the file is at the campaign root.
+least one entry; `kind` is `campaign` exactly when `parent_id`, `name` and `order` are all absent
+(revised 2026-11-25: it used to be "the file is at the campaign root"). A directory's children are
+the nodes whose `parent_id` names it, ordered by `order`; the list is derived and never stored.
 
 A directory carries no branch and no commit count. The legacy Progress row of a directory repeats
 the branch of one of its leaves and a count of commits; both are dropped (see `traceability.md`,
@@ -109,8 +125,11 @@ the branch of one of its leaves and a count of commits; both are dropped (see `t
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
 | `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
-| `id` | `string` | yes | Immutable node id |
+| `id` | `NodeId` | yes | Immutable node id |
 | `kind` | `"leaf"` | yes | Discriminates a leaf from a directory when a reader holds only the JSON |
+| `name` | `Name` | yes | **new**: the path segment. Unique among the children of one parent |
+| `parent_id` | `NodeId` | yes | **new**: the directory this leaf is in |
+| `order` | `OrderKey` | yes | **new**: position among siblings, opaque (store.md §Order key). Ties break by `id` |
 | `title` | `string` | yes | The H1 of the legacy leaf file |
 | `status` | `"planned"`, `"ongoing"`, `"paused"`, `"cancelled"` or `"done"` | yes | Meanings and moves in `statuses.md`. A new leaf is `planned` |
 | `status_reason` | `string?` | no | **new** (replaces R01's `blocked_reason`). The reason of the move into the current status. Present only while the status is `paused` or `cancelled` |
@@ -151,7 +170,7 @@ An element of `Leaf.steps`.
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `id` | `string` | yes | **new** (R01 had it): immutable step id, minted like node ids (`Stable identity`). Anything that points into a step uses it |
+| `id` | `StepId` | yes | **new** (R01 had it): immutable step id, minted like node ids (`Stable identity`). Anything that points into a step uses it |
 | `title` | `string` | yes | The text after `## Step N:` |
 | `goal` | `string` | yes | One line: the unique change intent of the step |
 | `implementation_logic` | `lines` | yes | Free prose and lists, blank lines allowed. At least one line is not blank |
@@ -164,11 +183,10 @@ An element of `Leaf.steps`.
 | `commit_sha` | `string?` | no | The commit that completed the step. Set with `done: true` by the engine |
 | `done_at` | `ts?` | no | **new**: when the step was recorded done |
 
-`Check`:
+`Check` (revised 2026-11-25: no `id`; nothing points at a check, and an edit is a `set` of the step's `/checks`):
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `id` | `string` | yes | **new**: immutable check id (`Stable identity`) |
 | `text` | `string` | yes | **new**: the check as written, without the `(expected: …)` trailer. Prose or a command line |
 | `expected` | `"PASS"` or `"FAIL"` | yes | The outcome the check expects |
 | `command` | `string?` | no | A shell command, when the whole check is one runnable command. Set only by the author of a new check, never guessed by the importer |
@@ -198,7 +216,7 @@ An element of `preconditions` or `success_gates`, at leaf and directory level.
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `id` | `string` | yes | **new**: immutable criterion id (`Stable identity`). A `Mark` points at it, never at the criterion's position |
+| `id` | `CriterionId` | yes | **new**: immutable criterion id (`Stable identity`). A `Mark` points at it, never at the criterion's position |
 | `text` | `string` | yes | The criterion, one line. Tags such as `[static]` or `[behavioral]` stay in the text |
 | `met` | `bool` | yes | Pre-condition: `[x]` is `true`. Gate: `✅` is `true`. A new criterion is `false` |
 
@@ -218,7 +236,7 @@ the operation that sets the mark; never an amendment (I5).
 |:--|:--|:--:|:--|
 | `ts` | `ts` | yes | When the mark was changed |
 | `actor` | `Actor` | yes | Who changed it |
-| `criterion_id` | `string` | yes | The `id` of the criterion, in `preconditions` or `success_gates`. Never a position |
+| `criterion_id` | `CriterionId` | yes | The `id` of the criterion, in `preconditions` or `success_gates`. Never a position |
 | `met` | `bool` | yes | The new value |
 | `evidence` | `string?` | no | Free text: a command, its result, a commit |
 | `reason` | `string?` | no | **new** (Eliott, 2026-11-16): why the mark was made. Required, non-blank, when `correction` is `true` |
@@ -234,12 +252,11 @@ An element of `references`, at directory, leaf and step level. One shape for all
 
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
-| `id` | `string` | yes | **new**: immutable reference id (`Stable identity`) |
 | `label` | `string?` | no | `R01`, `R02`, … The label other text cites. Unique within one `references` array. The legacy directory section requires it, so `validate` requires it there |
 | `title` | `string` | yes | The link text without the label |
-| `target` | `string?` | no | The link target as written: a path relative to the node file, or a URL. Absent for a reference written as plain text. Not resolved by the schema |
+| `target` | `string?` | no | A URL, or a path relative to the campaign root directory, as written. Absent for a reference written as plain text, and **absent whenever `node_id` is set**: it is derived on read from the path of that node. Not resolved by the schema. Revised 2026-11-25: the base was the node file, and a node file no longer sits where its node is in the tree, so a tree-relative path would break on a move. The importer (M3) rewrites a legacy path to this base |
 | `note` | `string?` | no | The text after ` — `, one line |
-| `node_id` | `string?` | no | **new**: the id of the campaign node the reference names, when it names one. A path in `target` breaks when the node moves, the id does not. A reader follows `node_id` over `target`. The importer sets it when `target` resolves to an imported node |
+| `node_id` | `NodeId?` | no | **new**: the id of the campaign node the reference names, when it names one. A path breaks when the node moves, the id does not. It excludes `target`: a reference holds one or the other, and a record that holds both is `Invalid` (rule `reference_target_derived`). The importer sets `node_id` when a legacy target resolves to an imported node. If that node is later deleted the reference dangles: a warning, never an error (contracts.md §Links) |
 
 Legacy forms and how they split:
 
@@ -254,8 +271,8 @@ The importer splits a leaf's one-line `**References**` on `; ` outside brackets 
 A `**References**:` line followed by bullet lines (`- [text](target) — note`) is the bulleted form: each bullet is one `Reference`, split like a directory item.
 A label is the prefix `R` and two digits followed by a space at the start of the link text. A
 segment it cannot parse becomes a reference with only `title`, so nothing is dropped.
-Note: a relative `target` breaks when a node moves. M2 may normalise targets to repository-relative
-paths on `move`; the stored form is as written.
+Note (revised 2026-11-25): a `target` relative to the campaign root does not depend on where a node
+sits in the tree, so a move leaves it valid and M2 need not normalise it.
 
 ## Commit
 
@@ -286,7 +303,7 @@ An element of `Leaf.history`: one status move. Written by `transition`; never an
 | `actor` | `Actor` | yes | Who made it |
 | `reason` | `string?` | no | Required for moves into `paused` and `cancelled`, and for `paused → planned`, `paused → ongoing` and every undo out of `cancelled` (`statuses.md`) |
 | `override` | `bool?` | no | `true` when the leaf was started outside the ready set |
-| `op_id` | `string?` | no | **new**: shared by every entry that one operation writes, so a directory pause or cancel is recognisable as one operation |
+| `op_id` | `OpId?` | no | **new**: shared by every entry that one operation writes, so a directory pause or cancel is recognisable as one operation |
 | `correction` | `bool?` | no | **new** (Eliott, 2026-11-16): `true` for a reversal out of `done`. `reason` is then required and non-blank |
 
 `Actor` (also used by `Comment` and `Amendment`):
@@ -311,12 +328,12 @@ it, so a comment never changes the node's `rev`. Decided 2026-11-16 (Eliott): th
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
 | `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
-| `id` | `ulid` | yes | Identity and order |
-| `node_id` | `string` | yes | The node commented on |
+| `id` | `CommentId` (`ulid`) | yes | Identity and order |
+| `node_id` | `NodeId` | yes | The node commented on |
 | `ts` | `ts` | yes | When it was added |
 | `actor` | `Actor` | yes | Who added it |
 | `text` | `lines` | yes | The comment, one or more lines (it is prose, so it follows the lines rule) |
-| `op_id` | `string?` | no | The retry key of the write that made it |
+| `op_id` | `OpId?` | no | The retry key of the write that made it |
 
 Files are never edited or removed. A correction is a new comment. Deleting a node does not delete
 its comments; the removing amendment's `snapshot` keeps them with it.
@@ -328,13 +345,13 @@ its comments; the removing amendment's `snapshot` keeps them with it.
 | Field | Type | Req | Meaning |
 |:--|:--|:--:|:--|
 | `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
-| `id` | `ulid` | yes | Identity and order. The display id is derived (below) |
+| `id` | `AmendmentId` (`ulid`) | yes | Identity and order. The display id is derived (below) |
 | `legacy_id` | `string?` | no | **new**: the legacy `A1`, `A2`, … of an imported amendment |
 | `ts` | `ts` | yes | When it was made. For a legacy row: the row's day at `T00:00:00Z` |
 | `actor` | `Actor` | yes | Who made it |
 | `description` | `string` | yes | Non-empty (I5). The legacy `Rationale` |
 | `source` | `string?` | no | The report that justified it. Legacy: a path under `__reports__/` |
-| `op_id` | `string?` | no | The retry key of the write that made it |
+| `op_id` | `OpId?` | no | The retry key of the write that made it |
 | `correction` | `bool?` | no | **new** (Eliott, 2026-11-16): `true` for an edit of a finished node, of a step recorded done, or of progress on a finished node. `description` is then its reason and is non-blank |
 | `changes` | `Change[]` | yes | What changed, one or more |
 | `snapshot` | `object?` | no | The removed subtree of a delete, as stored JSON keyed by node id, so it can be restored. A removed sub-item is kept the same way, with its id |
@@ -391,12 +408,13 @@ goes to 1.0.0 by default), is M7's job. No CI check is added for versions.
 | Area | R01 sketch | This schema |
 |:--|:--|:--|
 | Criteria | `preconditions[]`, `success_gates[]` as plain text | `Criterion {id, text, met}`, at leaf and directory level, enforced, with `Mark` records in `marks` that point by `criterion_id` |
-| Sub-item ids | `id` on a step only | an `id` on criteria, references, checks and steps, and no record pointing by position (`Stable identity`) |
+| Sub-item ids | `id` on a step only | an `id` on criteria and steps only, and no record pointing by position. Checks and references have none (`Stable identity`, revised 2026-11-25) |
+| Layout and place | one file per node in a directory tree; the name is the path segment | `nodes/<id>.json`; `name`, `parent_id` and `order` in the file; children, depth and path derived (A2) |
 | Corrections | none | `correction?` on `Amendment`, `Mark` and `History`, with a reason; the count is derived |
 | Step | `{id, goal, implementation_logic, deliverables[], checks[], commit, references[], requires[], done, commit_sha?}` | adds `title`, `done_at?`; `implementation_logic` and `deliverables` are `lines`; `requires` is optional prose; `id` is kept and the number is derived |
-| Check | `{command, expected}` | `{id, text, expected, command?}` |
+| Check | `{command, expected}` | `{text, expected, command?}` |
 | Commit | `{type, scope, summary}` | `{type, scope?, breaking, summary}` |
-| Reference | `references[]`, no shape | `{id, label?, title, target?, note?, node_id?}` |
+| Reference | `references[]`, no shape | `{label?, title, target?, note?, node_id?}`; `target` is absent when `node_id` is set |
 | Status | `blocked_reason?` | `status_reason?`; vocabulary per `statuses.md` |
 | History | `{ts, from, to, actor, note?, override?}` | `note` is `reason`; adds `op_id?`; `actor` is an object |
 | Comments | none | one file each, `_comments/<ulid>.json`, naming the node |
@@ -431,5 +449,7 @@ rule in `Leaf`. Decided 2026-11-16 (coordinator).
 | 4 | Versions are `0.X.Y`; a breaking change bumps X, a compatible one Y; bumps come from commit messages through the existing release setup; M7 wires the crate | Eliott, 2026-11-16 |
 | 5 | The mark records live in a `marks` array beside `history`, not inside it, so the last `history` entry stays the last status move (`status_reason` rule) | coordinator, 2026-11-16 |
 | 6 | Sealing becomes a reason requirement: `done` and `cancelled` nodes accept every edit with a non-blank reason, flagged `correction: true` on the `Amendment`, `Mark` or `History` record, and a reversal out of `done` is a history entry with `correction: true`. A `correction_count` is derived in the read model | Eliott, 2026-11-16 |
-| 7 | Every addressable sub-item has a stable id, minted at creation and never reused or derived from position: criteria, references, checks, steps. `Mark.criterion_id` replaces `index` and `kind`; `Change.item_id` replaces array-index pointers; the importer mints the ids. Invariant: no record refers to a sub-item by position, and every mutation leaves existing references valid | Eliott, 2026-11-16 |
+| 7 | Every addressable sub-item has a stable id, minted at creation and never reused or derived from position: criteria, references, checks, steps (narrowed by row 10: criteria and steps only). `Mark.criterion_id` replaces `index` and `kind`; `Change.item_id` replaces array-index pointers; the importer mints the ids. Invariant: no record refers to a sub-item by position, and every mutation leaves existing references valid | Eliott, 2026-11-16 |
 | 8 | The audit also moved `Amendment.snapshot` to node-id keys and added `Reference.node_id` for node targets | coordinator, 2026-11-16 (follows from row 7) |
+| 9 | Flat layout: a node holds `name`, `parent_id` and `order`; the filesystem no longer mirrors the tree; depth is computed from the `parent_id` chain | Eliott, 2026-11-25 (A2) |
+| 10 | An id is given by the rule "pointed at from outside, and its natural key can change". Row 7 is narrowed: checks and references lose their ids, and their edits are recorded at the array level. `Reference.target` is absent when `node_id` is set | contracts_design, 2026-11-25, under Eliott's rulings 3 and 6 (A2) |
