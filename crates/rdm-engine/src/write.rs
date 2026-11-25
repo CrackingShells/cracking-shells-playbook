@@ -799,7 +799,8 @@ impl Store {
             .filter(|id| before.get(id).is_some() && seen.insert((*id).clone()))
             .cloned()
             .collect();
-        deletes.sort_by_key(|id| std::cmp::Reverse(chain_depth(before, id)));
+        let depths = chain_depths(before, &deletes);
+        deletes.sort_by_cached_key(|id| std::cmp::Reverse(depths[id]));
         let ts = rfc3339(self.now());
         let comments: Vec<Comment> = w
             .comments
@@ -1578,20 +1579,57 @@ fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
 }
 
-/// How many ancestors a node has along its `parent_id` chain in `campaign`, counting each node
-/// once: a chain that ends at a missing parent stops there, and one that comes back on itself (a
-/// cycle) stops at the repeat. A child is always deeper than its parent unless a cycle is in
-/// between, which has no order to give.
-fn chain_depth(campaign: &Campaign, id: &NodeId) -> usize {
-    let mut seen = BTreeSet::from([id]);
-    let mut at = campaign.get(id).and_then(Node::parent_id);
-    while let Some(parent) = at {
-        if !seen.insert(parent) {
-            break;
+/// How many ancestors each of `ids` has along its `parent_id` chain in `campaign`, counting each
+/// node once: a chain that ends at a missing parent stops there (the missing parent counts), and
+/// one that comes back on itself (a cycle) stops at the repeat, so every member of a cycle has
+/// the cycle's length minus one. A child is always deeper than its parent unless a cycle is in
+/// between, which has no order to give. Each node on a walked chain is computed once, so the
+/// whole map costs one step per node reached, however many `ids` share a chain.
+fn chain_depths(campaign: &Campaign, ids: &[NodeId]) -> BTreeMap<NodeId, usize> {
+    let mut depth: BTreeMap<NodeId, usize> = BTreeMap::new();
+    for start in ids {
+        // The chain from `start` up to the first node whose depth is known, or whose parent is
+        // missing, or that repeats a node of this chain.
+        let mut chain: Vec<&NodeId> = Vec::new();
+        let mut on_chain: BTreeMap<&NodeId, usize> = BTreeMap::new();
+        let mut at = Some(start);
+        // The depth of what the chain ends on; `None` when it ends on a cycle.
+        let mut below = 0;
+        let mut cycle_from = None;
+        while let Some(id) = at {
+            if let Some(known) = depth.get(id) {
+                below = *known + 1;
+                break;
+            }
+            if let Some(&index) = on_chain.get(id) {
+                cycle_from = Some(index);
+                break;
+            }
+            on_chain.insert(id, chain.len());
+            chain.push(id);
+            match campaign.get(id).and_then(Node::parent_id) {
+                Some(parent) if campaign.get(parent).is_none() => {
+                    // The missing parent counts as one ancestor and has none of its own.
+                    below = 1;
+                    break;
+                }
+                next => at = next,
+            }
         }
-        at = campaign.get(parent).and_then(Node::parent_id);
+        if let Some(index) = cycle_from {
+            let members = chain.len() - index;
+            for id in &chain[index..] {
+                depth.insert((*id).clone(), members - 1);
+            }
+            below = members;
+            chain.truncate(index);
+        }
+        for id in chain.into_iter().rev() {
+            depth.insert(id.clone(), below);
+            below += 1;
+        }
     }
-    seen.len() - 1
+    depth
 }
 
 /// An op that is a batch of one returns exactly one result of its own kind.
