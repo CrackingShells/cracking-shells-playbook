@@ -471,7 +471,7 @@ same batch created earlier, which has no revision yet. The same holds for `expec
 |:--|:--|:--|:--|
 | create | `Request<CreateOp>` → `Receipt<Written>` | writes a new node file. The ids in `node` (its own, its criteria and its steps) are minted **by the caller, outside the lock**, from the engine's minter (store.md §Ids), so a batch can name a node it creates, an importer can build a campaign, and a replay returns the same ids. The store checks uniqueness **under the lock** and refuses a collision (`duplicate_id`); the caller re-mints. `node.order` is **not read**: the store sets it from `position`. `parent_id` is `None` only for the campaign root, which is created into an empty campaign (`position` is then `None`) | `duplicate_id`, `parent_missing`, `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch` (the root's `name` is not the campaign slug), `unvalidated_node` (the parent is unvalidated), any shape or stored-schema rule, `position_not_sibling`, `note_required` |
 | replace | `Request<ReplaceOp>` → `Receipt<Written>` | replaces one node file with `node` if its current `rev` equals `expected_rev` (I4). It cannot change `id`, `name`, `parent_id` or `order`. `kind` may change (promoting a leaf to a directory keeps the id, I7) | `id_changed`, `use_relocate`, `note_required`, `empty_edit`, `leaf_has_children`, `unvalidated_node`, any shape or stored-schema rule |
-| relocate | `Request<RelocateOp>` → `Receipt<Written>` | **rename or move**: one primitive that changes `name`, `parent_id` and `order` of one node. A field left `None` is kept; a new `parent_id` with no `position` means `Last`. At least one of the three is given. It writes **one node file** and one amendment, and renames no directory (I7). Children follow because they point at the id | `nothing_to_do`, `parent_missing`, `parent_not_directory`, `cycle` (the new parent is in the node's own subtree), `name_collision`, `position_not_sibling`, `root_delete_or_move`, `note_required` |
+| relocate | `Request<RelocateOp>` → `Receipt<Written>` | **rename or move**: one primitive that changes `name`, `parent_id` and `order` of one node. A field left `None` is kept; a new `parent_id` with no `position` means `Last`. At least one of the three is given. It writes **one node file** and one amendment, and renames no directory (I7). Children follow because they point at the id. On the root only `name` may change: that is the repair for `root_name_mismatch` after a campaign is renamed, and the caller then opens with the new slug. A new `parent_id` or `order` on the root is `root_delete_or_move` | `nothing_to_do`, `parent_missing`, `parent_not_directory`, `cycle` (the new parent is in the node's own subtree), `name_collision`, `position_not_sibling`, `root_delete_or_move`, `note_required` |
 | delete | `Request<DeleteOp>` → `Receipt<Deleted>` | removes the node and every descendant if the `SubtreeRev` matches. Writes one amendment whose `snapshot` holds the removed nodes. Reports the `Report`-class referrers outside the subtree (`Links`); rewrites nothing outside it | `root_delete_or_move`, `note_required` |
 | comment | `Request<CommentOp>` → `Receipt<Commented>` | writes one comment file. It has no `expected_rev`: it is append-only and never conflicts, and a comment never changes a `rev` (`stored-schema.md`) | `NotFound` for a missing node; `note_forbidden` when `header.note` is set |
 | batch | `Request<BatchOp>` → `Receipt<Vec<OpResult>>` | applies `ops` in order as **one transaction**. Each op is checked against the state the earlier ops produced, then the whole result is checked once (shape rules, I3). All or nothing: a failed op leaves nothing written. `dry_run` runs every check and writes nothing, for M2's impact report. The batch writes **one amendment** carrying every change of its ops | the first failing op, as `InBatch { index, source }`; `expected_tree_rev` stale is `Stale` |
@@ -747,7 +747,7 @@ reason.
 | C25 | Every `StoreError` variant has a stable `code()`, and `root()` unwraps `InBatch` | Not tested: a total `match` the compiler checks; M4 tests its own mapping |
 | C26 | `FORMAT_VERSION` is `0.1.0` and its string round-trips | `version_constants_and_strings` (existing) |
 | C27 | A bump of X or Y accompanies a change to a stored type | Not tested: needs the git history of the schemas; a reviewer reads the drift diff |
-| C28 | A write builds on no unvalidated node, except to repair; a write never adds a defect | `requests_breaking_a_rule_are_refused` † (rows: create under, and replace of, an unvalidated node are refused with `unvalidated_node`; relocate into the tree, rename of a colliding sibling and delete are accepted) |
+| C28 | A write builds on no unvalidated node, except to repair; a write never adds a defect | `requests_breaking_a_rule_are_refused` † (rows: create under, and replace of, an unvalidated node are refused with `unvalidated_node`; relocate into the tree, rename of a colliding sibling or of the root, and delete are accepted) |
 | C29 | The diagnostics of `open` cannot be dropped silently: `Opened` is `#[must_use]`, `depth` and `path` are `Option` | Not tested: a compiler check (`-D warnings` holds `unused_must_use`), and the types are the guard |
 
 ### Guards by leaf
@@ -761,8 +761,6 @@ seen red).
 | | `committed_schemas_match_the_types` | a field is added to a type and the schema is not re-blessed |
 | | `move_table_matches_statuses_doc` | one cell of `statuses.md` changes and `MOVES` does not |
 | | `links_cover_every_id_field` | an id field is added to a record and not to `LINKS` |
-| | `open_names_invalid_campaigns` | an orphan, a cycle, a name collision or a second root is silently loaded as sound; or a per-file fault is only reported; or a node off the root gets a path |
-| | `reverse_index_equals_brute_force_scan` | `replace_record` forgets to drop a record's old entries, or `remove_subtree` leaves a stale child |
 | | `version_constants_and_strings` | `FORMAT_VERSION` or its string changes unnoticed |
 | `codec_and_versions` | `newer_file_refused_before_parsing` | the newer-file check runs after the typed decode (a newer body then fails as `parse`), or it ignores the patch |
 | | `unknown_keys_survive_in_place_at_every_level` | a level drops a key, moves it, or reports none or two diagnostics |
@@ -773,9 +771,12 @@ seen red).
 | | `replayed_op_id_writes_nothing` | the `op_id` lookup runs before the lock, or after the write |
 | | `failed_batch_writes_nothing` | a batch applies its ops one by one with no whole-batch check |
 | | `delete_reports_referrers_and_touches_only_the_subtree` | a delete rewrites a `Reference.node_id` outside the subtree, or omits a referrer from the report |
+| | `open_names_invalid_campaigns` | an orphan, a cycle, a name collision or a second root is silently loaded as sound; or a per-file fault is only reported; or a node off the root gets a path |
+| | `reverse_index_equals_brute_force_scan` | `replace_record` forgets to drop a record's old entries, or `remove_subtree` leaves a stale child |
 
-The leaf assignment of the first column is this document's proposal; the coordinator may move a
-guard between leaves without changing a row.
+The coordinator assigned the leaves (2026-11-25): `open` and the reverse index are guarded through
+the store, where a real merge produces the damage. store.md §Invariants and guards lists the store's
+own guards (revisions, minting, order keys, crash prefixes, lock, cache).
 
 ### Existing tests that change on purpose
 
