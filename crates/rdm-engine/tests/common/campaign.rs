@@ -12,19 +12,16 @@ use rdm_engine::codec::encode;
 use rdm_engine::fs::Fs;
 use rdm_engine::ids::IdRng;
 use rdm_engine::store::Options;
+use rdm_schema::campaign::node_file;
 use rdm_schema::ids::*;
 use rdm_schema::ops::{EditNote, Header, Request};
 use rdm_schema::stored::*;
+use rdm_schema::{FORMAT_VERSION, version_string};
 use std::sync::Arc;
-
-/// The schema version every builder stamps.
-pub const SCHEMA_VERSION: &str = "0.1.0";
-
-pub const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
 
 /// A deterministic id body of `len` characters for `n`.
 pub fn body(mut n: u32, len: usize) -> String {
-    let a = ALPHABET.as_bytes();
+    let a = ID_ALPHABET.as_bytes();
     let mut s = vec![b'0'; len];
     for i in (0..len).rev() {
         s[i] = a[(n % 32) as usize];
@@ -41,13 +38,9 @@ pub fn name(s: &str) -> Name {
     Name::parse(s).unwrap()
 }
 
-pub fn file_of(id: &NodeId) -> String {
-    format!("nodes/{id}.json")
-}
-
-/// `file_of` for the node numbered `n`.
+/// `node_file` for the node numbered `n`.
 pub fn file(n: u32) -> String {
-    file_of(&nid(n))
+    node_file(&nid(n))
 }
 
 pub fn cid(n: u32) -> CriterionId {
@@ -83,7 +76,7 @@ fn criterion(lead: char, id: &NodeId) -> Criterion {
 /// A directory (`parent` given) or the campaign root (`parent` none).
 pub fn dir_node(id: NodeId, nm: &str, parent: Option<NodeId>, order: &str) -> Node {
     Node::Directory(Directory {
-        schema_version: SCHEMA_VERSION.into(),
+        schema_version: version_string(FORMAT_VERSION),
         kind: if parent.is_some() {
             DirectoryKind::Directory
         } else {
@@ -108,7 +101,7 @@ pub fn dir_node(id: NodeId, nm: &str, parent: Option<NodeId>, order: &str) -> No
 
 pub fn leaf_node(id: NodeId, nm: &str, parent: NodeId, order: &str) -> Node {
     Node::Leaf(Leaf {
-        schema_version: SCHEMA_VERSION.into(),
+        schema_version: version_string(FORMAT_VERSION),
         kind: LeafKind::Leaf,
         name: name(nm),
         parent_id: parent,
@@ -215,7 +208,7 @@ impl Disk {
     }
 
     pub fn write(&self, node: &Node) {
-        std::fs::write(self.root.join(file_of(node.id())), encode(node)).unwrap();
+        std::fs::write(self.root.join(node_file(node.id())), encode(node)).unwrap();
     }
 
     pub fn write_all(&self, nodes: &[Node]) {

@@ -300,10 +300,4 @@ impl Store {
             &self.state.revs,
         ))
     }
-
-    /// The relative path of a node's file.
-    #[must_use]
-    pub fn file_of(id: &NodeId) -> String {
-        RecordKind::Node.logical(id)
-    }
 }

@@ -335,7 +335,7 @@ fn spell(id: &NodeId) -> Vec<u8> {
     id.as_str()[2..]
         .chars()
         .enumerate()
-        .map(|(i, c)| ALPHABET.find(c).unwrap() as u8 | [0xE0, 0x20, 0x80, 0x40][i % 4])
+        .map(|(i, c)| ID_ALPHABET.find(c).unwrap() as u8 | [0xE0, 0x20, 0x80, 0x40][i % 4])
         .collect()
 }
 

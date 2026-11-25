@@ -14,6 +14,7 @@ use common::env_u64;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::fs::{Durability, Effect, Fs, RecordingFs, replay_prefix};
 use rdm_engine::store::Options;
+use rdm_schema::campaign::node_file;
 use rdm_schema::error::Rule;
 use rdm_schema::ids::*;
 use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Receipt, RelocateOp, ReplaceOp};
@@ -221,7 +222,7 @@ fn rows() -> Vec<Row> {
             // already damage, and a cycle has no order without it.
             allowed: [20, 21]
                 .iter()
-                .map(|n| (file_of(&nid(*n)), Rule::ParentMissing))
+                .map(|n| (node_file(&nid(*n)), Rule::ParentMissing))
                 .collect(),
             recovery_cuts: 0,
             run: Box::new(|s| {
@@ -327,7 +328,7 @@ fn has_intent(root: &Path) -> bool {
 
 fn json_of(files: &Files, id: u32) -> Value {
     let bytes = files
-        .get(&file_of(&nid(id)))
+        .get(&node_file(&nid(id)))
         .unwrap_or_else(|| panic!("n{id} is absent"));
     serde_json::from_slice(bytes).unwrap()
 }
@@ -423,7 +424,7 @@ fn facts(row: &str, pre: &Files, post: &Files) {
         "batch: create, replace, move, comment and delete" => {
             assert_eq!(json_of(post, 3)["goal"], "edited goal", "{row}");
             assert_eq!(json_of(post, 4)["parent_id"], nid(5).to_string(), "{row}");
-            assert!(post.contains_key(&file_of(&nid(31))), "{row}");
+            assert!(post.contains_key(&node_file(&nid(31))), "{row}");
             assert!(
                 !node_ids(post).iter().any(|i| gone(&[7]).contains(i)),
                 "{row}"
