@@ -343,12 +343,20 @@ Three tiers, chosen when the store is opened. The default is `Fsync`.
 The long-lived server keeps the decoded campaign in memory. It is a cache: other processes (another
 worktree's server, the CLI, an editor, `git checkout`) change the files under it, so it is
 revalidated against the files on every read, writes go straight through to the files, and it is
-never the source of truth. A writer never reads it: step 3 of the write algorithm reads the disk, so
-a stale cache cannot cause a lost update, only a stale read, and only in the one case named below.
+never the source of truth. A writer never trusts it for the files it touches: step 3 of the write
+algorithm reads those files from disk under the lock, so a stale cache cannot cause a lost update,
+only a stale read, and only in the one case named below. The other files a write depends on
+(`expected_tree_rev` over untouched nodes, the reverse index, the op index) come from a revalidation
+made under the lock, so they rely on the signature like any read.
 
-**An entry** holds, per file: the decoded record, its `rev`, a **signature** `(identity, mtime, size)`
+**What a read returns.** The `Store` accessors return the campaign as of the last revalidation; the
+cached handle (`CachedCampaign::read`, which takes `&mut self`) revalidates and then answers, so its
+readers are serialized. The M4 server holds it behind a mutex; a read costs one revalidation, so the
+lock is held for milliseconds.
+
+**An entry** holds, per file: the decoded record, its `rev`, a **signature** `(identity, mtime, size, ctime)`
 where identity is the inode on Unix and the creation time on Windows (a replace by rename gives the
-new file a new identity), the wall-clock instant `read_at` taken before the file was statted, and a
+new file a new identity) and ctime is the inode change time on Unix (absent on Windows), the wall-clock instant `read_at` taken before the file was statted, and a
 `racy` flag. The same entry shape serves `nodes/`, `_amendments/` and `_comments/`: append-only files
 are checked like the rest, so every kind of external change is covered by one rule. Derived structures
 (paths, depth, the reverse link index, `tree_rev`, the op index and the diagnostics) belong to a generation counter that is bumped when
@@ -360,11 +368,15 @@ any entry changes; they are rebuilt from the entries and never outlive them. Gua
 
 **Revalidation, on every read:**
 
-1. List the directory and take each entry's metadata (one `lstat` per file on Unix; free with the listing on Windows).
+1. List the directory and take each entry's metadata (one `metadata` call per file, which follows symlinks, on Unix; free with the listing on Windows).
 2. A cached entry whose signature is unchanged and whose `racy` flag is clear is kept.
 3. Every other file is read, decoded and hashed again. The signature stored is the one statted before the read, so a change made during the read shows up on the next validation.
-4. Entries whose file is no longer listed are dropped; a new name is read.
+4. Entries whose file is no longer listed are dropped; a new name is read. A file listed and then gone before its stat or read (a concurrent delete or rename) is treated as absent, as if it had not been listed, never as an `Io` error.
 5. If anything changed, bump the generation.
+
+The re-read of racy entries is the main cost right after writes: at 1 600 nodes, a revalidation with
+every entry racy took 36 ms against 12 ms with every entry aged (`01-cache_probe_v0.md`). It lasts
+`RACY_WINDOW` after the last change to each file.
 
 **Why not the directory `stat`.** The probe shows a directory's mtime changes for a create, a rename and
 an unlink but not for an in-place write (a text editor saving, `git merge-file`). A directory-stat fast
@@ -382,9 +394,12 @@ Git zeroes the cached size to force this; this store keeps an explicit flag, bec
 file whose own timestamp to compare with.
 
 **What stays undetected.** An external program that rewrites a file in place keeping its size and
-setting its mtime back to the old value (`touch -r`, some synchronisers) leaves the signature
-unchanged. It is not detected until the entry is evicted or the server restarts; the same limit holds
-for git's index. Nothing is written from such a stale entry (writes read the disk). Not tested.
+setting its mtime back to the old value (`touch -r`, some synchronisers) leaves identity, mtime and
+size unchanged. On Unix the ctime still moves (no user-level call sets it), so the change is found.
+On Windows, which has no ctime in the signature, it is not detected until the entry is evicted or
+the server restarts; the same limit holds for git's index. Nothing is written from such a stale
+entry for the files the write touches (they are read from disk). The Unix case is part of
+`cached_read_equals_cold_read`; the Windows case is not tested.
 
 **`notify` is not adopted in M1.** File-event services (inotify, FSEvents, `ReadDirectoryChangesW`)
 coalesce, overflow and miss events, so they can only be an accelerator beside the scan; the scan costs
@@ -402,7 +417,10 @@ A write returns after step 5 under the durability tier in force, so a cold reade
 a fresh open) that starts after the return sees the written files. Guarded by
 `write_through_visible_to_cold_reader_on_return`; and by `cached_read_equals_cold_read` for external
 change: an editor writing in place, an atomic replacement by another process, `git checkout`, a new
-file, a deleted file, a same-size edit within one tick.
+file, a deleted file, a same-size edit within one tick, and, on aged entries (past `RACY_WINDOW`), a
+same-size replace by rename keeping the old mtime and a size-only edit with the mtime restored, each
+of which only one component of the signature sees. Its oracle is a loader independent of the cache:
+each file decoded by the codec and hashed by `rev`.
 
 **Persisted form.** Whether a binary cache is built at all is decided by the `hot_cache` leaf from its
 cold-versus-warm measurement. If one is, it lives in `.rdm/cache/` (untracked), carries the crate
