@@ -1668,7 +1668,10 @@ mod reverse {
         let pick = |x: u8| ids[x as usize % ids.len()].clone();
         let number = |id: &NodeId| (1..400).find(|n| nid(*n) == *id).unwrap_or(0);
         let (kind, a, b) = step;
-        let mut of = |id: &NodeId| store.read().unwrap().campaign().get(id).cloned();
+        // One read per step: each read revalidates every file, so a read per candidate made
+        // the case quadratic in the campaign's size.
+        let campaign = store.read().unwrap().campaign().clone();
+        let of = |id: &NodeId| campaign.get(id).cloned();
         let leaves: Vec<NodeId> = ids
             .iter()
             .filter(|i| matches!(of(i), Some(Node::Leaf(_))))
