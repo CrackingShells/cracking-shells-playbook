@@ -1,0 +1,2 @@
+# Fixtures are byte-exact test inputs; never let a checkout rewrite their line endings.
+crates/**/tests/fixtures/**/*.json text eol=lf
