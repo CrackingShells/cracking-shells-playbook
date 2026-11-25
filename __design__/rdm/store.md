@@ -77,8 +77,10 @@ them, so a merge can leave a campaign that no single writer would have produced.
 | Defect | Rule | Produced by |
 |:--|:--|:--|
 | A `parent_id` naming no node (orphan) | `parent_missing` | One branch deletes a node while another adds or moves a child under it |
+| A `parent_id` naming a leaf | `parent_not_directory` | One branch replaces a directory by a leaf of the same id while another adds a child under it |
 | A cycle in the `parent_id` chain | `cycle` | Two branches each move one of two nodes under the other |
-| No root, two roots, or a root whose `name` is not the slug `open` was given | `root_count` | A merge of unrelated histories, or a renamed campaign |
+| No parentless node carries the slug `open` was given, or more than one does | `root_count` | A merge of unrelated histories |
+| A parentless node whose `name` is not the slug | `root_name_mismatch` | A campaign directory renamed by hand; the repair is a rename of the root through the store |
 | Two siblings with one `name` | `name_collision` | Two branches each add a node of that name under one parent. The two files differ, so git sees no conflict |
 | Two files with one id, across files | `duplicate_id` | Minting collided across branches: the same path, so git reports an add/add conflict, but a hand-copied file passes unseen |
 
@@ -88,12 +90,13 @@ second parentless node, a root whose name does not match) is loaded but **unvali
 with damage is therefore readable, which is what a person repairing it needs.
 
 **What a write may build on.** A write that builds on an unvalidated node (it names one, or places
-something under it) is refused with `Invalid`; contracts.md names the rule code. A repair write is
-allowed: relocating a node into the validated tree, renaming a colliding sibling, or deleting. The
+something under it) is refused with `Invalid`, rule `unvalidated_node`. A repair write is
+allowed: relocating a node into the validated tree, renaming a colliding sibling or the root, or deleting.
+A comment is allowed too: it is append-only and points at the id, not the position (contracts.md §Campaign model). The
 check sits in step 3 of the write algorithm, under the lock, on the files as they are then.
 
 These are consequences of the flat-layout ruling, not objections to it. Guarded by
-`open_names_invalid_campaigns` (rows S20 and S22).
+`open_names_invalid_campaigns` (S20) and `requests_breaking_a_rule_are_refused` (S22).
 
 ## Order key
 
@@ -341,7 +344,7 @@ new file a new identity), the wall-clock instant `read_at` taken before the file
 `racy` flag. The same entry shape serves `nodes/`, `_amendments/` and `_comments/`: append-only files
 are checked like the rest, so every kind of external change is covered by one rule. Derived structures
 (paths, depth, the reverse link index, `tree_rev`, the op index and the diagnostics) belong to a generation counter that is bumped when
-any entry changes; they are rebuilt from the entries and never outlive them. Guarded by `derived_views_equal_a_rebuild`.
+any entry changes; they are rebuilt from the entries and never outlive them. Guarded by `reverse_index_equals_brute_force_scan`, whose op sequences also compare every derived view to a rebuild.
 
 **Warnings and diagnostics are kept with the decoded nodes.** The `unknown_key` warnings of a file are stored in its entry, and the cross-file diagnostics (orphan, cycle, root, name collision, duplicate id) are derived with the other views. A warm read therefore reports exactly what a cold open would. This is part of `cached_read_equals_cold_read`.
 
@@ -444,7 +447,7 @@ rulings from "the server keeps no state between calls" to the cache rule of this
 | S19 | Recovery never overwrites a create-only file that holds other bytes | Intent and recovery | Not tested: it needs an external writer in the crash window |
 | S20 | `open` fails on a per-file fault (unparsable file, malformed id, `file_id_mismatch`, `NewerFormat`), and loads and reports cross-file damage (`parent_missing`, `cycle`, `root_count`, `name_collision`, cross-file `duplicate_id`) as one diagnostic per defect | Layout, Reads | `open_names_invalid_campaigns` |
 | S21 | An in-place edit that preserves size and restores mtime is detected | Cache | Not tested: documented limit, undetectable by stat |
-| S22 | A write that builds on an unvalidated node is refused; a repair write is allowed | Write algorithm, step 3.4 | `open_names_invalid_campaigns` |
+| S22 | A write that builds on an unvalidated node is refused; a repair write is allowed | Write algorithm, step 3.4 | `requests_breaking_a_rule_are_refused` |
 | S23 | A retried `op_id` returns the first outcome and writes nothing | Write algorithm, step 3.1 | `replayed_op_id_writes_nothing` |
 | S24 | An unknown key survives in place and produces an `unknown_key` diagnostic, and a warm read reports the same diagnostics as a cold open | Reads, Cache | `unknown_keys_survive_in_place_at_every_level` (survival) and `cached_read_equals_cold_read` (equal diagnostics) |
 | S25 | A file newer than the binary, at any part of `0.X.Y`, is refused with `NewerFormat` | Reads | Not tested here: `codec_and_versions` owns the version refusal and its guard; the store only carries it |
