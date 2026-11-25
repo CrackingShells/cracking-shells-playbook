@@ -3,170 +3,170 @@
   "format_version": "0.1.0",
   "projection": "ready",
   "campaign": {
-    "id": "c_rework",
+    "id": "n_8x4k2r7c",
     "path": "__roadmap__/roadmap-mcp-rework",
     "title": "rdm rework — meta-roadmap"
   },
-  "tree_rev": "tree-1",
+  "tree_rev": "2943c80472b1cd8a",
   "ready": [],
   "stalled": [
     {
-      "id": "n_m1",
+      "id": "n_7k3q9x2m",
       "path": "core/m1_core_foundation",
       "title": "M1 Core foundation",
       "level": 1,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p"
       ]
     },
     {
-      "id": "n_m2",
+      "id": "n_9n3s7y5a",
       "path": "core/engine/m2_graph_engine",
       "title": "M2 Graph engine",
       "level": 2,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m"
       ]
     },
     {
-      "id": "n_m3",
+      "id": "n_4c8r2x6d",
       "path": "core/engine/interchange/m3_interchange",
       "title": "M3 Interchange",
       "level": 3,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a"
       ]
     },
     {
-      "id": "n_m4",
+      "id": "n_1f7h5k3m",
       "path": "core/engine/interchange/consumers/m4_mcp_server",
       "title": "M4 MCP server",
       "level": 4,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2",
-        "n_m3"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a",
+        "n_4c8r2x6d"
       ]
     },
     {
-      "id": "n_m5",
+      "id": "n_0q6t9v2w",
       "path": "core/engine/interchange/consumers/m5_cli",
       "title": "M5 CLI",
       "level": 4,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2",
-        "n_m3"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a",
+        "n_4c8r2x6d"
       ]
     },
     {
-      "id": "n_m6",
+      "id": "n_5z8b4e1g",
       "path": "core/engine/interchange/consumers/delivery/m6_apps_view",
       "title": "M6 Apps view",
       "level": 5,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2",
-        "n_m3",
-        "n_m4",
-        "n_m5"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a",
+        "n_4c8r2x6d",
+        "n_1f7h5k3m",
+        "n_0q6t9v2w"
       ]
     },
     {
-      "id": "n_m7",
+      "id": "n_3j7n0p8s",
       "path": "core/engine/interchange/consumers/delivery/m7_distribution",
       "title": "M7 Distribution",
       "level": 5,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2",
-        "n_m3",
-        "n_m4",
-        "n_m5"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a",
+        "n_4c8r2x6d",
+        "n_1f7h5k3m",
+        "n_0q6t9v2w"
       ]
     },
     {
-      "id": "n_m8",
+      "id": "n_8y2a6c4d",
       "path": "core/engine/interchange/consumers/delivery/cutover/m8_cutover",
       "title": "M8 Cutover",
       "level": 6,
       "level_source": "depth",
       "held_by": [
-        "n_m0",
-        "n_m0b",
-        "n_m1",
-        "n_m2",
-        "n_m3",
-        "n_m4",
-        "n_m5",
-        "n_m6",
-        "n_m7"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p",
+        "n_7k3q9x2m",
+        "n_9n3s7y5a",
+        "n_4c8r2x6d",
+        "n_1f7h5k3m",
+        "n_0q6t9v2w",
+        "n_5z8b4e1g",
+        "n_3j7n0p8s"
       ]
     }
   ],
   "holders": {
-    "n_m0": {
+    "n_2b5t8w0z": {
       "path": "m0_feasibility_spike",
       "title": "M0 Feasibility spike",
       "status": "ongoing"
     },
-    "n_m0b": {
+    "n_6e1g4j9p": {
       "path": "m0b_domain_model_spec",
       "title": "M0b Domain model spec",
       "status": "ongoing"
     },
-    "n_m1": {
+    "n_7k3q9x2m": {
       "path": "core/m1_core_foundation",
       "title": "M1 Core foundation",
       "status": "planned"
     },
-    "n_m2": {
+    "n_9n3s7y5a": {
       "path": "core/engine/m2_graph_engine",
       "title": "M2 Graph engine",
       "status": "planned"
     },
-    "n_m3": {
+    "n_4c8r2x6d": {
       "path": "core/engine/interchange/m3_interchange",
       "title": "M3 Interchange",
       "status": "planned"
     },
-    "n_m4": {
+    "n_1f7h5k3m": {
       "path": "core/engine/interchange/consumers/m4_mcp_server",
       "title": "M4 MCP server",
       "status": "planned"
     },
-    "n_m5": {
+    "n_0q6t9v2w": {
       "path": "core/engine/interchange/consumers/m5_cli",
       "title": "M5 CLI",
       "status": "planned"
     },
-    "n_m6": {
+    "n_5z8b4e1g": {
       "path": "core/engine/interchange/consumers/delivery/m6_apps_view",
       "title": "M6 Apps view",
       "status": "planned"
     },
-    "n_m7": {
+    "n_3j7n0p8s": {
       "path": "core/engine/interchange/consumers/delivery/m7_distribution",
       "title": "M7 Distribution",
       "status": "planned"

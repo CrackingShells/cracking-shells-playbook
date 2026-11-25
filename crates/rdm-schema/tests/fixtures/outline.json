@@ -3,13 +3,13 @@
   "format_version": "0.1.0",
   "projection": "outline",
   "campaign": {
-    "id": "c_rework",
+    "id": "n_8x4k2r7c",
     "path": "__roadmap__/roadmap-mcp-rework",
     "title": "rdm rework — meta-roadmap"
   },
-  "tree_rev": "tree-1",
+  "tree_rev": "2943c80472b1cd8a",
   "root": {
-    "id": "c_rework",
+    "id": "n_8x4k2r7c",
     "path": "",
     "kind": "directory",
     "is_campaign": true,
@@ -24,10 +24,10 @@
       "done": 0
     },
     "amendment_count": 1,
-    "rev": "rev-root",
+    "rev": "22b4f8b5f3a10ce8",
     "children": [
       {
-        "id": "n_m0",
+        "id": "n_2b5t8w0z",
         "path": "m0_feasibility_spike",
         "kind": "leaf",
         "title": "M0 Feasibility spike",
@@ -39,10 +39,10 @@
           "done": 0,
           "total": 3
         },
-        "rev": "rev-m0"
+        "rev": "9d7f9055179edcf1"
       },
       {
-        "id": "n_m0b",
+        "id": "n_6e1g4j9p",
         "path": "m0b_domain_model_spec",
         "kind": "leaf",
         "title": "M0b Domain model spec",
@@ -55,10 +55,10 @@
           "total": 3
         },
         "added_by": "A1",
-        "rev": "rev-m0b"
+        "rev": "6e03916310dc6578"
       },
       {
-        "id": "d_core",
+        "id": "n_3d9f6h1v",
         "path": "core",
         "kind": "directory",
         "is_campaign": false,
@@ -71,10 +71,10 @@
           "cancelled": 0,
           "done": 0
         },
-        "rev": "rev-core",
+        "rev": "0185548f90007724",
         "children": [
           {
-            "id": "n_m1",
+            "id": "n_7k3q9x2m",
             "path": "core/m1_core_foundation",
             "kind": "leaf",
             "title": "M1 Core foundation",
@@ -86,10 +86,10 @@
               "done": 0,
               "total": 3
             },
-            "rev": "rev-m1"
+            "rev": "720b6a14886f16d4"
           },
           {
-            "id": "d_engine",
+            "id": "n_6h4k1m9r",
             "path": "core/engine",
             "kind": "directory",
             "is_campaign": false,
@@ -102,10 +102,10 @@
               "cancelled": 0,
               "done": 0
             },
-            "rev": "rev-engine",
+            "rev": "0d267a05419c9dfd",
             "children": [
               {
-                "id": "n_m2",
+                "id": "n_9n3s7y5a",
                 "path": "core/engine/m2_graph_engine",
                 "kind": "leaf",
                 "title": "M2 Graph engine",
@@ -117,10 +117,10 @@
                   "done": 0,
                   "total": 3
                 },
-                "rev": "rev-m2"
+                "rev": "e8c21bbc9c4cbf32"
               },
               {
-                "id": "d_interchange",
+                "id": "n_2t5v8x3z",
                 "path": "core/engine/interchange",
                 "kind": "directory",
                 "is_campaign": false,
@@ -133,10 +133,10 @@
                   "cancelled": 0,
                   "done": 0
                 },
-                "rev": "rev-interchange",
+                "rev": "f9009bae61bdff26",
                 "children": [
                   {
-                    "id": "n_m3",
+                    "id": "n_4c8r2x6d",
                     "path": "core/engine/interchange/m3_interchange",
                     "kind": "leaf",
                     "title": "M3 Interchange",
@@ -148,10 +148,10 @@
                       "done": 0,
                       "total": 3
                     },
-                    "rev": "rev-m3"
+                    "rev": "7209b0db6fed6393"
                   },
                   {
-                    "id": "d_consumers",
+                    "id": "n_7w0b3d6f",
                     "path": "core/engine/interchange/consumers",
                     "kind": "directory",
                     "is_campaign": false,
@@ -164,10 +164,10 @@
                       "cancelled": 0,
                       "done": 0
                     },
-                    "rev": "rev-consumers",
+                    "rev": "592349c61a2d19a4",
                     "children": [
                       {
-                        "id": "n_m4",
+                        "id": "n_1f7h5k3m",
                         "path": "core/engine/interchange/consumers/m4_mcp_server",
                         "kind": "leaf",
                         "title": "M4 MCP server",
@@ -179,10 +179,10 @@
                           "done": 0,
                           "total": 3
                         },
-                        "rev": "rev-m4"
+                        "rev": "db433af509ae627c"
                       },
                       {
-                        "id": "n_m5",
+                        "id": "n_0q6t9v2w",
                         "path": "core/engine/interchange/consumers/m5_cli",
                         "kind": "leaf",
                         "title": "M5 CLI",
@@ -194,10 +194,10 @@
                           "done": 0,
                           "total": 3
                         },
-                        "rev": "rev-m5"
+                        "rev": "3beb4688767166c2"
                       },
                       {
-                        "id": "d_delivery",
+                        "id": "n_1g9j4n8q",
                         "path": "core/engine/interchange/consumers/delivery",
                         "kind": "directory",
                         "is_campaign": false,
@@ -210,10 +210,10 @@
                           "cancelled": 0,
                           "done": 0
                         },
-                        "rev": "rev-delivery",
+                        "rev": "db057f57fd728dbb",
                         "children": [
                           {
-                            "id": "n_m6",
+                            "id": "n_5z8b4e1g",
                             "path": "core/engine/interchange/consumers/delivery/m6_apps_view",
                             "kind": "leaf",
                             "title": "M6 Apps view",
@@ -225,10 +225,10 @@
                               "done": 0,
                               "total": 3
                             },
-                            "rev": "rev-m6"
+                            "rev": "fa07422f6fbde897"
                           },
                           {
-                            "id": "n_m7",
+                            "id": "n_3j7n0p8s",
                             "path": "core/engine/interchange/consumers/delivery/m7_distribution",
                             "kind": "leaf",
                             "title": "M7 Distribution",
@@ -240,10 +240,10 @@
                               "done": 0,
                               "total": 3
                             },
-                            "rev": "rev-m7"
+                            "rev": "c1148d9fa4741545"
                           },
                           {
-                            "id": "d_cutover",
+                            "id": "n_5p2s7y0a",
                             "path": "core/engine/interchange/consumers/delivery/cutover",
                             "kind": "directory",
                             "is_campaign": false,
@@ -256,10 +256,10 @@
                               "cancelled": 0,
                               "done": 0
                             },
-                            "rev": "rev-cutover",
+                            "rev": "fcce39e8a4e8fa15",
                             "children": [
                               {
-                                "id": "n_m8",
+                                "id": "n_8y2a6c4d",
                                 "path": "core/engine/interchange/consumers/delivery/cutover/m8_cutover",
                                 "kind": "leaf",
                                 "title": "M8 Cutover",
@@ -271,7 +271,7 @@
                                   "done": 0,
                                   "total": 3
                                 },
-                                "rev": "rev-m8"
+                                "rev": "9c2ae9fb1bfb2524"
                               }
                             ]
                           }
@@ -292,8 +292,8 @@
       "level": 0,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m0",
-        "n_m0b"
+        "n_2b5t8w0z",
+        "n_6e1g4j9p"
       ],
       "counts": {
         "planned": 0,
@@ -307,7 +307,7 @@
       "level": 1,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m1"
+        "n_7k3q9x2m"
       ],
       "counts": {
         "planned": 1,
@@ -321,7 +321,7 @@
       "level": 2,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m2"
+        "n_9n3s7y5a"
       ],
       "counts": {
         "planned": 1,
@@ -335,7 +335,7 @@
       "level": 3,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m3"
+        "n_4c8r2x6d"
       ],
       "counts": {
         "planned": 1,
@@ -349,8 +349,8 @@
       "level": 4,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m4",
-        "n_m5"
+        "n_1f7h5k3m",
+        "n_0q6t9v2w"
       ],
       "counts": {
         "planned": 2,
@@ -364,8 +364,8 @@
       "level": 5,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m6",
-        "n_m7"
+        "n_5z8b4e1g",
+        "n_3j7n0p8s"
       ],
       "counts": {
         "planned": 2,
@@ -379,7 +379,7 @@
       "level": 6,
       "level_source": "depth",
       "leaf_ids": [
-        "n_m8"
+        "n_8y2a6c4d"
       ],
       "counts": {
         "planned": 1,

@@ -5,40 +5,107 @@
   "actor": {
     "kind": "agent"
   },
-  "description": "Edit a goal and remove a node",
+  "description": "Edit a goal, rename a node, move one and remove another",
   "source": "__reports__/x.md",
   "correction": true,
   "changes": [
     {
-      "node_id": "n_m1",
+      "node_id": "n_7k3q9x2m",
       "op": "set",
       "field": "/goal",
       "old": "before",
       "new": null
     },
     {
-      "node_id": "n_m2",
-      "op": "remove",
-      "path_before": "core/m2"
+      "node_id": "n_9n3s7y5a",
+      "op": "remove"
     },
     {
-      "node_id": "n_m3",
+      "node_id": "n_4c8r2x6d",
       "op": "move",
-      "path_before": "a/m3",
-      "path_after": "b/m3"
+      "old": {
+        "parent_id": "n_3d9f6h1v",
+        "order": "V"
+      },
+      "new": {
+        "parent_id": "n_6h4k1m9r",
+        "order": "k"
+      }
     },
     {
-      "node_id": "n_m1",
+      "node_id": "n_7k3q9x2m",
       "op": "set",
-      "item_id": "s_m1_1",
+      "item_id": "s_0f4tzn",
       "field": "/commit_sha",
       "old": null,
       "new": "abc1234"
+    },
+    {
+      "node_id": "n_1f7h5k3m",
+      "op": "rename",
+      "old": "m4_server",
+      "new": "m4_mcp_server"
     }
   ],
   "snapshot": {
-    "n_m2": {
-      "id": "n_m2"
+    "n_9n3s7y5a": {
+      "schema_version": "0.1.0",
+      "id": "n_9n3s7y5a",
+      "kind": "leaf",
+      "name": "m2_graph_engine",
+      "parent_id": "n_3d9f6h1v",
+      "order": "s",
+      "title": "M2 Graph engine",
+      "status": "planned",
+      "goal": "The graph engine computes the ready set.",
+      "preconditions": [
+        {
+          "id": "c_7q2m5x",
+          "text": "`m1_core_foundation.md` is `done`",
+          "met": false
+        }
+      ],
+      "success_gates": [
+        {
+          "id": "c_1h8d4w",
+          "text": "The ready set matches the oracle",
+          "met": false
+        }
+      ],
+      "references": [],
+      "steps": [
+        {
+          "id": "s_3k9p6c",
+          "title": "Write the ready set",
+          "goal": "The ready set is computed from the tree.",
+          "implementation_logic": [
+            "Walk the tree and apply the scoped rule of `statuses.md`."
+          ],
+          "deliverables": [
+            "`crates/rdm-engine/src/ready.rs`"
+          ],
+          "references": [],
+          "checks": [
+            {
+              "text": "`cargo test -p rdm-engine ready`",
+              "expected": "PASS",
+              "command": "cargo test -p rdm-engine ready"
+            }
+          ],
+          "commit": {
+            "type": "feat",
+            "scope": "rdm-engine",
+            "breaking": false,
+            "summary": "compute the ready set"
+          },
+          "done": false
+        }
+      ],
+      "progress": {
+        "notes": []
+      },
+      "history": [],
+      "marks": []
     }
   }
 }

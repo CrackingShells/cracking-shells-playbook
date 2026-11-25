@@ -3,15 +3,15 @@
   "format_version": "0.1.0",
   "projection": "amendments",
   "campaign": {
-    "id": "c_rework",
+    "id": "n_8x4k2r7c",
     "path": "__roadmap__/roadmap-mcp-rework",
     "title": "rdm rework — meta-roadmap"
   },
-  "tree_rev": "tree-1",
+  "tree_rev": "2943c80472b1cd8a",
   "total": 1,
   "amendments": [
     {
-      "id": "am_a1",
+      "id": "01JD3K5M7P9R1T3W5Y7A9C1E3G",
       "display_id": "A1",
       "legacy_id": "A1",
       "ts": "2026-11-16T00:00:00Z",
@@ -23,7 +23,7 @@
       "has_snapshot": false,
       "changes": [
         {
-          "node_id": "n_m0b",
+          "node_id": "n_6e1g4j9p",
           "op": "add",
           "node_path": "m0b_domain_model_spec",
           "node_title": "M0b Domain model spec"

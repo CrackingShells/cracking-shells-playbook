@@ -3,6 +3,7 @@
 //! This crate holds types only. It has no I/O and no store. Canonical serialisation
 //! and the store belong to M1.
 
+pub mod ids;
 pub mod read;
 pub mod stored;
 
@@ -36,17 +37,12 @@ pub fn parse_version(s: &str) -> Option<Version> {
     Some((part(major)?, part(minor)?, part(patch)?))
 }
 
-/// Whether a reader that supports `supported` may read data stamped `found`.
+/// Whether `found` is newer than `supported`: the whole triple, compared field by field, so a
+/// higher major, a higher X (the minor) and a higher Y (the patch) all count.
 ///
-/// A different major is refused. While the supported major is 0, a higher X (the minor) is
-/// refused too. A higher Y (the patch) is read, and so is anything lower.
+/// One rule serves stored files (`NewerFormat`) and the read model: a consumer refuses what is
+/// newer than itself and reads the same or an older version.
 #[must_use]
-pub fn is_readable(found: Version, supported: Version) -> bool {
-    if found.0 != supported.0 {
-        return false;
-    }
-    if supported.0 == 0 && found.1 > supported.1 {
-        return false;
-    }
-    true
+pub fn is_newer(found: Version, supported: Version) -> bool {
+    found > supported
 }

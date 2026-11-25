@@ -19,7 +19,7 @@
       "$ref": "#/$defs/CampaignRef"
     },
     "tree_rev": {
-      "type": "string"
+      "$ref": "#/$defs/TreeRev"
     },
     "total": {
       "type": "integer",
@@ -59,7 +59,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -75,12 +75,20 @@
       ],
       "additionalProperties": true
     },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    },
     "AmendmentEntry": {
       "description": "One amendment of the log.",
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/AmendmentId"
         },
         "display_id": {
           "type": "string"
@@ -107,9 +115,13 @@
           ]
         },
         "op_id": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "correction": {
@@ -139,6 +151,10 @@
       ],
       "additionalProperties": true
     },
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
     "Actor": {
       "description": "Who made a move, a comment or an amendment.",
       "type": "object",
@@ -167,6 +183,10 @@
         "import"
       ]
     },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
     "ChangeView": {
       "description": "A stored change plus the node's current path and title.",
       "type": "object",
@@ -184,28 +204,20 @@
           ]
         },
         "node_id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "op": {
           "$ref": "#/$defs/ChangeOp"
         },
-        "path_before": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "path_after": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "item_id": {
-          "description": "The id of the sub-item the change names; `field` is then a pointer inside it.",
-          "type": [
-            "string",
-            "null"
+          "description": "The id of the sub-item (a criterion or a step) the change names; `field` is then a pointer\ninside it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "field": {
@@ -233,6 +245,10 @@
         "rename",
         "move"
       ]
+    },
+    "ItemId": {
+      "type": "string",
+      "pattern": "^(c_[0123456789abcdefghjkmnpqrstvwxyz]{6}|s_[0123456789abcdefghjkmnpqrstvwxyz]{6})$"
     }
   }
 }

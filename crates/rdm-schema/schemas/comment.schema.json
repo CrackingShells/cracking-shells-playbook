@@ -9,10 +9,10 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/CommentId"
     },
     "node_id": {
-      "type": "string"
+      "$ref": "#/$defs/NodeId"
     },
     "ts": {
       "type": "string"
@@ -27,9 +27,13 @@
       }
     },
     "op_id": {
-      "type": [
-        "string",
-        "null"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpId"
+        },
+        {
+          "type": "null"
+        }
       ]
     }
   },
@@ -43,6 +47,14 @@
   ],
   "additionalProperties": true,
   "$defs": {
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
     "Actor": {
       "description": "Who made a move, a comment or an amendment.",
       "type": "object",
@@ -70,6 +82,10 @@
         "human",
         "import"
       ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
     }
   }
 }

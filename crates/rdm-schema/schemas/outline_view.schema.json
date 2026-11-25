@@ -19,7 +19,7 @@
       "$ref": "#/$defs/CampaignRef"
     },
     "tree_rev": {
-      "type": "string"
+      "$ref": "#/$defs/TreeRev"
     },
     "root": {
       "$ref": "#/$defs/OutlineNode"
@@ -57,7 +57,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -72,6 +72,14 @@
         "title"
       ],
       "additionalProperties": true
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
     },
     "OutlineNode": {
       "description": "A node of the outline, discriminated by `kind`.",
@@ -154,12 +162,16 @@
       ],
       "additionalProperties": true
     },
+    "Rev": {
+      "description": "The revision of one node: a hash of its canonical encoding (`store.md`, §Revisions).\nConsumers compare for equality and never parse.",
+      "type": "string"
+    },
     "OutlineDirectory": {
       "description": "A directory in the outline.",
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -191,7 +203,7 @@
           "minimum": 0
         },
         "rev": {
-          "type": "string"
+          "$ref": "#/$defs/Rev"
         },
         "children": {
           "type": "array",
@@ -245,7 +257,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -283,7 +295,7 @@
           ]
         },
         "rev": {
-          "type": "string"
+          "$ref": "#/$defs/Rev"
         }
       },
       "required": [
@@ -314,7 +326,7 @@
         "leaf_ids": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/NodeId"
           }
         },
         "counts": {

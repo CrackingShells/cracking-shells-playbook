@@ -19,15 +19,18 @@
       "$ref": "#/$defs/CampaignRef"
     },
     "tree_rev": {
-      "type": "string"
+      "$ref": "#/$defs/TreeRev"
     },
     "node": {
       "$ref": "#/$defs/NodeDetail"
     },
     "holders": {
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/Holder"
+      "additionalProperties": false,
+      "patternProperties": {
+        "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$": {
+          "$ref": "#/$defs/Holder"
+        }
       }
     }
   },
@@ -57,7 +60,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -72,6 +75,14 @@
         "title"
       ],
       "additionalProperties": true
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
     },
     "NodeDetail": {
       "description": "The detail of one node, discriminated by `kind`.",
@@ -104,6 +115,10 @@
         }
       ]
     },
+    "Rev": {
+      "description": "The revision of one node: a hash of its canonical encoding (`store.md`, §Revisions).\nConsumers compare for equality and never parse.",
+      "type": "string"
+    },
     "Status": {
       "description": "The five statuses of a leaf (`statuses.md`).",
       "type": "string",
@@ -128,7 +143,7 @@
       "properties": {
         "id": {
           "description": "Stable id, minted at creation, never a position (`Stable identity`).",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "text": {
           "type": "string"
@@ -144,14 +159,14 @@
       ],
       "additionalProperties": true
     },
+    "CriterionId": {
+      "type": "string",
+      "pattern": "^c_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
     "Reference": {
       "description": "An element of `references`.",
       "type": "object",
       "properties": {
-        "id": {
-          "description": "Stable id.",
-          "type": "string"
-        },
         "label": {
           "type": [
             "string",
@@ -174,15 +189,18 @@
           ]
         },
         "node_id": {
-          "description": "The campaign node the reference names, when it names one. Followed over `target`.",
-          "type": [
-            "string",
-            "null"
+          "description": "The campaign node the reference names, when it names one. `target` is then absent: it is\nderived on read from the path of that node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeId"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
       "required": [
-        "id",
         "title"
       ],
       "additionalProperties": true
@@ -197,7 +215,7 @@
           "minimum": 0
         },
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/StepId"
         },
         "title": {
           "type": "string"
@@ -271,14 +289,14 @@
       ],
       "additionalProperties": true
     },
+    "StepId": {
+      "type": "string",
+      "pattern": "^s_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
     "Check": {
       "description": "An element of `Step.checks`.",
       "type": "object",
       "properties": {
-        "id": {
-          "description": "Stable id.",
-          "type": "string"
-        },
         "text": {
           "type": "string"
         },
@@ -293,7 +311,6 @@
         }
       },
       "required": [
-        "id",
         "text",
         "expected"
       ],
@@ -414,9 +431,13 @@
           ]
         },
         "op_id": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "correction": {
@@ -463,6 +484,10 @@
         "import"
       ]
     },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
     "Mark": {
       "description": "An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.",
       "type": "object",
@@ -475,7 +500,7 @@
         },
         "criterion_id": {
           "description": "The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "met": {
           "description": "The new value of `met`.",
@@ -519,10 +544,10 @@
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
         },
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/CommentId"
         },
         "node_id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "ts": {
           "type": "string"
@@ -537,9 +562,13 @@
           }
         },
         "op_id": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
@@ -553,12 +582,16 @@
       ],
       "additionalProperties": true
     },
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
     "LeafDetail": {
       "description": "Detail of a leaf.",
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -567,7 +600,7 @@
           "type": "string"
         },
         "rev": {
-          "type": "string"
+          "$ref": "#/$defs/Rev"
         },
         "title": {
           "type": "string"
@@ -601,7 +634,7 @@
         "held_by": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/NodeId"
           }
         },
         "finished": {
@@ -755,7 +788,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -792,7 +825,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -801,7 +834,7 @@
           "type": "string"
         },
         "rev": {
-          "type": "string"
+          "$ref": "#/$defs/Rev"
         },
         "title": {
           "type": "string"
