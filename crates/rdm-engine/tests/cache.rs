@@ -850,9 +850,10 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
 
 #[test]
 fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
-    // Bug caught: a recovery that changes files under the cache, and the cache keeps serving the
-    // entries it read before (the node the interrupted batch deleted, the node it edited), or a
-    // report of the recovery that the write-through lost.
+    // Bug caught: a write that does not revalidate after its recovery, so that it is computed on
+    // the entries read before it (the node the interrupted batch deleted, the node it edited): the
+    // create below is refused with `name_collision`; or a report of the recovery that the
+    // write-through lost.
     let disk = sound();
     disk.write(&leaf_node(6, "child", 5, "V"));
     let pre = tempfile::tempdir().unwrap();
@@ -897,7 +898,18 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
     let mut cache = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     read_same("before the recovery", &mut cache, &work);
     assert!(cache.read().unwrap().campaign().get(&nid(5)).is_some());
-    cache.comment(req(None, None, comment_on(3, "hi"))).unwrap();
+    // The write builds on the recovered state: it takes the name the interrupted batch's delete
+    // freed. Judged on the state before the recovery, node 5 still holds the name.
+    cache
+        .create(req(
+            Some("reuse the name"),
+            None,
+            CreateOp {
+                node: leaf_node(60, "spare", 1, "x"),
+                position: None,
+            },
+        ))
+        .expect("the name of the node the recovery deleted is free");
     assert_eq!(cache.last_recovered().unwrap().redone.len(), 1);
     read_same("after a write that recovered", &mut cache, &work);
     assert!(cache.read().unwrap().campaign().get(&nid(5)).is_none());
@@ -1216,4 +1228,76 @@ fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_a
         read_same("a warm read that raced a delete", &mut cache, &disk.root);
         assert!(cache.read().unwrap().campaign().get(&nid(4)).is_none());
     }
+}
+
+#[test]
+fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
+    // Bug caught: a rebalance that renumbers a sibling from its cache entry. The sibling is not
+    // named by the request, so the up-front read does not reach it: only the plan knows it will be
+    // rewritten. With a signature that hides an external same-size edit (the frozen stat), the
+    // cache holds the old sibling and the rewrite would put it back over the edit.
+    //
+    // Two siblings share an order key (what a merge can leave), and a create after the first
+    // finds no room between them, so every sibling is renumbered. The code rewrites the sibling
+    // from the disk bytes: the edit survives, with its new key.
+    let disk = Disk::new();
+    let mut nodes = base();
+    nodes[3] = leaf_node(4, "beta", 2, "V");
+    disk.write_all(&nodes);
+    age(&disk.root);
+    let first_seen = std::sync::Mutex::new(BTreeMap::<PathBuf, FileStat>::new());
+    let fs = Hooked::new(
+        Box::new(|_, _| {}),
+        Box::new(move |p, s| {
+            *first_seen
+                .lock()
+                .unwrap()
+                .entry(p.to_path_buf())
+                .or_insert(s)
+        }),
+    );
+    let mut cache =
+        CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
+    read_same("opened", &mut cache, &disk.root);
+    let file = disk.path(&format!("nodes/{}.json", nid(4)));
+    rewrite_in_place_same_size(&file, "a goal", "b goal");
+    assert_eq!(
+        leaf_of(cache.read().unwrap(), 4).goal,
+        "a goal",
+        "the edit is hidden from reads"
+    );
+
+    cache
+        .create(req(
+            Some("between"),
+            None,
+            CreateOp {
+                node: leaf_node(70, "between", 2, "V"),
+                position: Some(Position::After(nid(3))),
+            },
+        ))
+        .unwrap();
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        text.contains("b goal"),
+        "the external edit survived the rebalance"
+    );
+    let keys: Vec<String> = [3, 70, 4]
+        .iter()
+        .map(|n| {
+            cold(&disk.root)
+                .campaign()
+                .get(&nid(*n))
+                .unwrap()
+                .order()
+                .unwrap()
+                .as_str()
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        keys.windows(2).all(|w| w[0] < w[1]),
+        "renumbered in order: {keys:?}"
+    );
+    assert_eq!(leaf_of(&cold(&disk.root), 4).goal, "b goal");
 }
