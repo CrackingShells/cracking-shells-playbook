@@ -195,6 +195,7 @@ one of these in any file fails the whole open, naming the file:
 | the text is not JSON, or not an object of the expected type | `Invalid`, rule `parse` |
 | `schema_version` missing or malformed | `Invalid`, rule `schema_version` |
 | the file is newer than the binary | `NewerFormat` (raised first, `Version chain`) |
+| the campaign root is not a directory (missing, or a file): nothing is read and nothing is created | `Io`, file `.` |
 | an id field does not parse as its type | `Invalid`, rule `malformed_id` |
 | `nodes/<id>.json` holds another `id` | `Invalid`, rule `file_id_mismatch` |
 | a node breaks a rule of its own record: `kind`, `root_shape`, `name_format`, the stored-schema rules, `sub_item_id_unique`, `reference_target_derived` | `Invalid`, that rule |

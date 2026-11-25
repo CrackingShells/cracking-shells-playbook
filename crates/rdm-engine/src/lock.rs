@@ -75,7 +75,12 @@ impl WriterLock {
         timeout: Duration,
         holder_record: &[u8],
     ) -> Result<WriterLock, LockError> {
-        std::fs::create_dir_all(layout::rdm_dir(root)).map_err(LockError::Io)?;
+        // `create_dir`, not `create_dir_all`: a missing root is an error and creates nothing.
+        match std::fs::create_dir(layout::rdm_dir(root)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(LockError::Io(e)),
+        }
         // Opened for writing only so that it can be created; its bytes are never touched.
         let file = OpenOptions::new()
             .read(true)

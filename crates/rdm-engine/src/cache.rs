@@ -586,7 +586,8 @@ impl CachedCampaign {
     /// # Errors
     /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
     /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
-    /// Damage between files loads, and is in [`Store::diagnostics`].
+    /// Damage between files loads, and is in [`Store::diagnostics`]. A `root` that is not a
+    /// directory is `Io` (file `.`), and nothing is created.
     pub fn open(
         root: impl Into<PathBuf>,
         slug: &Name,

@@ -158,6 +158,9 @@ impl Store {
         options: Options,
     ) -> Result<Self, StoreError> {
         let root = root.into();
+        // A root that is not a directory is refused here: reading it as an empty campaign would
+        // let the first write create the whole path, and a typo would leave a stray tree.
+        options.fs.list_dir(&root).map_err(|e| io_error(".", &e))?;
         let mut entries = Entries::default();
         entries.revalidate(&*options.fs, &root)?;
         let state = entries.build(slug)?;

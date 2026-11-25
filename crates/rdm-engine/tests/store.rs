@@ -2461,6 +2461,22 @@ fn recover_redoes_an_interrupted_operation() {
 ///
 /// Bug it catches: recovery that redoes a create as a put and silently replaces a file it did not
 /// write.
+/// A root that does not exist is refused by `open`, and neither it nor a write afterwards
+/// creates the path: a typo in the root must not leave a stray directory tree.
+#[test]
+fn open_on_a_path_that_does_not_exist_errors_and_creates_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let missing = tmp.path().join("typo").join("demo");
+    let refused = CachedCampaign::open(&missing, &name("demo"), Options::default())
+        .err()
+        .expect("a root that is not a directory is refused");
+    assert!(matches!(refused, StoreError::Io { ref file, .. } if file == "."), "{refused:?}");
+    assert!(!tmp.path().join("typo").exists(), "nothing was created");
+    let lock = WriterLock::acquire(&missing, Duration::from_millis(50), b"x");
+    assert!(lock.is_err(), "the lock does not create a missing root");
+    assert!(!tmp.path().join("typo").exists(), "the lock created nothing");
+}
+
 /// A volume that refuses hard links still takes a create (store.md, Create-only publish: check
 /// the name is free, then rename), and a name an external writer took in the meantime is refused
 /// with the error a volume with hard links gives.
