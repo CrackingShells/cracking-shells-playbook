@@ -38,7 +38,10 @@ pub fn inject_unknown(v: &mut Value, path: &str) -> usize {
                     _ => n += inject_unknown(x, &format!("{path}.{k}")),
                 }
             }
-            m.insert("x_unknown".into(), json!({ "at": path, "keep": [1, "two", null] }));
+            m.insert(
+                "x_unknown".into(),
+                json!({ "at": path, "keep": [1, "two", null] }),
+            );
             n += 1;
         }
         _ => {}

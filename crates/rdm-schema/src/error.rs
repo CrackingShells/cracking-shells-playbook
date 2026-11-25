@@ -13,7 +13,9 @@ use crate::{Version, version_string};
 
 /// A rule a file or a request can break, or a warning a load reports. Each variant has a stable
 /// snake-case code, its serde name; M2 may add codes without changing existing ones.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Rule {
@@ -164,7 +166,11 @@ pub struct NotInVersion {
 
 impl fmt::Display for NotInVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "`{}` is not defined by the format's layers", self.behaviour)
+        write!(
+            f,
+            "`{}` is not defined by the format's layers",
+            self.behaviour
+        )
     }
 }
 
@@ -207,16 +213,27 @@ pub enum StoreError {
     Locked { holder: Option<LockHolder> },
     /// A file's `schema_version` is newer than this binary reads. Raised before anything else of
     /// the file is parsed.
-    NewerFormat { found: Version, supported: Version, file: String },
+    NewerFormat {
+        found: Version,
+        supported: Version,
+        file: String,
+    },
     /// A file or a request breaks a rule. `file` is the path relative to the campaign root
     /// (`nodes/<id>.json`), or [`REQUEST_FILE`] when the fault is in the request.
-    Invalid { file: String, rule: Rule, detail: String },
+    Invalid {
+        file: String,
+        rule: Rule,
+        detail: String,
+    },
     /// A node a request names does not exist.
     NotFound { target: RecordRef },
     /// The operating system refused a read or a write.
     Io { file: String, message: String },
     /// One op of a batch failed. `source` is any of the above; nothing was written.
-    InBatch { index: usize, source: Box<StoreError> },
+    InBatch {
+        index: usize,
+        source: Box<StoreError>,
+    },
 }
 
 /// The `file` of an [`StoreError::Invalid`] whose fault is in the request, not in a file.
@@ -227,7 +244,11 @@ impl StoreError {
     /// build an `Invalid`.
     #[must_use]
     pub fn invalid(file: impl Into<String>, rule: Rule, detail: impl Into<String>) -> StoreError {
-        StoreError::Invalid { file: file.into(), rule, detail: detail.into() }
+        StoreError::Invalid {
+            file: file.into(),
+            rule,
+            detail: detail.into(),
+        }
     }
 
     /// A request breaks a rule: the `file` is [`REQUEST_FILE`].
@@ -266,9 +287,17 @@ impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Stale { .. } => f.write_str("stale revision: re-read and reapply the intent"),
-            Self::Locked { holder: Some(h) } => write!(f, "campaign locked by pid {} on {} since {}", h.pid, h.host, h.since),
+            Self::Locked { holder: Some(h) } => write!(
+                f,
+                "campaign locked by pid {} on {} since {}",
+                h.pid, h.host, h.since
+            ),
             Self::Locked { holder: None } => f.write_str("campaign locked by an unknown writer"),
-            Self::NewerFormat { found, supported, file } => write!(
+            Self::NewerFormat {
+                found,
+                supported,
+                file,
+            } => write!(
                 f,
                 "{file}: format {} is newer than the supported {}",
                 version_string(*found),
@@ -277,7 +306,9 @@ impl fmt::Display for StoreError {
             Self::Invalid { file, rule, detail } => write!(f, "{file}: {}: {detail}", rule.code()),
             Self::NotFound { target } => write!(f, "not found: {target}"),
             Self::Io { file, message } => write!(f, "{file}: {message}"),
-            Self::InBatch { index, source } => write!(f, "op {index} of the batch failed: {source}"),
+            Self::InBatch { index, source } => {
+                write!(f, "op {index} of the batch failed: {source}")
+            }
         }
     }
 }

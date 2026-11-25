@@ -61,25 +61,103 @@ pub struct Link {
     pub on_delete: OnDelete,
 }
 
-const fn link(owner: Owner, pointer: &'static str, target: Target, scope: Scope, on_delete: OnDelete) -> Link {
-    Link { owner, pointer, target, scope, on_delete }
+const fn link(
+    owner: Owner,
+    pointer: &'static str,
+    target: Target,
+    scope: Scope,
+    on_delete: OnDelete,
+) -> Link {
+    Link {
+        owner,
+        pointer,
+        target,
+        scope,
+        on_delete,
+    }
 }
 
 /// Every link of every record. The `id` field of a record is its identity, not a link, and is
 /// not listed. Values copied into opaque JSON (a snapshot's values, `old` and `new` of a change)
 /// are historical copies, not links.
 pub static LINKS: [Link; 11] = [
-    link(Owner::Directory, "/parent_id", Target::Node, Scope::Campaign, OnDelete::Cascade),
-    link(Owner::Leaf, "/parent_id", Target::Node, Scope::Campaign, OnDelete::Cascade),
-    link(Owner::Directory, "/references/*/node_id", Target::Node, Scope::Campaign, OnDelete::Report),
-    link(Owner::Leaf, "/references/*/node_id", Target::Node, Scope::Campaign, OnDelete::Report),
-    link(Owner::Leaf, "/steps/*/references/*/node_id", Target::Node, Scope::Campaign, OnDelete::Report),
-    link(Owner::Directory, "/marks/*/criterion_id", Target::Criterion, Scope::OwnerFile, OnDelete::Keep),
-    link(Owner::Leaf, "/marks/*/criterion_id", Target::Criterion, Scope::OwnerFile, OnDelete::Keep),
-    link(Owner::Comment, "/node_id", Target::Node, Scope::Campaign, OnDelete::Keep),
-    link(Owner::Amendment, "/changes/*/node_id", Target::Node, Scope::Campaign, OnDelete::Keep),
-    link(Owner::Amendment, "/changes/*/item_id", Target::Item, Scope::ChangeNode, OnDelete::Keep),
-    link(Owner::Amendment, "/snapshot/{key}", Target::Node, Scope::Campaign, OnDelete::Keep),
+    link(
+        Owner::Directory,
+        "/parent_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Cascade,
+    ),
+    link(
+        Owner::Leaf,
+        "/parent_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Cascade,
+    ),
+    link(
+        Owner::Directory,
+        "/references/*/node_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Report,
+    ),
+    link(
+        Owner::Leaf,
+        "/references/*/node_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Report,
+    ),
+    link(
+        Owner::Leaf,
+        "/steps/*/references/*/node_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Report,
+    ),
+    link(
+        Owner::Directory,
+        "/marks/*/criterion_id",
+        Target::Criterion,
+        Scope::OwnerFile,
+        OnDelete::Keep,
+    ),
+    link(
+        Owner::Leaf,
+        "/marks/*/criterion_id",
+        Target::Criterion,
+        Scope::OwnerFile,
+        OnDelete::Keep,
+    ),
+    link(
+        Owner::Comment,
+        "/node_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Keep,
+    ),
+    link(
+        Owner::Amendment,
+        "/changes/*/node_id",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Keep,
+    ),
+    link(
+        Owner::Amendment,
+        "/changes/*/item_id",
+        Target::Item,
+        Scope::ChangeNode,
+        OnDelete::Keep,
+    ),
+    link(
+        Owner::Amendment,
+        "/snapshot/{key}",
+        Target::Node,
+        Scope::Campaign,
+        OnDelete::Keep,
+    ),
 ];
 
 /// A record that holds a link.

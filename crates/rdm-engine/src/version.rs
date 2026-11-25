@@ -168,13 +168,11 @@ pub fn layer_of(
             file: file.to_owned(),
         });
     }
-    layer_for(found)
-        .map(|layer| (found, layer))
-        .ok_or_else(|| {
-            StoreError::invalid(
-                file,
-                Rule::UnknownFormat,
-                format!("no layer reads format {}", version_string(found)),
-            )
-        })
+    layer_for(found).map(|layer| (found, layer)).ok_or_else(|| {
+        StoreError::invalid(
+            file,
+            Rule::UnknownFormat,
+            format!("no layer reads format {}", version_string(found)),
+        )
+    })
 }

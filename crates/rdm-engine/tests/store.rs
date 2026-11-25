@@ -2472,11 +2472,17 @@ fn open_on_a_path_that_does_not_exist_errors_and_creates_nothing() {
     let refused = CachedCampaign::open(&missing, &name("demo"), Options::default())
         .err()
         .expect("a root that is not a directory is refused");
-    assert!(matches!(refused, StoreError::Io { ref file, .. } if file == "."), "{refused:?}");
+    assert!(
+        matches!(refused, StoreError::Io { ref file, .. } if file == "."),
+        "{refused:?}"
+    );
     assert!(!tmp.path().join("typo").exists(), "nothing was created");
     let lock = WriterLock::acquire(&missing, Duration::from_millis(50), b"x");
     assert!(lock.is_err(), "the lock does not create a missing root");
-    assert!(!tmp.path().join("typo").exists(), "the lock created nothing");
+    assert!(
+        !tmp.path().join("typo").exists(),
+        "the lock created nothing"
+    );
 }
 
 /// A volume that refuses hard links still takes a create (store.md, Create-only publish: check
@@ -2489,7 +2495,11 @@ fn create_on_a_volume_without_hard_links_publishes_and_still_refuses_a_taken_nam
     let mut store =
         CachedCampaign::open(&disk.root, &name("demo"), options_with(no_hard_links())).unwrap();
     store
-        .create(req(Some("n"), None, create_op(leaf_n(20, "fresh", 2, "Z"), None)))
+        .create(req(
+            Some("n"),
+            None,
+            create_op(leaf_n(20, "fresh", 2, "Z"), None),
+        ))
         .expect("a create works without hard links");
     assert!(disk.root.join(file(20)).is_file());
 
@@ -2500,9 +2510,16 @@ fn create_on_a_volume_without_hard_links_publishes_and_still_refuses_a_taken_nam
         let mut store = CachedCampaign::open(&disk.root, &name("demo"), options_with(fs)).unwrap();
         armed.store(true, std::sync::atomic::Ordering::SeqCst);
         let refused = store
-            .create(req(Some("n"), None, create_op(leaf_n(21, "late", 2, "Z"), None)))
+            .create(req(
+                Some("n"),
+                None,
+                create_op(leaf_n(21, "late", 2, "Z"), None),
+            ))
             .unwrap_err();
-        assert_eq!(std::fs::read(disk.root.join(file(21))).unwrap(), b"external");
+        assert_eq!(
+            std::fs::read(disk.root.join(file(21))).unwrap(),
+            b"external"
+        );
         refused
     };
     let without_links = taken(true);
@@ -2514,7 +2531,11 @@ fn create_on_a_volume_without_hard_links_publishes_and_still_refuses_a_taken_nam
             detail: "the file already exists".into(),
         }
     );
-    assert_eq!(without_links, taken(false), "the same error as on a normal volume");
+    assert_eq!(
+        without_links,
+        taken(false),
+        "the same error as on a normal volume"
+    );
 }
 
 #[test]

@@ -254,7 +254,9 @@ impl ItemId {
         } else if s.starts_with(STEP_PREFIX) {
             StepId::parse(s).map(Self::Step)
         } else {
-            Err(IdError::WrongPrefix { expected: CRITERION_PREFIX })
+            Err(IdError::WrongPrefix {
+                expected: CRITERION_PREFIX,
+            })
         }
     }
 

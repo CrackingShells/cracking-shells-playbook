@@ -54,7 +54,12 @@ pub(crate) fn create(
 /// fails with `AlreadyExists`, as a refused link does on a volume that has them.
 fn link_or_rename(fs: &dyn Fs, tmp: &Path, target: &Path) -> io::Result<()> {
     match fs.hard_link(tmp, target) {
-        Err(e) if matches!(e.kind(), io::ErrorKind::Unsupported | io::ErrorKind::PermissionDenied) => {
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::Unsupported | io::ErrorKind::PermissionDenied
+            ) =>
+        {
             match fs.stat(target) {
                 Ok(_) => Err(io::ErrorKind::AlreadyExists.into()),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => fs.rename(tmp, target),

@@ -132,7 +132,11 @@ pub fn decode<T: Stored>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreEr
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     let raw = parse(bytes).map_err(|e| StoreError::invalid(file, Rule::Parse, e.to_string()))?;
     if !raw.is_object() {
-        return Err(StoreError::invalid(file, Rule::Parse, "the file is not a JSON object"));
+        return Err(StoreError::invalid(
+            file,
+            Rule::Parse,
+            "the file is not a JSON object",
+        ));
     }
     let (found, layer) = layer_of(file, &raw)?;
     match T::decode_by(layer, file, raw) {

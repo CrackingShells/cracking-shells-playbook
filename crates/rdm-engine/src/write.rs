@@ -1219,10 +1219,7 @@ impl Store {
         let removed: Vec<NodeId> = w.campaign.subtree(&id).cloned().collect();
         for n in &removed {
             if let Some(node) = w.campaign.get(n) {
-                w.snapshot.insert(
-                    n.to_string(),
-                    json_value(node),
-                );
+                w.snapshot.insert(n.to_string(), json_value(node));
             }
             w.changes.push(Change {
                 node_id: n.clone(),
@@ -1483,9 +1480,7 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
             .cloned()
             .unwrap_or_default()
     };
-    let old = before
-        .map(|b| marks_of(&json_value(b)))
-        .unwrap_or_default();
+    let old = before.map(|b| marks_of(&json_value(b))).unwrap_or_default();
     let criteria: BTreeSet<&str> = ["preconditions", "success_gates"]
         .iter()
         .filter_map(|k| value.get(*k).and_then(Value::as_array))

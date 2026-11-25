@@ -25,7 +25,9 @@ impl fmt::Display for KeyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::NotAscending => "the lower order key is not below the upper one",
-            Self::BadKey => "an order key is empty, ends in 0 or holds a character outside 0-9A-Za-z",
+            Self::BadKey => {
+                "an order key is empty, ends in 0 or holds a character outside 0-9A-Za-z"
+            }
         })
     }
 }

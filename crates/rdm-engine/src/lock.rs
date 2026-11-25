@@ -8,8 +8,8 @@
 
 use crate::fs::{Durability, Fs, RealFs, atomic_replace};
 use crate::layout;
-use std::fs::{File, OpenOptions};
 use std::fmt;
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

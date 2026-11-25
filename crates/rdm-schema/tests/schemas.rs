@@ -1,5 +1,6 @@
 use rdm_schema::ops::{
-    BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, OpResult, Receipt, RelocateOp, ReplaceOp, Request, Written,
+    BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, OpResult, Receipt, RelocateOp,
+    ReplaceOp, Request, Written,
 };
 use rdm_schema::read::{AmendmentsView, NodeView, OutlineView, ReadyView};
 use rdm_schema::stored::{Amendment, Comment, Directory, Leaf};
@@ -13,9 +14,24 @@ fn generated<T: JsonSchema>() -> String {
 }
 
 const NAMES: [&str; 18] = [
-    "directory", "leaf", "comment", "amendment", "outline_view", "node_view", "ready_view", "amendments_view",
-    "create_request", "replace_request", "relocate_request", "delete_request", "comment_request", "batch_request",
-    "written_receipt", "deleted_receipt", "commented_receipt", "batch_receipt",
+    "directory",
+    "leaf",
+    "comment",
+    "amendment",
+    "outline_view",
+    "node_view",
+    "ready_view",
+    "amendments_view",
+    "create_request",
+    "replace_request",
+    "relocate_request",
+    "delete_request",
+    "comment_request",
+    "batch_request",
+    "written_receipt",
+    "deleted_receipt",
+    "commented_receipt",
+    "batch_receipt",
 ];
 
 /// A file in `schemas/` that no type generates is drift too. Bless removes it.
@@ -24,7 +40,9 @@ fn orphans(failures: &mut Vec<String>) {
     let bless = std::env::var("RDM_SCHEMA_BLESS").as_deref() == Ok("1");
     for entry in std::fs::read_dir(&dir).expect("schemas dir").flatten() {
         let file = entry.file_name().to_string_lossy().into_owned();
-        let known = file.strip_suffix(".schema.json").is_some_and(|n| NAMES.contains(&n));
+        let known = file
+            .strip_suffix(".schema.json")
+            .is_some_and(|n| NAMES.contains(&n));
         if known {
             continue;
         }
@@ -44,7 +62,9 @@ fn check_or_bless(name: &str, want: &str, failures: &mut Vec<String>) {
         return;
     }
     match std::fs::read_to_string(&path) {
-        Err(e) => failures.push(format!("{path}: cannot read ({e}); run RDM_SCHEMA_BLESS=1 cargo test -p rdm-schema")),
+        Err(e) => failures.push(format!(
+            "{path}: cannot read ({e}); run RDM_SCHEMA_BLESS=1 cargo test -p rdm-schema"
+        )),
         Ok(have) if have == want => {}
         Ok(have) => {
             let line = want
@@ -72,19 +92,67 @@ fn committed_schemas_match_the_types() {
     check_or_bless("outline_view", &generated::<OutlineView>(), &mut failures);
     check_or_bless("node_view", &generated::<NodeView>(), &mut failures);
     check_or_bless("ready_view", &generated::<ReadyView>(), &mut failures);
-    check_or_bless("amendments_view", &generated::<AmendmentsView>(), &mut failures);
-    check_or_bless("create_request", &generated::<Request<CreateOp>>(), &mut failures);
-    check_or_bless("replace_request", &generated::<Request<ReplaceOp>>(), &mut failures);
-    check_or_bless("relocate_request", &generated::<Request<RelocateOp>>(), &mut failures);
-    check_or_bless("delete_request", &generated::<Request<DeleteOp>>(), &mut failures);
-    check_or_bless("comment_request", &generated::<Request<CommentOp>>(), &mut failures);
-    check_or_bless("batch_request", &generated::<Request<BatchOp>>(), &mut failures);
-    check_or_bless("written_receipt", &generated::<Receipt<Written>>(), &mut failures);
-    check_or_bless("deleted_receipt", &generated::<Receipt<Deleted>>(), &mut failures);
-    check_or_bless("commented_receipt", &generated::<Receipt<Commented>>(), &mut failures);
-    check_or_bless("batch_receipt", &generated::<Receipt<Vec<OpResult>>>(), &mut failures);
+    check_or_bless(
+        "amendments_view",
+        &generated::<AmendmentsView>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "create_request",
+        &generated::<Request<CreateOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "replace_request",
+        &generated::<Request<ReplaceOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "relocate_request",
+        &generated::<Request<RelocateOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "delete_request",
+        &generated::<Request<DeleteOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "comment_request",
+        &generated::<Request<CommentOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "batch_request",
+        &generated::<Request<BatchOp>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "written_receipt",
+        &generated::<Receipt<Written>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "deleted_receipt",
+        &generated::<Receipt<Deleted>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "commented_receipt",
+        &generated::<Receipt<Commented>>(),
+        &mut failures,
+    );
+    check_or_bless(
+        "batch_receipt",
+        &generated::<Receipt<Vec<OpResult>>>(),
+        &mut failures,
+    );
     orphans(&mut failures);
-    assert!(failures.is_empty(), "schema drift:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "schema drift:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]
@@ -98,8 +166,11 @@ fn version_fields_carry_the_pattern() {
         ("outline_view", "/properties/read_model_version"),
     ] {
         let path = format!("{}/schemas/{file}.schema.json", env!("CARGO_MANIFEST_DIR"));
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let pat = v.pointer(&format!("{pointer}/pattern")).and_then(|p| p.as_str());
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let pat = v
+            .pointer(&format!("{pointer}/pattern"))
+            .and_then(|p| p.as_str());
         assert_eq!(pat, Some(r"^[0-9]+\.[0-9]+\.[0-9]+$"), "{file} {pointer}");
     }
 }
