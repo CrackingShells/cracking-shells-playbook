@@ -948,11 +948,13 @@ name = "rdm-engine"
 version = "0.1.0"
 dependencies = [
  "fs4",
+ "getrandom 0.4.3",
  "proptest",
  "rdm-schema",
  "rustix",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 

@@ -1,0 +1,275 @@
+//! The campaign store (`store.md`): opens a campaign from disk into the pure
+//! [`rdm_schema::campaign::Campaign`] model, validates it, computes revisions, keeps the reverse
+//! link index, and applies every primitive through ordered writes under the writer lock.
+
+use std::collections::BTreeMap;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+
+use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
+use rdm_schema::error::{Rule, StoreError};
+use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, Rev, SubtreeRev, TreeRev};
+use rdm_schema::stored::{Amendment, Comment, Node};
+
+use crate::codec::{Stored, decode};
+use crate::fs::{Durability, Fs, RealFs};
+use crate::ids::{IdRng, OsRng, UlidMint};
+use crate::links::ReverseIndex;
+use crate::rev;
+
+/// How a store runs. Every field has a default; tests replace the generator, the clock and the
+/// file system.
+pub struct Options {
+    /// Sync tier of every publish (`store.md`, §Durability).
+    pub durability: Durability,
+    /// How long a writer waits for the lock before it fails with `Locked`.
+    pub lock_timeout: Duration,
+    /// The file system every read and write goes through. A `RecordingFs` logs the writes.
+    pub fs: Arc<dyn Fs + Send + Sync>,
+    /// Draws the random parts of the ULIDs the store mints.
+    pub rng: Box<dyn IdRng + Send>,
+    /// The wall clock, for the instants the store stamps.
+    pub clock: Box<dyn Fn() -> SystemTime + Send + Sync>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            durability: Durability::default(),
+            lock_timeout: Duration::from_secs(5),
+            fs: Arc::new(RealFs),
+            rng: Box::new(OsRng),
+            clock: Box::new(SystemTime::now),
+        }
+    }
+}
+
+/// Everything read from the files of one campaign, and what is derived from it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct State {
+    pub(crate) campaign: Campaign,
+    pub(crate) comments: BTreeMap<CommentId, Comment>,
+    pub(crate) amendments: BTreeMap<AmendmentId, Amendment>,
+    pub(crate) revs: BTreeMap<NodeId, Rev>,
+    /// The warnings of every file, sorted by `(file, rule, detail)`.
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) reverse: ReverseIndex,
+}
+
+/// An open campaign.
+pub struct Store {
+    pub(crate) root: PathBuf,
+    #[allow(dead_code)] // read by the writes of the next steps
+    pub(crate) options: Options,
+    #[allow(dead_code)]
+    pub(crate) ulids: UlidMint,
+    pub(crate) state: State,
+}
+
+pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
+    StoreError::Io {
+        file: file.to_owned(),
+        message: e.to_string(),
+    }
+}
+
+/// The file names a loader reads in a directory: `<ulid>.json` or `n_<body>.json` and no other.
+fn listed(
+    fs: &dyn Fs,
+    root: &Path,
+    dir: &str,
+    keep: impl Fn(&str) -> bool,
+) -> Result<Vec<String>, StoreError> {
+    match fs.list_dir(&root.join(dir)) {
+        Ok(names) => Ok(names
+            .into_iter()
+            .filter(|n| n.strip_suffix(".json").is_some_and(&keep))
+            .collect()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(io_error(dir, &e)),
+    }
+}
+
+fn invalid(file: &str, rule: Rule, detail: String) -> StoreError {
+    StoreError::Invalid {
+        file: file.to_owned(),
+        rule,
+        detail,
+    }
+}
+
+/// Reads every file of a kind, decodes it, and checks that it holds the id it is named for.
+fn read_all<T: Stored>(
+    fs: &dyn Fs,
+    root: &Path,
+    dir: &str,
+    keep: impl Fn(&str) -> bool,
+    id_of: impl Fn(&T) -> String,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<Vec<T>, StoreError> {
+    let mut out = Vec::new();
+    for name in listed(fs, root, dir, keep)? {
+        let file = format!("{dir}/{name}");
+        let bytes = fs
+            .read(&root.join(dir).join(&name))
+            .map_err(|e| io_error(&file, &e))?;
+        let decoded = decode::<T>(&file, &bytes)?;
+        let named = name.strip_suffix(".json").unwrap_or(&name);
+        let held = id_of(&decoded.value);
+        if held != named {
+            return Err(invalid(
+                &file,
+                Rule::FileIdMismatch,
+                format!("the file is named {named} and holds the id {held}"),
+            ));
+        }
+        diagnostics.extend(decoded.diagnostics);
+        out.push(decoded.value);
+    }
+    Ok(out)
+}
+
+/// Reads the whole campaign from disk.
+pub(crate) fn load(fs: &dyn Fs, root: &Path, slug: &Name) -> Result<State, StoreError> {
+    let mut diagnostics = Vec::new();
+    let nodes: Vec<Node> = read_all(
+        fs,
+        root,
+        "nodes",
+        |s| NodeId::parse(s).is_ok(),
+        |n: &Node| n.id().to_string(),
+        &mut diagnostics,
+    )?;
+    let comments: Vec<Comment> = read_all(
+        fs,
+        root,
+        "_comments",
+        |s| CommentId::parse(s).is_ok(),
+        |c: &Comment| c.id.to_string(),
+        &mut diagnostics,
+    )?;
+    let amendments: Vec<Amendment> = read_all(
+        fs,
+        root,
+        "_amendments",
+        |s| AmendmentId::parse(s).is_ok(),
+        |a: &Amendment| a.id.to_string(),
+        &mut diagnostics,
+    )?;
+    let opened = Campaign::open(nodes, slug)?;
+    diagnostics.extend(opened.diagnostics);
+    diagnostics.sort();
+    let campaign = opened.campaign;
+    let revs = campaign
+        .nodes()
+        .map(|n| (n.id().clone(), rev::rev(n)))
+        .collect();
+    let comments: BTreeMap<CommentId, Comment> =
+        comments.into_iter().map(|c| (c.id.clone(), c)).collect();
+    let amendments: BTreeMap<AmendmentId, Amendment> =
+        amendments.into_iter().map(|a| (a.id.clone(), a)).collect();
+    let reverse = ReverseIndex::build(
+        &campaign,
+        &comments.values().cloned().collect::<Vec<_>>(),
+        &amendments.values().cloned().collect::<Vec<_>>(),
+    );
+    Ok(State {
+        campaign,
+        comments,
+        amendments,
+        revs,
+        diagnostics,
+        reverse,
+    })
+}
+
+impl Store {
+    /// Opens the campaign at `root`, given the slug its caller knows it by: the root is the
+    /// parentless node that carries it.
+    ///
+    /// # Errors
+    /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
+    /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
+    /// Damage between files loads, and is in [`Store::diagnostics`].
+    pub fn open(
+        root: impl Into<PathBuf>,
+        slug: &Name,
+        options: Options,
+    ) -> Result<Self, StoreError> {
+        let root = root.into();
+        let state = load(&*options.fs, &root, slug)?;
+        Ok(Self {
+            root,
+            options,
+            ulids: UlidMint::default(),
+            state,
+        })
+    }
+
+    /// The campaign root directory.
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The model: nodes, tree, validated set.
+    #[must_use]
+    pub fn campaign(&self) -> &Campaign {
+        &self.state.campaign
+    }
+
+    /// Every warning of the files read, and the damage between them, sorted by
+    /// `(file, rule, detail)`.
+    #[must_use]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.state.diagnostics
+    }
+
+    /// The reverse link index.
+    #[must_use]
+    pub fn reverse(&self) -> &ReverseIndex {
+        &self.state.reverse
+    }
+
+    /// The comments read, by id.
+    #[must_use]
+    pub fn comments(&self) -> &BTreeMap<CommentId, Comment> {
+        &self.state.comments
+    }
+
+    /// The amendments read, by id.
+    #[must_use]
+    pub fn amendments(&self) -> &BTreeMap<AmendmentId, Amendment> {
+        &self.state.amendments
+    }
+
+    /// The `rev` of a node as read.
+    #[must_use]
+    pub fn rev(&self, id: &NodeId) -> Option<&Rev> {
+        self.state.revs.get(id)
+    }
+
+    /// The `tree_rev` of the nodes as read.
+    #[must_use]
+    pub fn tree_rev(&self) -> TreeRev {
+        rev::tree_rev(&self.state.revs)
+    }
+
+    /// The `SubtreeRev` of a node and its descendants; `None` for a node that is not loaded.
+    #[must_use]
+    pub fn subtree_rev(&self, id: &NodeId) -> Option<SubtreeRev> {
+        self.state.campaign.get(id)?;
+        Some(rev::subtree_rev(
+            self.state.campaign.subtree(id),
+            &self.state.revs,
+        ))
+    }
+
+    /// The relative path of a node's file.
+    #[must_use]
+    pub fn file_of(id: &NodeId) -> String {
+        node_file(id)
+    }
+}

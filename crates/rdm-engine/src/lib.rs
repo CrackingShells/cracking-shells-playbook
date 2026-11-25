@@ -5,6 +5,10 @@
 
 pub mod codec;
 pub mod fs;
+pub mod ids;
 pub mod intent;
+pub mod links;
 pub mod lock;
+pub mod rev;
+pub mod store;
 pub mod version;
