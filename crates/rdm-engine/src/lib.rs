@@ -10,6 +10,7 @@ pub mod ids;
 pub mod intent;
 pub mod links;
 pub mod lock;
+pub mod order;
 pub mod rev;
 pub(crate) mod publish;
 pub mod store;

@@ -13,12 +13,13 @@ use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
 use rdm_schema::diff::{diff, is_state};
 use rdm_schema::error::LockHolder;
 use rdm_schema::error::{Current, Rule, StoreError};
-use rdm_schema::ids::{AmendmentId, CommentId, NodeId, OpId, Rev};
+use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, OrderKey, Rev, SubtreeRev};
 use rdm_schema::links::{LINKS, OnDelete, RecordRef};
 use rdm_schema::ops::{
-    Commented, CreateOp, Deleted, Header, Op, OpResult, Receipt, ReplaceOp, Request, Written,
+    BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, Header, Op, OpResult, Position,
+    Receipt, RelocateOp, ReplaceOp, Request, Written,
 };
-use rdm_schema::stored::{Actor, Amendment, Change, Comment, Node};
+use rdm_schema::stored::{Actor, Amendment, Change, ChangeOp, Comment, Node};
 use rdm_schema::validate::check_node;
 use rdm_schema::{FORMAT_VERSION, version_string};
 use serde_json::Value;
@@ -29,6 +30,7 @@ use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
 use crate::links::Record;
 use crate::lock::{LockError, WriterLock};
+use crate::order::{MAX_KEY_LEN, between, spread};
 use crate::publish;
 use crate::rev;
 use crate::store::{OpRef, State, Store, io_error, load};
@@ -309,6 +311,14 @@ impl Store {
         self.check_whole(&w, header).map_err(|e| wrap(0, e))?;
         // 4. Every after-image, the amendment's ULID.
         let plan = self.plan(&w, header);
+        let mut minted = plan.comments.iter().map(|c| c.id.clone());
+        for r in &mut w.results {
+            if let OpResult::Commented(c) = r
+                && let Some(id) = minted.next()
+            {
+                c.id = id;
+            }
+        }
         if dry_run {
             return Ok(Receipt {
                 result: w.results,
@@ -445,10 +455,10 @@ impl Store {
     ) -> Result<(), StoreError> {
         match op {
             Op::Replace(op) => self.op_replace(w, header, op, in_batch),
-            Op::Create(_) | Op::Relocate(_) | Op::Delete(_) | Op::Comment(_) => Err(request_fault(
-                Rule::NothingToDo,
-                "this primitive is not available yet",
-            )),
+            Op::Create(op) => op_create(w, op),
+            Op::Relocate(op) => self.op_relocate(w, op, in_batch),
+            Op::Delete(op) => self.op_delete(w, op, in_batch),
+            Op::Comment(op) => op_comment(w, header, op, in_batch),
         }
     }
 
@@ -518,7 +528,8 @@ impl Store {
             ));
         }
         check_node(&after).map_err(|f| node_fault(&id, f.rule, f.detail))?;
-        introduced_references_exist(&w.campaign, &current, &after)?;
+        introduced_references_exist(&w.campaign, Some(&current), &after)?;
+        introduced_marks_name_criteria(Some(&current), &after)?;
         let entries = diff(&current, &after);
         if header.note.is_none() && entries.iter().any(|c| !is_state(c)) {
             return Err(request_fault(
@@ -565,7 +576,14 @@ impl Store {
             .iter()
             .map(|d| (d.file.as_str(), d.rule))
             .collect();
+        // Renaming a root is the repair of a root defect: the root rules are one family, so a
+        // rename that trades `root_count` for `root_name_mismatch` does not add a defect.
+        let root_family = |r: Rule| matches!(r, Rule::RootCount | Rule::RootNameMismatch);
+        let had_root_defect = before.iter().any(|(_, r)| root_family(*r));
         for d in w.campaign.diagnostics() {
+            if root_family(d.rule) && had_root_defect {
+                continue;
+            }
             if structural_rule(d.rule) && !before.contains(&(d.file.as_str(), d.rule)) {
                 return Err(StoreError::Invalid {
                     file: d.file.clone(),
@@ -795,6 +813,562 @@ impl Store {
     }
 }
 
+impl Store {
+    /// Writes a new node file. The caller minted the ids in `node`; `node.order` is not read, the
+    /// store sets it from `position` (default last) and rebalances the siblings when a key grows
+    /// past the limit.
+    ///
+    /// # Errors
+    /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
+    /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
+    /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
+    pub fn create(&mut self, req: Request<CreateOp>) -> Result<Receipt<Written>, StoreError> {
+        let one = self.run(&req.header, &[Op::Create(req.op)], None, false, false)?;
+        single(one, |r| match r {
+            OpResult::Written(w) => Some(w),
+            _ => None,
+        })
+    }
+
+    /// Renames or moves one node: one node file and one amendment, no id changes.
+    ///
+    /// # Errors
+    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
+    /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
+    /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
+    pub fn move_node(&mut self, req: Request<RelocateOp>) -> Result<Receipt<Written>, StoreError> {
+        let one = self.run(&req.header, &[Op::Relocate(req.op)], None, false, false)?;
+        single(one, |r| match r {
+            OpResult::Written(w) => Some(w),
+            _ => None,
+        })
+    }
+
+    /// Removes a node and every descendant if the `SubtreeRev` matches. The amendment, with the
+    /// snapshot of the removed nodes, is written before the first node file is removed.
+    ///
+    /// # Errors
+    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
+    /// `expected_rev_required`), `Io`.
+    pub fn delete_subtree(
+        &mut self,
+        req: Request<DeleteOp>,
+    ) -> Result<Receipt<Deleted>, StoreError> {
+        let one = self.run(&req.header, &[Op::Delete(req.op)], None, false, false)?;
+        single(one, |r| match r {
+            OpResult::Deleted(d) => Some(d),
+            _ => None,
+        })
+    }
+
+    /// Writes one comment file. It has no revision and never conflicts.
+    ///
+    /// # Errors
+    /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
+    pub fn comment(&mut self, req: Request<CommentOp>) -> Result<Receipt<Commented>, StoreError> {
+        let one = self.run(&req.header, &[Op::Comment(req.op)], None, false, false)?;
+        single(one, |r| match r {
+            OpResult::Commented(c) => Some(c),
+            _ => None,
+        })
+    }
+
+    /// Applies the ops in order as one transaction: each is checked against the state the
+    /// earlier ones produced, the whole result is checked once, and either everything is
+    /// written or nothing. `dry_run` runs every check and writes nothing.
+    ///
+    /// # Errors
+    /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
+    /// `expected_tree_rev`; `Locked`; `Io`.
+    pub fn batch(&mut self, req: Request<BatchOp>) -> Result<Receipt<Vec<OpResult>>, StoreError> {
+        let BatchOp {
+            expected_tree_rev,
+            ops,
+            dry_run,
+        } = req.op;
+        self.run(&req.header, &ops, expected_tree_rev.as_ref(), true, dry_run)
+    }
+
+    fn op_relocate(
+        &mut self,
+        w: &mut Working,
+        op: &RelocateOp,
+        in_batch: bool,
+    ) -> Result<(), StoreError> {
+        let id = op.id.clone();
+        let current = w.campaign.get(&id).ok_or_else(|| not_found(&id))?.clone();
+        self.check_expected(w, &id, op.expected_rev.as_ref(), in_batch)?;
+        if op.name.is_none() && op.parent_id.is_none() && op.position.is_none() {
+            return Err(request_fault(
+                Rule::NothingToDo,
+                "none of `name`, `parent_id`, `position` is given",
+            ));
+        }
+        let is_root = current.parent_id().is_none();
+        if is_root {
+            if op.parent_id.is_some() || op.position.is_some() {
+                return Err(node_fault(
+                    &id,
+                    Rule::RootDeleteOrMove,
+                    "the root takes no parent and no order",
+                ));
+            }
+        } else if !w.campaign.is_validated(&id) && op.parent_id.is_none() && op.position.is_some() {
+            // A repair is a rename or a move into the validated tree; a new place among the
+            // siblings of a node that is not in the tree builds on nothing.
+            return Err(node_fault(
+                &id,
+                Rule::UnvalidatedNode,
+                "the node does not trace back to the root",
+            ));
+        }
+        let name = op.name.clone().unwrap_or_else(|| current.name().clone());
+        let parent = match (&op.parent_id, current.parent_id()) {
+            (Some(p), _) | (None, Some(p)) => Some(p.clone()),
+            (None, None) => None,
+        };
+        let mut order = current.order().cloned();
+        if let Some(parent) = &parent {
+            let named = op.parent_id.is_some();
+            match w.campaign.get(parent) {
+                None if named => {
+                    return Err(node_fault(
+                        &id,
+                        Rule::ParentMissing,
+                        format!("the parent does not exist: {parent}"),
+                    ));
+                }
+                Some(Node::Leaf(_)) if named => {
+                    return Err(node_fault(
+                        &id,
+                        Rule::ParentNotDirectory,
+                        format!("the parent is a leaf: {parent}"),
+                    ));
+                }
+                _ => {}
+            }
+            // A new parent inside the node's own subtree is a `cycle`: the check of the whole
+            // result reports it, with the same rule and file.
+            if named && !w.campaign.is_validated(parent) {
+                return Err(node_fault(
+                    &id,
+                    Rule::UnvalidatedNode,
+                    "the new parent does not trace back to the root",
+                ));
+            }
+            if w.campaign
+                .children(parent)
+                .iter()
+                .any(|c| *c != id && w.campaign.get(c).is_some_and(|n| n.name() == &name))
+            {
+                return Err(node_fault(
+                    &id,
+                    Rule::NameCollision,
+                    format!("a sibling is already named `{name}`"),
+                ));
+            }
+            if named || op.position.is_some() {
+                let position = op.position.clone().unwrap_or(Position::Last);
+                order = Some(place(w, parent, &position, Some(&id))?);
+            }
+        } else if w
+            .campaign
+            .nodes()
+            .any(|n| n.parent_id().is_none() && n.id() != &id && n.name() == &name)
+            && name == *w.campaign.slug()
+        {
+            return Err(node_fault(
+                &id,
+                Rule::RootCount,
+                "another parentless node already carries this name",
+            ));
+        }
+        // Rebalancing may have rewritten siblings but never the node itself.
+        let mut after = w.campaign.get(&id).unwrap_or(&current).clone();
+        set_place(&mut after, &name, parent.as_ref(), order.as_ref());
+        stamp(&mut after);
+        if after.name() == current.name()
+            && after.parent_id() == current.parent_id()
+            && after.order() == current.order()
+        {
+            return Err(request_fault(
+                Rule::NothingToDo,
+                "the node already has this name and place",
+            ));
+        }
+        check_node(&after).map_err(|f| node_fault(&id, f.rule, f.detail))?;
+        if after.name() != current.name() {
+            w.changes.push(Change {
+                node_id: id.clone(),
+                op: ChangeOp::Rename,
+                item_id: None,
+                field: None,
+                old: Some(Value::String(current.name().to_string())),
+                new: Some(Value::String(after.name().to_string())),
+                extra: serde_json::Map::new(),
+            });
+        }
+        if after.parent_id() != current.parent_id() || after.order() != current.order() {
+            let place = |n: &Node| {
+                serde_json::json!({
+                    "parent_id": n.parent_id().map(ToString::to_string),
+                    "order": n.order().map(|o| o.as_str().to_owned()),
+                })
+            };
+            w.changes.push(Change {
+                node_id: id.clone(),
+                op: ChangeOp::Move,
+                item_id: None,
+                field: None,
+                old: Some(place(&current)),
+                new: Some(place(&after)),
+                extra: serde_json::Map::new(),
+            });
+        }
+        w.structural = true;
+        w.campaign.insert(after.clone());
+        w.results.push(OpResult::Written(Written {
+            id,
+            rev: rev::rev(&after),
+        }));
+        Ok(())
+    }
+
+    fn op_delete(
+        &mut self,
+        w: &mut Working,
+        op: &DeleteOp,
+        in_batch: bool,
+    ) -> Result<(), StoreError> {
+        let id = op.id.clone();
+        if w.campaign.get(&id).is_none() {
+            return Err(not_found(&id));
+        }
+        if w.campaign.root() == Some(&id) {
+            return Err(node_fault(
+                &id,
+                Rule::RootDeleteOrMove,
+                "the campaign root cannot be deleted",
+            ));
+        }
+        let created_here = w.created.contains(&id);
+        match (&op.expected_subtree_rev, created_here) {
+            (_, true) => {}
+            (None, false) => {
+                let why = if in_batch {
+                    "`expected_subtree_rev` is required for a node the batch did not create"
+                } else {
+                    "`expected_subtree_rev` is required"
+                };
+                return Err(request_fault(Rule::ExpectedRevRequired, why));
+            }
+            (Some(expected), false) => {
+                let on_disk = self.state.campaign.get(&id).is_some();
+                let current: Option<SubtreeRev> = on_disk
+                    .then(|| rev::subtree_rev(self.state.campaign.subtree(&id), &w.disk_revs));
+                if current.as_ref() != Some(expected) {
+                    return Err(StoreError::Stale {
+                        current: Current::Subtree { id, rev: current },
+                    });
+                }
+            }
+        }
+        let removed: Vec<NodeId> = w.campaign.subtree(&id).cloned().collect();
+        for n in &removed {
+            if let Some(node) = w.campaign.get(n) {
+                w.snapshot.insert(
+                    n.to_string(),
+                    serde_json::to_value(node).unwrap_or(Value::Null),
+                );
+            }
+            w.changes.push(Change {
+                node_id: n.clone(),
+                op: ChangeOp::Remove,
+                item_id: None,
+                field: None,
+                old: None,
+                new: None,
+                extra: serde_json::Map::new(),
+            });
+        }
+        let referrers = self.referrers_into(&removed);
+        w.campaign.remove_subtree(&id);
+        w.created.retain(|c| !removed.contains(c));
+        w.structural = true;
+        w.results
+            .push(OpResult::Deleted(Deleted { removed, referrers }));
+        Ok(())
+    }
+}
+
+/// Builds the node a create writes: the order key comes from the position, never from the node.
+fn op_create(w: &mut Working, op: &CreateOp) -> Result<(), StoreError> {
+    let mut node = op.node.clone();
+    stamp(&mut node);
+    let id = node.id().clone();
+    if w.campaign.get(&id).is_some() {
+        return Err(node_fault(
+            &id,
+            Rule::DuplicateId,
+            "a node with this id exists",
+        ));
+    }
+    match node.parent_id().cloned() {
+        None => {
+            if w.campaign.nodes().next().is_some() {
+                return Err(node_fault(
+                    &id,
+                    Rule::RootCount,
+                    "a root is created into an empty campaign",
+                ));
+            }
+            if node.name() != w.campaign.slug() {
+                return Err(node_fault(
+                    &id,
+                    Rule::RootNameMismatch,
+                    "the root is named like the campaign",
+                ));
+            }
+        }
+        Some(parent) => {
+            let target = w.campaign.get(&parent).ok_or_else(|| {
+                node_fault(
+                    &id,
+                    Rule::ParentMissing,
+                    format!("the parent does not exist: {parent}"),
+                )
+            })?;
+            if matches!(target, Node::Leaf(_)) {
+                return Err(node_fault(
+                    &id,
+                    Rule::ParentNotDirectory,
+                    format!("the parent is a leaf: {parent}"),
+                ));
+            }
+            if !w.campaign.is_validated(&parent) {
+                return Err(node_fault(
+                    &id,
+                    Rule::UnvalidatedNode,
+                    "the parent does not trace back to the root",
+                ));
+            }
+            if w.campaign
+                .children(&parent)
+                .iter()
+                .any(|c| w.campaign.get(c).is_some_and(|n| n.name() == node.name()))
+            {
+                return Err(node_fault(
+                    &id,
+                    Rule::NameCollision,
+                    format!("a sibling is already named `{}`", node.name()),
+                ));
+            }
+            let position = op.position.clone().unwrap_or(Position::Last);
+            let key = place(w, &parent, &position, None)?;
+            let name = node.name().clone();
+            set_place(&mut node, &name, Some(&parent), Some(&key));
+        }
+    }
+    check_node(&node).map_err(|f| node_fault(&id, f.rule, f.detail))?;
+    introduced_references_exist(&w.campaign, None, &node)?;
+    introduced_marks_name_criteria(None, &node)?;
+    w.changes.push(Change {
+        node_id: id.clone(),
+        op: ChangeOp::Add,
+        item_id: None,
+        field: None,
+        old: None,
+        new: None,
+        extra: serde_json::Map::new(),
+    });
+    w.created.push(id.clone());
+    w.structural = true;
+    w.campaign.insert(node.clone());
+    w.results.push(OpResult::Written(Written {
+        id,
+        rev: rev::rev(&node),
+    }));
+    Ok(())
+}
+
+fn op_comment(
+    w: &mut Working,
+    header: &Header,
+    op: &CommentOp,
+    in_batch: bool,
+) -> Result<(), StoreError> {
+    if !in_batch && header.note.is_some() {
+        return Err(request_fault(
+            Rule::NoteForbidden,
+            "a comment carries no note",
+        ));
+    }
+    if w.campaign.get(&op.node_id).is_none() {
+        return Err(not_found(&op.node_id));
+    }
+    w.comments.push((op.node_id.clone(), op.text.clone()));
+    // The id is minted with the plan; the placeholder is replaced before the result is returned.
+    w.results.push(OpResult::Commented(Commented {
+        id: placeholder_comment_id(),
+    }));
+    Ok(())
+}
+
+fn placeholder_comment_id() -> CommentId {
+    CommentId::parse("00000000000000000000000000").unwrap_or_else(|_| minted_ulid_invalid())
+}
+
+/// Sets the place fields of a node. A root takes no parent and no order.
+fn set_place(node: &mut Node, name: &Name, parent: Option<&NodeId>, order: Option<&OrderKey>) {
+    match node {
+        Node::Directory(d) => {
+            d.name = name.clone();
+            d.parent_id = parent.cloned();
+            d.order = order.cloned();
+        }
+        Node::Leaf(l) => {
+            l.name = name.clone();
+            if let Some(p) = parent {
+                l.parent_id = p.clone();
+            }
+            if let Some(o) = order {
+                l.order = o.clone();
+            }
+        }
+    }
+}
+
+/// The validated siblings under `parent`, in `(order, id)` order, leaving out `exclude`.
+fn siblings(
+    campaign: &Campaign,
+    parent: &NodeId,
+    exclude: Option<&NodeId>,
+) -> Vec<(NodeId, String)> {
+    campaign
+        .children(parent)
+        .iter()
+        .filter(|c| Some(*c) != exclude && campaign.is_validated(c))
+        .filter_map(|c| Some((c.clone(), campaign.get(c)?.order()?.as_str().to_owned())))
+        .collect()
+}
+
+/// Resolves a position to an order key. A key past the length limit, or no room between equal
+/// neighbours, rewrites every sibling with evenly spread keys first.
+fn place(
+    w: &mut Working,
+    parent: &NodeId,
+    position: &Position,
+    exclude: Option<&NodeId>,
+) -> Result<OrderKey, StoreError> {
+    for attempt in 0..2 {
+        let sibs = siblings(&w.campaign, parent, exclude);
+        let at = |target: &NodeId| -> Result<usize, StoreError> {
+            sibs.iter().position(|(id, _)| id == target).ok_or_else(|| {
+                request_fault(
+                    Rule::PositionNotSibling,
+                    format!("{target} is not a sibling under {parent}"),
+                )
+            })
+        };
+        let key_at = |i: usize| sibs.get(i).map(|(_, k)| k.as_str());
+        let (lower, upper) = match position {
+            Position::First => (None, key_at(0)),
+            Position::Last => (sibs.len().checked_sub(1).and_then(key_at), None),
+            Position::Before(s) => {
+                let i = at(s)?;
+                (i.checked_sub(1).and_then(key_at), key_at(i))
+            }
+            Position::After(s) => {
+                let i = at(s)?;
+                (key_at(i), key_at(i + 1))
+            }
+        };
+        match between(lower, upper) {
+            Ok(k) if k.len() <= MAX_KEY_LEN || attempt == 1 => return Ok(OrderKey::new(k)),
+            _ if attempt == 0 => rebalance(w, parent, exclude),
+            Ok(k) => return Ok(OrderKey::new(k)),
+            Err(_) => break,
+        }
+    }
+    Err(request_fault(
+        Rule::PositionNotSibling,
+        "no order key fits at this position",
+    ))
+}
+
+/// Rewrites the order keys of the validated siblings under `parent` with evenly spread ones; each
+/// rewritten key is a `set` of `/order` in the amendment.
+fn rebalance(w: &mut Working, parent: &NodeId, exclude: Option<&NodeId>) {
+    let sibs = siblings(&w.campaign, parent, exclude);
+    for ((id, old), new) in sibs.iter().zip(spread(sibs.len())) {
+        if *old == new {
+            continue;
+        }
+        let Some(node) = w.campaign.get(id) else {
+            continue;
+        };
+        let mut node = node.clone();
+        let name = node.name().clone();
+        let parent_id = node.parent_id().cloned();
+        set_place(
+            &mut node,
+            &name,
+            parent_id.as_ref(),
+            Some(&OrderKey::new(new.clone())),
+        );
+        stamp(&mut node);
+        w.changes.push(Change {
+            node_id: id.clone(),
+            op: ChangeOp::Set,
+            item_id: None,
+            field: Some("/order".to_owned()),
+            old: Some(Value::String(old.clone())),
+            new: Some(Value::String(new)),
+            extra: serde_json::Map::new(),
+        });
+        w.campaign.insert(node);
+    }
+}
+
+/// A mark the write introduces names a criterion the file holds (a declared link, like a
+/// reference). Marks already there keep their meaning: a removed criterion stays named by the
+/// marks and by the amendment that removed it.
+fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result<(), StoreError> {
+    let value = serde_json::to_value(after).unwrap_or(Value::Null);
+    let marks_of = |v: &Value| {
+        v.get("marks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let old = before
+        .map(|b| marks_of(&serde_json::to_value(b).unwrap_or(Value::Null)))
+        .unwrap_or_default();
+    let criteria: BTreeSet<&str> = ["preconditions", "success_gates"]
+        .iter()
+        .filter_map(|k| value.get(*k).and_then(Value::as_array))
+        .flatten()
+        .filter_map(|c| c.get("id").and_then(Value::as_str))
+        .collect();
+    for mark in marks_of(&value) {
+        if old.contains(&mark) {
+            continue;
+        }
+        let target = mark
+            .get("criterion_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !criteria.contains(target) {
+            return Err(node_fault(
+                after.id(),
+                Rule::MarkTarget,
+                format!("a new mark names a criterion the file does not hold: {target}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// An op that is a batch of one returns exactly one result of its own kind.
 fn single<R>(
     receipt: Receipt<Vec<OpResult>>,
@@ -844,7 +1418,7 @@ fn structural_rule(rule: Rule) -> bool {
 /// the write introduces are checked.
 fn introduced_references_exist(
     campaign: &Campaign,
-    before: &Node,
+    before: Option<&Node>,
     after: &Node,
 ) -> Result<(), StoreError> {
     let targets = |n: &Node| -> BTreeSet<NodeId> {
@@ -872,7 +1446,7 @@ fn introduced_references_exist(
         }
         out
     };
-    let old = targets(before);
+    let old = before.map(targets).unwrap_or_default();
     for t in targets(after) {
         if !old.contains(&t) && campaign.get(&t).is_none() {
             return Err(node_fault(

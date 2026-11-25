@@ -169,10 +169,11 @@ impl Campaign {
                 ),
             ));
         }
-        let root = named
-            .iter()
-            .find(|id| !self.duplicates.contains_key(**id))
-            .map(|id| (*id).clone());
+        // Two roots after a merge of two inits: no arbitrary tree is validated.
+        let root = match named.as_slice() {
+            [only] if !self.duplicates.contains_key(*only) => Some((*only).clone()),
+            _ => None,
+        };
         match named.len() {
             0 => diags.push(Diagnostic {
                 file: "nodes/".to_owned(),
@@ -181,13 +182,17 @@ impl Campaign {
             }),
             1 => {}
             _ => {
-                for id in named.iter().skip(1) {
-                    diags.push(diag(
-                        id,
-                        Rule::RootCount,
-                        format!("a second parentless node is named `{}`", self.slug),
-                    ));
-                }
+                let all: Vec<String> = named.iter().map(|id| id.to_string()).collect();
+                diags.push(diag(
+                    named[0],
+                    Rule::RootCount,
+                    format!(
+                        "{} parentless nodes are named `{}`: {}",
+                        named.len(),
+                        self.slug,
+                        all.join(", ")
+                    ),
+                ));
             }
         }
 

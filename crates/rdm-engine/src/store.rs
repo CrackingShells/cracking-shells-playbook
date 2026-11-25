@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
 use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, Rev, SubtreeRev, TreeRev};
-use rdm_schema::stored::{Amendment, Comment, Node};
+use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
 
 use crate::codec::{Stored, decode};
 use crate::fs::{Durability, Fs, RealFs};
@@ -109,7 +109,11 @@ impl OpIndex {
             }
         }
         let Some(Node::Leaf(leaf)) = node else { return };
-        let mut ops: Vec<OpId> = leaf.history.iter().filter_map(|h| h.op_id.clone()).collect();
+        let mut ops: Vec<OpId> = leaf
+            .history
+            .iter()
+            .filter_map(|h| h.op_id.clone())
+            .collect();
         ops.sort();
         ops.dedup();
         for op in &ops {
@@ -241,7 +245,9 @@ pub(crate) fn load(fs: &dyn Fs, root: &Path, slug: &Name) -> Result<State, Store
     let mut ops = OpIndex::default();
     amendments.values().for_each(|a| ops.add_amendment(a));
     comments.values().for_each(|c| ops.add_comment(c));
-    campaign.nodes().for_each(|n| ops.replace_node(n.id(), Some(n)));
+    campaign
+        .nodes()
+        .for_each(|n| ops.replace_node(n.id(), Some(n)));
     Ok(State {
         campaign,
         comments,
@@ -294,8 +300,54 @@ impl Store {
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
         let mut all: Vec<Diagnostic> = self.state.file_diags.values().flatten().cloned().collect();
         all.extend(self.state.campaign.diagnostics().iter().cloned());
+        all.extend(self.mark_diagnostics());
         all.sort();
         all
+    }
+
+    /// One `mark_target` per mark that names a criterion neither in its file nor in an amendment
+    /// that removed it: a mark is a declared id link like a reference.
+    fn mark_diagnostics(&self) -> Vec<Diagnostic> {
+        let removed: BTreeSet<(String, String)> = self
+            .state
+            .amendments
+            .values()
+            .flat_map(|a| &a.changes)
+            .filter(|c| c.op == ChangeOp::Remove)
+            .filter_map(|c| {
+                let item = serde_json::to_value(c.item_id.as_ref()?).ok()?;
+                Some((c.node_id.to_string(), item.as_str()?.to_owned()))
+            })
+            .collect();
+        let mut out = Vec::new();
+        for node in self.state.campaign.nodes() {
+            let value = serde_json::to_value(node).unwrap_or(serde_json::Value::Null);
+            let held: BTreeSet<&str> = ["preconditions", "success_gates"]
+                .iter()
+                .filter_map(|k| value.get(*k).and_then(serde_json::Value::as_array))
+                .flatten()
+                .filter_map(|c| c.get("id").and_then(serde_json::Value::as_str))
+                .collect();
+            let marks = value.get("marks").and_then(serde_json::Value::as_array);
+            for (i, mark) in marks.into_iter().flatten().enumerate() {
+                let target = mark
+                    .get("criterion_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                if !held.contains(target)
+                    && !removed.contains(&(node.id().to_string(), target.to_owned()))
+                {
+                    out.push(Diagnostic {
+                        file: node_file(node.id()),
+                        rule: Rule::MarkTarget,
+                        detail: format!(
+                            "/marks/{i} names the criterion {target}, which the file does not hold"
+                        ),
+                    });
+                }
+            }
+        }
+        out
     }
 
     /// The reverse link index.
