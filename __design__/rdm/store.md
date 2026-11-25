@@ -16,7 +16,7 @@ results, the error type, declared links, `MOVES` and the version chain, all in
 
 Rulings this document builds on and does not reopen: flat `nodes/<id>.json` holding `name`,
 `parent_id` and an order key, depth computed from `parent_id`; readers take no lock; Rust types are
-the contract and JSON is derived; a file newer than the binary is refused with `NewerFormat`;
+the contract and JSON is derived; a file newer than the binary is refused with `NewerFormat` (any higher part of the `0.X.Y` triple);
 declared links; tracked data stays text; the cache is write-through, revalidated on every read,
 never the source of truth.
 
@@ -44,15 +44,15 @@ A node is one file, whatever its kind. The tree is not in the file system: a nod
 
 | Stored in the node file | Rule |
 |:--|:--|
-| `name` | `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. For the root it is the campaign's own slug and need not equal the checkout's directory name |
+| `name` | `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. On the root it is the campaign slug, which `open` is given by its caller: the root is the parentless node with that name |
 | `parent_id` | The `id` of the parent node. Absent on the root and only there |
-| `order_key` | The sibling order key (Order key). Every node has one; the root's is unused |
+| `order` | The sibling order key (Order key). Every node but the root has one; the root has none |
 
 | Derived on every read, never stored | From |
 |:--|:--|
 | Path (`a/b/c`) | The `name`s along the `parent_id` chain |
 | Depth (`level`) | The length of that chain: the one ordering rule, I1 |
-| Order of siblings | `(order_key, id)`, both compared bytewise, ascending |
+| Order of siblings | `(order, id)`, both compared bytewise, ascending |
 
 **What the loader reads.** In `nodes/` only entries named `n_` followed by eight characters of the id
 alphabet and `.json`; in `_amendments/` and `_comments/` only 26-character ULIDs and `.json`. Other
@@ -67,21 +67,36 @@ handle is open" disappears. A path is `nodes/n_xxxxxxxx.json` below the campaign
 whatever the depth of the tree, so the Windows 260-character limit no longer depends on nesting.
 A node's `name` can be any valid slug, including `con` or `nul`, because it is no longer a file name.
 
-**Structural defects the flat layout allows.** Git merges files, not the invariants between them, so
-a merge can produce these. The loader loads them as data and reports them (`validate`); it never
-refuses to load a campaign because of them, and an operation that touches an affected node fails with
-`Invalid`.
+**Faults and merge damage: report, do not refuse.** Git merges files, not the invariants between
+them, so a merge can leave a campaign that no single writer would have produced. The rule of `open`
+(R3 of Eliott's review, 2026-11-25) separates two classes.
 
-| Defect | Produced by |
-|:--|:--|
-| Two siblings with one `name` | Two branches each add a node of that name under one parent. The two files differ, so git sees no conflict |
-| A `parent_id` naming no node (orphan) | One branch deletes a node while another adds or moves a child under it |
-| A cycle in the `parent_id` chain | Two branches each move one of two nodes under the other |
-| No root, or two | A merge of unrelated histories |
-| Two files with one id | Minting collided across branches: the same path, so git reports an add/add conflict and the merge cannot complete silently |
+- **Per-file faults fail `open`**, naming the file: an unparsable file, a malformed id, `file_id_mismatch`, a file newer than the binary (`NewerFormat`). One file cannot be loaded, so nothing can be said of the campaign.
+- **Cross-file merge damage is loaded and reported loudly**, as one diagnostic per defect naming the file or files and the rule. The rule codes are contracts.md's.
 
-These are consequences of the flat-layout ruling, not objections to it. Not tested here: the rules
-belong to `validate` (M2); the store only guarantees that loading does not fail on them.
+| Defect | Rule | Produced by |
+|:--|:--|:--|
+| A `parent_id` naming no node (orphan) | `parent_missing` | One branch deletes a node while another adds or moves a child under it |
+| A `parent_id` naming a leaf | `parent_not_directory` | One branch replaces a directory by a leaf of the same id while another adds a child under it |
+| A cycle in the `parent_id` chain | `cycle` | Two branches each move one of two nodes under the other |
+| No parentless node carries the slug `open` was given, or more than one does | `root_count` | A merge of unrelated histories |
+| A parentless node whose `name` is not the slug | `root_name_mismatch` | A campaign directory renamed by hand; the repair is a rename of the root through the store |
+| Two siblings with one `name` | `name_collision` | Two branches each add a node of that name under one parent. The two files differ, so git sees no conflict |
+| Two files with one id, across files | `duplicate_id` | Minting collided across branches: the same path, so git reports an add/add conflict, but a hand-copied file passes unseen |
+
+**The anchor.** The root is the node without `parent_id` whose `name` equals the slug the caller gave
+`open`. Nodes reachable from it by `parent_id` are **validated**; everything else (an orphan, a cycle, a
+second parentless node, a root whose name does not match) is loaded but **unvalidated**. A campaign
+with damage is therefore readable, which is what a person repairing it needs.
+
+**What a write may build on.** A write that builds on an unvalidated node (it names one, or places
+something under it) is refused with `Invalid`, rule `unvalidated_node`. A repair write is
+allowed: relocating a node into the validated tree, renaming a colliding sibling or the root, or deleting.
+A comment is allowed too: it is append-only and points at the id, not the position (contracts.md §Campaign model). The
+check sits in step 3 of the write algorithm, under the lock, on the files as they are then.
+
+These are consequences of the flat-layout ruling, not objections to it. Guarded by
+`open_names_invalid_campaigns` (S20) and `requests_breaking_a_rule_are_refused` (S22).
 
 ## Order key
 
@@ -104,10 +119,10 @@ belong to `validate` (M2); the store only guarantees that loading does not fail 
   | `V`, `o` | `e` |
   | `V`, `W` | `VV` |
   | `V`, `VV` | `VF` |
-- **An insert** between neighbours `a` and `b` writes one file, the inserted node, and nothing else. Two branches that insert at the same spot produce equal keys; the order is then `(order_key, id)`, so every reader agrees without jitter, and jitter would only lengthen keys.
+- **An insert** between neighbours `a` and `b` writes one file, the inserted node, and nothing else. Two branches that insert at the same spot produce equal keys; the order is then `(order, id)`, so every reader agrees without jitter, and jitter would only lengthen keys. The root has no key.
 - **Length stays short.** Each insert into one gap halves it, so a run of inserts at one spot, or appends at the end, adds about one character per six inserts. Measured on a model of this algorithm: after 10, 50, 100 and 200 appends the key is 2, 9, 17 and 34 characters; after 200 inserts at one spot, 41. Bulk creation (an import, the 160-node benchmark) uses the recursive form that places `n` keys at once: 160 keys are at most 2 characters, and so are 1 000.
-- **Rebalance.** A key longer than 24 characters (about 130 inserts at one spot, far beyond the size of a directory in a real campaign) makes the insert rebalance its siblings: the same operation rewrites all `n` order keys evenly with the bulk form, as one batch, and its amendment records each as a `set` of `/order_key`. This rule is this design's own; neither source names one. Only the nodes whose key changes get a new `rev`.
-- Guard: none of the README's names covers `between` staying strictly between its bounds. Not tested here; a property test over random inserts is a gap for the `settle` leaves (reported as a finding).
+- **Rebalance.** A key longer than 24 characters (about 130 inserts at one spot, far beyond the size of a directory in a real campaign) makes the insert rebalance its siblings: the same operation rewrites all `n` order keys evenly with the bulk form, as one batch, and its amendment records each as a `set` of `/order`. This rule is this design's own; neither source names one. Only the nodes whose key changes get a new `rev`.
+- Guarded by `order_keys_sort_strictly_between_their_bounds` (a property test over random bounds, in `campaign_store`).
 
 Sibling order is therefore stored. This supersedes the line of `read-model.md` that says siblings have
 no stored order and are listed by `level`, leaves before directories, then `path` (reported as a finding).
@@ -127,7 +142,8 @@ the table gains one row per kind that gets an id).
 - **Alphabet.** Crockford base32 in lower case, `0123456789abcdefghjkmnpqrstvwxyz`: no `i`, `l`, `o` or `u`, so no id is misread as a number. Lower case because the default macOS and Windows file systems are case-insensitive and a node's id is its file name; mixed-case ids could collide there and not on Linux. The ULIDs of amendments and comments stay in the canonical upper case that the stored schema already fixes; their order is time order.
 - **Why random.** A counter collides across worktrees (two branches mint `n_0042`). A hash of content changes with the content, and I7 says an id never changes. A UUID is 36 characters for no gain. A random body needs no coordination.
 - **Why this length.** Eight characters are 40 bits. With 2 000 nodes present, a new mint collides with probability 2 000 / 2^40 = 1.8e-9. Two branches that each mint 500 ids share one with probability about 500^2 / 2^40 = 2.3e-7, and that case is loud, not silent: the same id is the same path, which git reports as an add/add conflict. Six characters (30 bits) suffice for sub-items, which only have to be unique inside one file of a few dozen of them: 50 / 2^30 = 4.7e-8 per mint.
-- **Minting.** Draw the body from an RNG injected when the store is opened (seeded in tests, the operating system's generator otherwise). Each character takes five bits of a random byte, which is exactly uniform because 256 is a multiple of 32. Check the candidate against the ids that exist, which the writer knows under the lock: the names in `nodes/`, the ids in the file for a sub-item, and the ids the same batch has already minted. On a collision draw again; after 32 collisions in a row the operation fails (a real generator never gets there, and a test generator that always collides must still end). Guarded by `minting_retries_on_collision`.
+- **Minting.** The caller mints ids, outside the lock, with the engine's minter (contracts.md); the store never mints a node, criterion or step id, which is what lets a batch name a node it creates and a retried request carry the same ids. The minter draws the body from an RNG injected at construction (seeded in tests, the operating system's generator otherwise). Each character takes five bits of a random byte, which is exactly uniform because 256 is a multiple of 32. It checks the candidate against the ids its caller can see: the campaign as last read, and the ids the same batch has already minted. On a collision it draws again; after 32 collisions in a row it fails (a real generator never gets there, and a test generator that always collides must still end). Guarded by `minting_retries_on_collision`.
+- **The store refuses a collision it finds.** Between the caller's read and the write, another process can have created the same id. Under the lock the store checks every id the request introduces against the disk and refuses a collision with `Invalid`, rule `duplicate_id`; the caller mints again and retries. Guarded by `open_names_invalid_campaigns` for the across-files case; the store's own refusal under the lock has no separate guard (S8).
 - **Never reused.** The check sees live ids only. A deleted node's id could be minted again with probability under 2e-9 per mint, and a reference to the deleted id would then resolve to the new node instead of the amendment's snapshot. This residual risk is accepted and not tested: scanning every amendment on each mint would cost more than the risk is worth.
 
 ## Revisions
@@ -136,8 +152,10 @@ the table gains one row per kind that gets an id).
 |:--|:--|
 | `rev` of a node | The first 16 hexadecimal characters (64 bits) of SHA-256 over the canonical encoding of the node as decoded, with `schema_version` left out |
 | `tree_rev` | The first 16 hexadecimal characters of SHA-256 over the text `rdm-tree\n` followed by one line `<id> <rev>\n` per node, in ascending bytewise order of `id` |
+| `SubtreeRev` | The same form with its own domain prefix `rdm-subtree\n`, over the `<id> <rev>\n` lines of a node and all its descendants, sorted by `id`. It is `DeleteOp.expected_subtree_rev` |
 
-- **What `rev` counts:** every field of the node file in canonical order, including `name`, `parent_id` and `order_key`, and the unknown fields the file carries (I12), in their order. Not counted: the file's bytes (whitespace, CRLF, `1e5` against `100000`, `\u` escapes), its mtime, the `schema_version` stamp, amendments and comments. The hash is taken over what the serialiser would write for the decoded value, so a whitespace-only edit keeps the `rev` and a change of any value changes it. Guarded by `rev_tracks_value_not_formatting`.
+- **What `rev` counts:** every field of the node file in canonical order, including `name`, `parent_id` and `order`, and the unknown fields the file carries (I12), in their order. Not counted: the file's bytes (whitespace, CRLF, `1e5` against `100000`, `\u` escapes), its mtime, the `schema_version` stamp, amendments and comments. The hash is taken over what the serialiser would write for the decoded value, so a whitespace-only edit keeps the `rev` and a change of any value changes it. Guarded by `rev_tracks_value_not_formatting`.
+- **`SubtreeRev`** changes when any node in the subtree is created, removed, moved into or out of it, or edited. A move of the subtree's root changes that node's `rev` and so its `SubtreeRev`; the subtree's descendants keep their `rev`s. The distinct prefix keeps a subtree whose lines happen to equal the whole campaign's from sharing its `tree_rev`.
 - **Consequences.** A move changes the `rev` of the moved node only: its children keep theirs because they name their parent by id. A comment or an amendment changes no `rev` and not the `tree_rev`, because `tree_rev` covers `nodes/` only. Creating, deleting, moving or editing any node, a status move included, changes `tree_rev`. It is deliberately coarse: a batch that presents `expected_tree_rev` is refused when any node changed anywhere, which is what a structural batch wants and a field edit does not use. Guarded by `tree_rev_changes_on_node_ops_not_comments`.
 - **Why SHA-256.** It is a published function with an independent implementation in every language, so another tool (the importer, a CI script) can recompute a `rev` from a file. It needs no C build (`blake3` compiles C and assembly by default and declares an MSRV of exactly 1.88). A node is a few kilobytes, so speed does not matter, and an unchanged node is not re-hashed (see Cache).
 - **Why 64 bits.** `rev` is compared only with the value the same node had when the caller read it. A different value with the same `rev` would let one stale write through, with probability 2^-64. Sixteen characters keep the opaque string short in every tool output. It is not a security boundary.
@@ -149,7 +167,9 @@ the table gains one row per kind that gets an id).
 Readers take no lock and write nothing (I11).
 
 1. List `nodes/` and read every matching file whole (the cache turns this into a revalidation, see Cache).
-2. Decode each file through the version chain. A file newer than the binary fails the read with `NewerFormat { found, supported }` before anything else in it is parsed.
+2. Decode each file through the version chain. A file whose `schema_version` is newer than the binary's, whether the higher part is X or Y of `0.X.Y` (the whole triple is compared), fails with `NewerFormat { found, supported, .. }` before anything else in it is parsed.
+3. A key the decoder does not know is kept in place (I12) and produces a warning, a `Diagnostic` naming the file and the key path with the rule `unknown_key` (the type is contracts.md's). A read reports the diagnostics of the files it read.
+4. Faults and cross-file damage follow the rule of Layout: per-file faults fail `open`; merge damage is loaded and reported with its diagnostics.
 
 **Technique:** publish by rename (Maildir delivery, Sources). Every file a writer publishes is written
 completely under another name first and then renamed into place, so a reader opening a path gets the
@@ -176,7 +196,7 @@ The kernel releases it when the process dies, so no stale lock exists. Readers n
 
 - **Acquire.** `try_lock`, repeated with a back-off that starts at 5 ms and doubles to 50 ms, until a timeout of 5 seconds. A write takes milliseconds, so five seconds is three orders of magnitude of contention. At the timeout the operation fails with `Locked { holder }` and has changed nothing. The timeout and back-off are store options; the numbers here are the defaults.
 - **In-process.** A second open of the lock file in the same process is also refused (probed on macOS), so two threads or two server tasks of one process are serialised by the same mechanism.
-- **Holder record.** After acquiring the lock the writer replaces `.rdm/holder.json` with `{pid, host, started}` (process id, host name, UTC instant of the acquisition). It is removed before the lock is released. It is advisory only: it fills `Locked { holder }` so the caller can say who is writing, and nothing ever decides by it. It can lag by one writer (a waiter may read the previous holder's record in the instant before the new one is written), name a dead process after a kill (the next holder overwrites it), and a process id means nothing across hosts.
+- **Holder record.** After acquiring the lock the writer replaces `.rdm/holder.json` with `{pid, host, since}` (process id, host name, UTC instant of the acquisition: contracts.md's `LockHolder`). It is removed before the lock is released. It is advisory only: it fills `Locked { holder }` so the caller can say who is writing, and nothing ever decides by it. It can lag by one writer (a waiter may read the previous holder's record in the instant before the new one is written), name a dead process after a kill (the next holder overwrites it), and a process id means nothing across hosts.
 - **Why a separate file.** On Windows an exclusive `LockFileEx` region denies other processes read as well as write access to it, and `fs4` locks the whole file there (its source passes the maximum length). A holder record inside the lock file would be unreadable by exactly the process that needs it. Hence the lock file stays empty and is never read or written. Verified from the Microsoft documentation of `LockFileEx`; `second_writer_gets_locked_with_holder` runs on Windows in CI.
 - **A missing, truncated or garbage holder record** never blocks or fails the lock: it is only read to fill the error, and a record that does not parse is reported as an unknown holder. Guarded by `garbage_holder_record_does_not_break_locking`.
 - **A killed holder.** The lock is free as soon as the kernel has released it, which `lock_survives_holder_kill` shows on all three systems. On Windows the documentation says the release after a process ends "depends upon available system resources", so a waiter must expect a short delay, which the five-second timeout covers.
@@ -192,13 +212,17 @@ Every primitive runs these steps; the table below gives step 5 per primitive.
 
 1. Take the lock (Lock).
 2. Recover: if `.rdm/intent/` or `.rdm/tmp/` holds anything, run Intent and recovery first.
-3. Read the files the operation touches **from disk**, not from the cache, and check the preconditions: `expected_rev` against the file's `rev`, and for a structural operation the structure (sibling `name` unique, no cycle, the parent exists) and `expected_tree_rev` if given. On a mismatch release the lock and return `Stale { current }` (current state included); nothing has been written. This is what makes a stale write harmless whatever any cache or earlier read held. Guarded by `stale_replace_changes_nothing`.
-4. Compute every after-image, mint ids and the amendment's ULID, build the amendment.
+3. Under the lock, in this order:
+   1. **Replay.** If the request carries an `op_id` and the op index finds a record that carries it (Cache), write nothing and return the first outcome with `replayed: true`. The check and the write are one critical section, which is why the store, not M2, owns it. Guarded by `replayed_op_id_writes_nothing`.
+   2. Read the files the operation touches **from disk**, not from the cache. Check `expected_rev`, `expected_subtree_rev` and `expected_tree_rev` where given. On a mismatch release the lock and return `Stale { current }`; nothing has been written. This makes a stale write harmless whatever any cache or earlier read held. Guarded by `stale_replace_changes_nothing`.
+   3. Check the structure: sibling `name` unique, no cycle, the parent exists and is a directory, and every id the request introduces is absent from the disk (`duplicate_id`).
+   4. **Unvalidated nodes.** If the request builds on a node that is not reachable from the root, refuse it with `Invalid` unless it is a repair (relocate it into the validated tree, rename a colliding sibling, delete). Guarded by `open_names_invalid_campaigns`.
+4. Compute every after-image, mint the amendment's ULID (the only id the store mints), build the amendment.
 5. Apply (table).
 6. Update the cache from the written values (Cache), and remove `holder.json`.
 7. Release the lock, then return. A write is acknowledged only by returning `Ok`, after step 5 is complete under the durability tier in force.
 
-The retry key `op_id` and the replay of a retried operation are decided in `contracts.md`; this document only says where the check would sit: step 3, under the lock.
+The `op_id` replay rule, what it returns and its limits are in `contracts.md`; the check sits in step 3.1 and reads the op index of the Cache section.
 
 ### The three rules
 
@@ -231,7 +255,7 @@ After the last effect of an operation with an intent: sync every touched directo
 | **Replace**, no amendment (a status move, progress, a criterion mark; one node) | `put N` | Before the rename: `pre`. After it: `post` | Nothing to recover: stray temp file removed |
 | **Replace**, content edit | `I`, `put N`, `create A` | After `I`: `pre`. After `put N`: new `N`, no amendment yet. After `create A`: `post` | Any prefix after `I`: redo what is missing, giving `post`. Before `I` completes: `pre` |
 | **Create** a node | `I`, `create N`, `create A` | After `I`: `pre`. After `create N`: the node exists without its amendment. After `create A`: `post` | As above |
-| **Move or rename** | `I`, `put N` (new `parent_id`, `name`, `order_key`), `create A` | After `put N`: the node at its new place, no amendment yet. No other node file changes | As above |
+| **Move or rename** | `I`, `put N` (new `parent_id`, `name`, `order`), `create A` | After `put N`: the node at its new place, no amendment yet. No other node file changes | As above |
 | **Delete a subtree** of `k` nodes | `I`, `create A` (with the `snapshot`), `del N_k` to `del N_1` (deepest first, the subtree's root last) | After `create A`: the amendment, every node still present. After `j` deletes: a smaller subtree, a valid campaign (no orphan) | As above: redo the remaining deletes. A `del` of a missing file is skipped |
 | **Comment** | `create C` | Before the link: `pre`. After it: `post` | Nothing to recover |
 | **Batch** (any mix of the above) | `I`, creates (parents first), puts, `create A` (one amendment, all its changes), deletes (deepest first) | After each effect, the prefix of that order | As above |
@@ -240,7 +264,7 @@ After the last effect of an operation with an intent: sync every touched directo
 Notes on the table:
 
 - A comment never changes a node file, so it changes no `rev`; creating its file needs no intent.
-- A move writes one node file and one amendment. `move_writes_one_file_and_keeps_ids` counts files in `nodes/`: no other node file is written and no id changes.
+- A move writes one node file and one amendment. `move_writes_one_file_and_keeps_ids` counts files under `nodes/` only (the amendment is written besides, in `_amendments/`): exactly one node file is written and no id changes.
 - Every operation that writes two or more files publishes the intent first. A prefix without an intent would be valid for readers, but nothing would complete it: an edit with no amendment, or an amendment for an edit never made. The intent is what turns "every prefix loads" into "every prefix recovers to `pre` or `post`".
 - Before `I` is renamed into place the operation has done nothing a reader can see (only temporary files in `.rdm/tmp/`). The rename of `I` is the commit point of a multi-file operation; the rename of the node file is that of a single-file one.
 - Guarded by `every_write_prefix_loads_and_recovers_to_pre_or_post`, which cuts each operation after every one of these effects, including the effects inside `I`, and by `killed_workers_lose_no_acknowledged_write`.
@@ -319,8 +343,12 @@ where identity is the inode on Unix and the creation time on Windows (a replace 
 new file a new identity), the wall-clock instant `read_at` taken before the file was statted, and a
 `racy` flag. The same entry shape serves `nodes/`, `_amendments/` and `_comments/`: append-only files
 are checked like the rest, so every kind of external change is covered by one rule. Derived structures
-(paths, depth, the reverse link index, `tree_rev`) belong to a generation counter that is bumped when
-any entry changes; they are rebuilt from the entries and never outlive them.
+(paths, depth, the reverse link index, `tree_rev`, the op index and the diagnostics) belong to a generation counter that is bumped when
+any entry changes; they are rebuilt from the entries and never outlive them. Guarded by `reverse_index_equals_brute_force_scan`, whose op sequences also compare every derived view to a rebuild.
+
+**Warnings and diagnostics are kept with the decoded nodes.** The `unknown_key` warnings of a file are stored in its entry, and the cross-file diagnostics (orphan, cycle, root, name collision, duplicate id) are derived with the other views. A warm read therefore reports exactly what a cold open would. This is part of `cached_read_equals_cold_read`.
+
+**The op index** maps an `op_id` to the records that carry it (amendments, comments, `History.op_id` entries). It is built on open with the reverse index, updated by write-through, and read in step 3.1 of the write algorithm, under the lock. Its limits: it knows only what the records carry, so an edit that writes no `op_id`-bearing record is not replayed (it is rev-guarded instead); it keeps no fingerprint of the request, so the same `op_id` reused for a different request is not detected; and, being derived from the entries, it is only as fresh as the revalidation, which is why the replay check runs after taking the lock and a recovery, on a validation made then. The full statement of the rule is `contracts.md`'s (`op_id` replay).
 
 **Revalidation, on every read:**
 
@@ -401,24 +429,28 @@ rulings from "the server keeps no state between calls" to the cache rule of this
 | S1 | Readers take no lock, and see each file as the old or the new version, never a torn one | Reads | `reader_sees_old_or_new_never_partial` |
 | S2 | Every prefix of every operation's file effects loads, and recovery makes it exactly the state before or after the operation (I3) | Write order, Intent and recovery | `every_write_prefix_loads_and_recovers_to_pre_or_post` |
 | S3 | A process kill loses no acknowledged write (I3) | Durability | `killed_workers_lose_no_acknowledged_write` |
-| S4 | A write based on a stale `rev` or `tree_rev` is refused with `Stale { current }` and changes nothing (I4) | Write algorithm, step 3 | `stale_replace_changes_nothing` |
-| S5 | A move writes one node file, and no id changes (I7) | Write order | `move_writes_one_file_and_keeps_ids` |
+| S4 | A write based on a stale `rev`, `SubtreeRev` or `tree_rev` is refused with `Stale { current }` and changes nothing (I4) | Write algorithm, step 3 | `stale_replace_changes_nothing` |
+| S5 | A move writes exactly one file under `nodes/` (the amendment is written besides), and no id changes (I7) | Write order | `move_writes_one_file_and_keeps_ids` |
 | S6 | `rev` follows the decoded value, not the bytes | Revisions | `rev_tracks_value_not_formatting` |
 | S7 | `tree_rev` changes on any node operation and not on a comment or an amendment | Revisions | `tree_rev_changes_on_node_ops_not_comments` |
-| S8 | A minted id that collides is drawn again, and minting ends | Ids | `minting_retries_on_collision` |
+| S8 | A minted id that collides is drawn again, and minting ends; an id the store finds already on disk under the lock is refused with `duplicate_id` | Ids | `minting_retries_on_collision` for the minter. The store's own refusal is not tested separately by a named guard: it shares the cross-file `duplicate_id` row of `open_names_invalid_campaigns` |
 | S9 | A second writer, after the timeout, gets `Locked { holder }` and the file is unchanged | Lock | `second_writer_gets_locked_with_holder` |
 | S10 | A killed holder does not leave the lock held | Lock | `lock_survives_holder_kill` |
 | S11 | A missing, truncated or garbage holder record never breaks locking | Lock | `garbage_holder_record_does_not_break_locking` |
 | S12 | A replace or unlink against a target another program holds open succeeds once it is released inside the retry window, and fails cleanly otherwise | Windows | `replace_while_target_open` |
 | S13 | A cached read equals a cold read after any kind of external change (I10, reworded) | Cache | `cached_read_equals_cold_read` |
 | S14 | A write returns only after its files are written, and a cold reader then sees them | Cache, write-through | `write_through_visible_to_cold_reader_on_return` |
-| S15 | `between` returns a key strictly between its bounds, of the allowed characters, not ending in `0`, and keys stay short | Order key | Not tested: the README names no guard. A property test over random inserts is a gap for the settle leaves |
+| S15 | `between` returns a key strictly between its bounds, of the allowed characters, not ending in `0`, and keys stay short | Order key | `order_keys_sort_strictly_between_their_bounds` |
 | S16 | An id of a deleted record is never minted again | Ids | Not tested: a probability under 2e-9 per mint, accepted |
 | S17 | Power loss leaves a valid campaign | Durability | Not tested: needs a fault-injecting file system (README, "Deliberately not tested"); argued under Durability |
-| S18 | A kill during recovery is repaired by the next recovery | Intent and recovery | Not tested by a named guard: `every_write_prefix_loads_and_recovers_to_pre_or_post` cuts operations, and whether `crash_test` also cuts recovery is for that leaf to decide (reported as a finding) |
+| S18 | A kill at any point of recovery's own effects is repaired by the next recovery | Intent and recovery | `every_write_prefix_loads_and_recovers_to_pre_or_post` (a row that cuts recovery's own effects too, `crash_test`) |
 | S19 | Recovery never overwrites a create-only file that holds other bytes | Intent and recovery | Not tested: it needs an external writer in the crash window |
-| S20 | Loading a campaign with a duplicate sibling name, an orphan, a cycle or no root does not fail | Layout | Not tested here: `validate` (M2) owns the rules and their tests |
+| S20 | `open` fails on a per-file fault (unparsable file, malformed id, `file_id_mismatch`, `NewerFormat`), and loads and reports cross-file damage (`parent_missing`, `cycle`, `root_count`, `name_collision`, cross-file `duplicate_id`) as one diagnostic per defect | Layout, Reads | `open_names_invalid_campaigns` |
 | S21 | An in-place edit that preserves size and restores mtime is detected | Cache | Not tested: documented limit, undetectable by stat |
+| S22 | A write that builds on an unvalidated node is refused; a repair write is allowed | Write algorithm, step 3.4 | `requests_breaking_a_rule_are_refused` |
+| S23 | A retried `op_id` returns the first outcome and writes nothing | Write algorithm, step 3.1 | `replayed_op_id_writes_nothing` |
+| S24 | An unknown key survives in place and produces an `unknown_key` diagnostic, and a warm read reports the same diagnostics as a cold open | Reads, Cache | `unknown_keys_survive_in_place_at_every_level` (survival) and `cached_read_equals_cold_read` (equal diagnostics) |
+| S25 | A file newer than the binary, at any part of `0.X.Y`, is refused with `NewerFormat` | Reads | Not tested here: `codec_and_versions` owns the version refusal and its guard; the store only carries it |
 
 ## Probe answers
 
