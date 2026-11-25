@@ -201,7 +201,10 @@ impl Store {
         &self.root
     }
 
-    /// The model: nodes, tree, validated set.
+    /// The model: nodes, tree, validated set. Like every accessor of a `Store`, it answers with
+    /// the state as of the last revalidation (`open`, a write, `recover`, or
+    /// [`crate::cache::CachedCampaign::read`]); only the cached handle revalidates before it
+    /// answers.
     #[must_use]
     pub fn campaign(&self) -> &Campaign {
         &self.state.campaign

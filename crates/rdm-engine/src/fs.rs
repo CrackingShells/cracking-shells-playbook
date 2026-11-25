@@ -31,6 +31,10 @@ pub struct FileStat {
     pub mtime: std::time::SystemTime,
     /// The length in bytes.
     pub size: u64,
+    /// The inode change time on Unix, as seconds and nanoseconds; `None` on Windows. No
+    /// user-level call sets it, so an in-place edit that restores the modification time still
+    /// moves it.
+    pub ctime: Option<(i64, i64)>,
 }
 
 /// The effects the store performs on the file system, plus the reads it needs.
@@ -55,7 +59,8 @@ pub trait Fs {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
     /// File names in a directory, sorted bytewise. A missing directory is `NotFound`.
     fn list_dir(&self, path: &Path) -> io::Result<Vec<String>>;
-    /// The identity, modification time and size of a file. A missing file is `NotFound`.
+    /// The signature of a file ([`FileStat`]). A missing file is `NotFound`. No default: every
+    /// implementation says what it reports.
     fn stat(&self, path: &Path) -> io::Result<FileStat>;
 }
 
@@ -259,6 +264,13 @@ impl Fs for RealFs {
         let meta = std::fs::metadata(path)?;
         #[cfg(unix)]
         let identity = std::os::unix::fs::MetadataExt::ino(&meta);
+        #[cfg(unix)]
+        let ctime = Some((
+            std::os::unix::fs::MetadataExt::ctime(&meta),
+            std::os::unix::fs::MetadataExt::ctime_nsec(&meta),
+        ));
+        #[cfg(not(unix))]
+        let ctime = None;
         #[cfg(not(unix))]
         let identity = meta
             .created()
@@ -269,6 +281,7 @@ impl Fs for RealFs {
             identity,
             mtime: meta.modified()?,
             size: meta.len(),
+            ctime,
         })
     }
 }

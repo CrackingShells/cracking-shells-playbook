@@ -6,15 +6,17 @@
 //! child), an editor writing in place, `git checkout`, a copy, an `rm`. The campaign files come
 //! from the codec and from store writes.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
 use rdm_engine::cache::CachedCampaign;
+use rdm_engine::codec::decode;
 use rdm_engine::codec::encode;
-use rdm_engine::fs::{Effect, RecordingFs};
+use rdm_engine::fs::{Durability, Effect, FileStat, Fs, RealFs, RecordingFs};
+use rdm_engine::rev::rev;
 use rdm_engine::store::{Options, Store};
 use rdm_schema::ids::*;
 use rdm_schema::ops::{
@@ -304,11 +306,57 @@ fn assert_same_as_cold(row: &str, warm: &Store, root: &Path) {
     }
 }
 
+/// A loader that shares nothing with the cache's build: every file decoded by the codec and
+/// hashed by `rev`, in file order.
+type Held = BTreeMap<NodeId, (Node, Rev)>;
+
+fn independent(root: &Path) -> (Held, BTreeSet<(String, String)>) {
+    let mut nodes = BTreeMap::new();
+    let mut warnings = BTreeSet::new();
+    for e in std::fs::read_dir(root.join("nodes")).unwrap() {
+        let path = e.unwrap().path();
+        let file = format!("nodes/{}", path.file_name().unwrap().to_string_lossy());
+        let d = decode::<Node>(&file, &std::fs::read(&path).unwrap()).unwrap();
+        warnings.extend(
+            d.diagnostics
+                .iter()
+                .map(|w| (w.file.clone(), w.detail.clone())),
+        );
+        nodes.insert(d.value.id().clone(), (d.value.clone(), rev(&d.value)));
+    }
+    (nodes, warnings)
+}
+
+/// The cache against the independent loader: the same nodes, each with the same `rev`, and the
+/// file warnings it reports.
+fn assert_same_as_files(row: &str, warm: &Store, root: &Path) {
+    let (nodes, warnings) = independent(root);
+    let held: Held = warm
+        .campaign()
+        .nodes()
+        .map(|n| {
+            (
+                n.id().clone(),
+                (n.clone(), warm.rev(n.id()).unwrap().clone()),
+            )
+        })
+        .collect();
+    assert_eq!(held, nodes, "{row}: nodes and revs against the files");
+    let reported: BTreeSet<(String, String)> = warm
+        .diagnostics()
+        .into_iter()
+        .filter(|d| d.rule == rdm_schema::error::Rule::UnknownKey)
+        .map(|d| (d.file, d.detail))
+        .collect();
+    assert_eq!(reported, warnings, "{row}: file warnings against the files");
+}
+
 fn read_same(row: &str, cache: &mut CachedCampaign, root: &Path) {
     let warm = cache
         .read()
         .unwrap_or_else(|e| panic!("{row}: the read failed: {e:?}"));
     assert_same_as_cold(row, warm, root);
+    assert_same_as_files(row, warm, root);
 }
 
 fn opened(disk: &Disk) -> CachedCampaign {
@@ -362,20 +410,47 @@ fn child_role() -> Option<PathBuf> {
 // cached_read_equals_cold_read
 
 /// A file that an editor rewrote in place: the same descriptor is not reopened with truncation,
-/// the bytes are overwritten from offset 0 at the same length, and the modification time is the
-/// one the file had, which is what a coarse timestamp (FAT's two seconds, HFS+'s one) gives two
-/// writes in one tick.
-fn rewrite_in_place_same_size(path: &Path, from: &str, to: &str) {
-    assert_eq!(from.len(), to.len());
+/// the bytes are overwritten from offset 0, and the modification time is the one the file had,
+/// which is what a coarse timestamp (FAT's two seconds, HFS+'s one) gives two writes in one tick,
+/// and what `touch -r` gives at any age.
+fn rewrite_in_place(path: &Path, from: &str, to: &str) {
     let before = std::fs::metadata(path).unwrap();
     let text = std::fs::read_to_string(path).unwrap();
     assert!(text.contains(from));
     let bytes = text.replace(from, to).into_bytes();
-    assert_eq!(bytes.len() as u64, before.len());
     let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
     file.rewind().unwrap();
     file.write_all(&bytes).unwrap();
     file.set_modified(before.modified().unwrap()).unwrap();
+}
+
+fn rewrite_in_place_same_size(path: &Path, from: &str, to: &str) {
+    assert_eq!(from.len(), to.len());
+    rewrite_in_place(path, from, to);
+}
+
+/// Backdates every record file past the racy window, as time does: afterwards a cache that reads
+/// them holds clean entries, and only the signature can tell it that one changed.
+fn age(root: &Path) {
+    for dir in ["nodes", "_comments", "_amendments"] {
+        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
+            continue;
+        };
+        for e in entries {
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(e.unwrap().path())
+                .unwrap();
+            file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+                .unwrap();
+        }
+    }
+}
+
+fn sound_aged() -> Disk {
+    let disk = sound();
+    age(&disk.root);
+    disk
 }
 
 #[test]
@@ -408,6 +483,33 @@ fn cached_read_equals_cold_read() {
     rewrite_in_place_same_size(&file, "a goal", "b goal");
     read_same(
         "an editor writing in place at the same size within one tick",
+        &mut cache,
+        &disk.root,
+    );
+    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
+
+    // Bug caught: skipping the racy re-read. On Unix the ctime already moves for the row above, so
+    // this one runs on a file system whose signature has none (Windows), where a fresh file edited
+    // in place at the same size within one tick has the same identity, mtime and size.
+    let disk = sound();
+    let no_ctime = Hooked::new(
+        Box::new(|_, _| {}),
+        Box::new(|_, s| FileStat { ctime: None, ..s }),
+    );
+    let mut cache = CachedCampaign::open(
+        &disk.root,
+        &name("demo"),
+        Options {
+            fs: no_ctime,
+            ..plain()
+        },
+    )
+    .unwrap();
+    read_same("opened without ctime", &mut cache, &disk.root);
+    let file = disk.path(&format!("nodes/{}.json", nid(3)));
+    rewrite_in_place_same_size(&file, "a goal", "b goal");
+    read_same(
+        "an editor writing in place at the same size within one tick, no ctime",
         &mut cache,
         &disk.root,
     );
@@ -517,6 +619,65 @@ fn cached_read_equals_cold_read() {
     copied.iter().for_each(|p| std::fs::remove_file(p).unwrap());
     read_same("a comment and an amendment removed", &mut cache, &disk.root);
     assert!(cache.read().unwrap().comments().is_empty());
+
+    // Aged entries are clean, so the racy re-read cannot rescue these rows: only the signature
+    // sees the change. On Unix the ctime moves for all three, so each is red only when the
+    // component it is named for is dropped together with the ctime.
+    //
+    // Bug caught: a signature without the identity: a same-size replace by rename that keeps the
+    // old mtime (what a synchroniser or `git checkout` with a preserved time does).
+    let disk = sound_aged();
+    let mut cache = opened(&disk);
+    let file = disk.path(&format!("nodes/{}.json", nid(3)));
+    let kept = std::fs::metadata(&file).unwrap().modified().unwrap();
+    let text = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("a goal", "b goal");
+    let side = disk.path("replacement.tmp");
+    std::fs::write(&side, text).unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&side)
+        .unwrap()
+        .set_modified(kept)
+        .unwrap();
+    std::fs::rename(&side, &file).unwrap();
+    read_same(
+        "an aged file replaced by rename at the same size and mtime",
+        &mut cache,
+        &disk.root,
+    );
+    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
+
+    // Bug caught: a signature without the size: an in-place edit that grows the file and
+    // restores the mtime.
+    let disk = sound_aged();
+    let mut cache = opened(&disk);
+    let file = disk.path(&format!("nodes/{}.json", nid(3)));
+    rewrite_in_place(&file, "a goal", "a much longer goal");
+    read_same(
+        "an aged file edited in place to another size, mtime restored",
+        &mut cache,
+        &disk.root,
+    );
+    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "a much longer goal");
+
+    // Bug caught: a signature without the ctime: `touch -r` after an in-place edit at the same
+    // size leaves identity, mtime and size as they were (Unix only: Windows has no ctime and
+    // documents the limit).
+    #[cfg(unix)]
+    {
+        let disk = sound_aged();
+        let mut cache = opened(&disk);
+        let file = disk.path(&format!("nodes/{}.json", nid(3)));
+        rewrite_in_place_same_size(&file, "a goal", "b goal");
+        read_same(
+            "an aged file edited in place at the same size, mtime restored",
+            &mut cache,
+            &disk.root,
+        );
+        assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
+    }
 }
 
 #[test]
@@ -880,4 +1041,179 @@ fn write_through_visible_to_cold_reader_on_return() {
     cache.delete_subtree(req(Some("d"), None, del)).unwrap();
     assert!(!exists(format!("nodes/{}.json", nid(5))), "delete: file");
     assert!(cold(&root).campaign().get(&nid(5)).is_none(), "delete");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Faults the real file system cannot be made to produce on cue: the seam
+
+#[derive(Clone, Copy, PartialEq)]
+enum At {
+    Stat,
+    Read,
+}
+
+type Before = Box<dyn Fn(At, &Path) + Send + Sync>;
+type Report = Box<dyn Fn(&Path, FileStat) -> FileStat + Send + Sync>;
+
+/// The real file system with two hooks: one runs before a stat or a read (a concurrent actor
+/// acting between the listing and the access), one rewrites what a stat reports (a file system
+/// whose signature hides a change: Windows, which has no ctime in the signature, or a
+/// synchroniser that restores every timestamp).
+struct Hooked {
+    before: Before,
+    report: Report,
+}
+
+impl Hooked {
+    fn new(before: Before, report: Report) -> Arc<Self> {
+        Arc::new(Self { before, report })
+    }
+}
+
+impl Fs for Hooked {
+    fn create_dir_all(&self, p: &Path) -> std::io::Result<()> {
+        RealFs.create_dir_all(p)
+    }
+    fn write_new(&self, p: &Path, b: &[u8]) -> std::io::Result<()> {
+        RealFs.write_new(p, b)
+    }
+    fn sync_file(&self, p: &Path, t: Durability) -> std::io::Result<()> {
+        RealFs.sync_file(p, t)
+    }
+    fn sync_dir(&self, p: &Path, t: Durability) -> std::io::Result<()> {
+        RealFs.sync_dir(p, t)
+    }
+    fn rename(&self, a: &Path, b: &Path) -> std::io::Result<()> {
+        RealFs.rename(a, b)
+    }
+    fn hard_link(&self, a: &Path, b: &Path) -> std::io::Result<()> {
+        RealFs.hard_link(a, b)
+    }
+    fn remove_file(&self, p: &Path) -> std::io::Result<()> {
+        RealFs.remove_file(p)
+    }
+    fn read(&self, p: &Path) -> std::io::Result<Vec<u8>> {
+        (self.before)(At::Read, p);
+        RealFs.read(p)
+    }
+    fn list_dir(&self, p: &Path) -> std::io::Result<Vec<String>> {
+        RealFs.list_dir(p)
+    }
+    fn stat(&self, p: &Path) -> std::io::Result<FileStat> {
+        (self.before)(At::Stat, p);
+        RealFs.stat(p).map(|s| (self.report)(p, s))
+    }
+}
+
+fn plain() -> Options {
+    Options::default()
+}
+
+#[test]
+fn a_write_judges_the_files_it_touches_against_the_disk() {
+    // Bug caught: a write that takes the revision of the node it edits from the cache. When the
+    // signature hides an external same-size edit (here a stat that always reports what it first
+    // saw), the cache still holds the old node and its old `rev`, so a stale `expected_rev`
+    // matches and the write goes over the external edit: a lost update. Step 3.2 reads the
+    // touched files from the disk.
+    let disk = sound_aged();
+    let first_seen = std::sync::Mutex::new(BTreeMap::<PathBuf, FileStat>::new());
+    let fs = Hooked::new(
+        Box::new(|_, _| {}),
+        Box::new(move |p, s| {
+            *first_seen
+                .lock()
+                .unwrap()
+                .entry(p.to_path_buf())
+                .or_insert(s)
+        }),
+    );
+    let mut cache =
+        CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
+    let stale = {
+        let store = cache.read().unwrap();
+        req(Some("mine"), None, edit_goal(store, 3, "mine"))
+    };
+    let file = disk.path(&format!("nodes/{}.json", nid(3)));
+    rewrite_in_place_same_size(&file, "a goal", "b goal");
+    assert_eq!(
+        leaf_of(cache.read().unwrap(), 3).goal,
+        "a goal",
+        "the signature hides the edit from a read (the documented limit)"
+    );
+    let err = cache.replace(stale).unwrap_err();
+    assert!(
+        matches!(err, rdm_schema::error::StoreError::Stale { .. }),
+        "{err:?}"
+    );
+    assert!(
+        std::fs::read_to_string(&file).unwrap().contains("b goal"),
+        "the external edit is untouched"
+    );
+    assert_eq!(
+        leaf_of(cache.read().unwrap(), 3).goal,
+        "b goal",
+        "the write learnt the file it read"
+    );
+}
+
+#[test]
+fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_an_error() {
+    // Bug caught: a revalidation that reports a concurrent delete or rename as an `Io` error,
+    // which fails every read and every write while a tool or `git checkout` replaces files
+    // (store.md, §Cache, revalidation step 4). The Fs seam removes the file after the listing
+    // named it, at the stat or at the read.
+    for at in [At::Stat, At::Read] {
+        let disk = sound();
+        let victim = disk.path(&format!("nodes/{}.json", nid(4)));
+        let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (flag, target) = (Arc::clone(&armed), victim.clone());
+        let fs = Hooked::new(
+            Box::new(move |when, p| {
+                if when == at
+                    && p == target
+                    && flag.swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    std::fs::remove_file(p).unwrap();
+                }
+            }),
+            Box::new(|_, s| s),
+        );
+
+        // A cold open that races a delete.
+        armed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let store = Store::open(
+            &disk.root,
+            &name("demo"),
+            Options {
+                fs: fs.clone(),
+                ..plain()
+            },
+        )
+        .expect("a file gone before its read is absent, not an error");
+        assert!(store.campaign().get(&nid(4)).is_none());
+        assert_same_as_cold("a cold open that raced a delete", &store, &disk.root);
+
+        // A warm read that races a delete of a file it holds an entry for.
+        let disk = sound();
+        let victim = disk.path(&format!("nodes/{}.json", nid(4)));
+        let (flag, target) = (Arc::clone(&armed), victim.clone());
+        let fs = Hooked::new(
+            Box::new(move |when, p| {
+                if when == at
+                    && p == target
+                    && flag.swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    std::fs::remove_file(p).unwrap();
+                }
+            }),
+            Box::new(|_, s| s),
+        );
+        let mut cache =
+            CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
+        armed.store(true, std::sync::atomic::Ordering::SeqCst);
+        // The entry is racy (fresh files), so the read reaches the stat and the read.
+        read_same("a warm read that raced a delete", &mut cache, &disk.root);
+        assert!(cache.read().unwrap().campaign().get(&nid(4)).is_none());
+    }
 }

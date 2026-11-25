@@ -303,7 +303,9 @@ impl Store {
         {
             return Ok(receipt);
         }
-        // 3.2 The revision of the whole campaign, when presented.
+        // 3.2 The files the operations touch are read from the disk, never served from the cache.
+        self.read_touched(ops)?;
+        // The revision of the whole campaign, when presented.
         if let Some(expected) = expected_tree_rev {
             let current = self.tree_rev();
             if *expected != current {
@@ -369,6 +371,65 @@ impl Store {
             tree_rev: self.tree_rev(),
             replayed: false,
         })
+    }
+
+    /// The nodes a request reads or rewrites: the ones it names, their parents and siblings
+    /// (a position or a rebalance rewrites them), and a deleted node's subtree.
+    fn touched(&self, ops: &[Op]) -> BTreeSet<NodeId> {
+        let campaign = &self.state.campaign;
+        let mut out = BTreeSet::new();
+        let family = |out: &mut BTreeSet<NodeId>, parent: Option<&NodeId>| {
+            if let Some(p) = parent {
+                out.insert(p.clone());
+                out.extend(campaign.children(p).iter().cloned());
+            }
+        };
+        for op in ops {
+            match op {
+                Op::Replace(r) => {
+                    out.insert(r.node.id().clone());
+                }
+                Op::Create(c) => {
+                    out.insert(c.node.id().clone());
+                    family(&mut out, c.node.parent_id());
+                }
+                Op::Relocate(r) => {
+                    out.insert(r.id.clone());
+                    family(&mut out, campaign.parent(&r.id));
+                    family(&mut out, r.parent_id.as_ref());
+                }
+                Op::Delete(d) => {
+                    out.insert(d.id.clone());
+                    out.extend(campaign.subtree(&d.id).cloned());
+                    family(&mut out, campaign.parent(&d.id));
+                }
+                Op::Comment(c) => {
+                    out.insert(c.node_id.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Reads the files of [`Store::touched`] from the disk and rebuilds the views if any differs
+    /// from its entry. Run twice, because what a stale entry said about a subtree or a family
+    /// can name files the first pass did not read.
+    fn read_touched(&mut self, ops: &[Op]) -> Result<(), StoreError> {
+        let mut read = BTreeSet::new();
+        for _ in 0..2 {
+            let wanted: BTreeSet<NodeId> = self.touched(ops).difference(&read).cloned().collect();
+            if wanted.is_empty() {
+                break;
+            }
+            self.entries
+                .reread_nodes(&*self.options.fs, &self.root, &wanted)?;
+            read.extend(wanted);
+            if self.entries.is_stale() {
+                let slug = self.state.campaign.slug().clone();
+                self.state = self.entries.build(&slug)?;
+            }
+        }
+        Ok(())
     }
 
     /// 3.1: the first outcome of a known `op_id`, with nothing written. The result is rebuilt from

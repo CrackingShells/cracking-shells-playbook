@@ -126,6 +126,13 @@ macro_rules! checked_string {
                 Ok(Self(s.to_owned()))
             }
 
+            /// Whether `s` is of the format of this type, without building the id.
+            #[must_use]
+            pub fn is_valid(s: &str) -> bool {
+                let check: fn(&str) -> Result<(), IdError> = $check;
+                check(s).is_ok()
+            }
+
             /// The id as a string slice.
             #[must_use]
             pub fn as_str(&self) -> &str {
