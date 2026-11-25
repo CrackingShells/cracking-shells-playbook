@@ -43,10 +43,10 @@ is the node whose `kind` is `campaign`. A rename or a move writes one file and r
 
 | Rule | Detail |
 |:--|:--|
-| Names are paths | A node's `name` is its path segment, `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. It is stored in the node file (revised 2026-11-25: it used to be the file's own name). The path is derived from the `parent_id` chain and never stored. The campaign root has no name |
+| Names are paths | A node's `name` is its path segment, `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. It is stored in the node file (revised 2026-11-25: it used to be the file's own name). The path is derived from the `parent_id` chain and never stored. The campaign root's `name` is the campaign slug, which `open` is given and checks; it is not part of any path (revised 2026-11-25, Eliott's review) |
 | Identity | Every node, criterion and step has an immutable `id`, typed `NodeId`, `CriterionId` and `StepId` in [contracts.md](contracts.md) §Id types. The string format and the minting are [store.md](store.md)'s §Ids. Checks and references have none: `Stable identity` |
 | Version stamp | Every file carries `schema_version` (see `Format version`) |
-| Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12. Keys keep their order, so the crate enables `serde_json`'s `preserve_order`. Numbers outside the `i64`, `u64` and `f64` range are not preserved exactly, because `arbitrary_precision` is not enabled. `Envelope` (read model) has no `extra` of its own: it is flattened into each view, whose `extra` keeps the unknown keys |
+| Unknown fields | Every object type below keeps the keys it does not know, in order, and writes them back after the known ones. This holds for nested objects too (steps, criteria, references, commits, history and comment entries, changes). It is the stored half of I12. Each unknown key a decoder keeps without interpreting also yields one `unknown_key` warning naming the file and the key's JSON path (contracts.md §Diagnostics; revised 2026-11-25). Keys keep their order, so the crate enables `serde_json`'s `preserve_order`. Numbers outside the `i64`, `u64` and `f64` range are not preserved exactly, because `arbitrary_precision` is not enabled. `Envelope` (read model) has no `extra` of its own: it is flattened into each view, whose `extra` keeps the unknown keys |
 | Canonical order | The order of the rows in each field table is the canonical field order. Two-space indent, LF, trailing newline. M1 owns the serialiser |
 | Derived, never stored (I6) | Directory status, the nodes table, the mermaid graph, the progress table, waves, the ready set, a step's number, the display id of an amendment, a leaf's commit count when the engine recorded the steps, a node's children, depth and path, and a `Reference.target` when `Reference.node_id` is set. No stored field holds a value that can be derived from an id |
 
@@ -96,9 +96,9 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | `schema_version` | `string` | yes | Format version, `"0.X.Y"` |
 | `id` | `NodeId` | yes | Immutable node id |
 | `kind` | `"campaign"` or `"directory"` | yes | `campaign` for the root only, which is the node with no `parent_id` |
-| `name` | `Name?` | no | **new**: the path segment. Absent exactly for the campaign root. Unique among the children of one parent |
+| `name` | `Name` | yes | **new**: the path segment. For the campaign root, the campaign slug (the anchor `Campaign::open` checks). Unique among the children of one parent |
 | `parent_id` | `NodeId?` | no | **new**: the directory this node is in. Absent exactly for the campaign root |
-| `order` | `OrderKey?` | no | **new**: position among siblings, an opaque key (store.md §Order key). Absent exactly for the campaign root |
+| `order` | `OrderKey?` | no | **new**: position among siblings, an opaque key (store.md §Order key). Absent exactly for the campaign root, which has no siblings |
 | `title` | `string` | yes | The H1 of the legacy README |
 | `context` | `lines` | yes | Where the node fits; legacy `## Context`, one or more lines |
 | `references` | `Reference[]` | yes | Legacy `## Reference Documents`. May be empty (the section is optional in the legacy grammar) |
@@ -110,7 +110,7 @@ is derived (`statuses.md`, `Subtrees and directories`).
 | `marks` | `Mark[]` | yes | **new**: the trace of every change of a criterion mark of this directory, oldest first. Empty on a new or imported directory |
 
 Rules for `validate`: `goal` has no line break; `preconditions` and `success_gates` each have at
-least one entry; `kind` is `campaign` exactly when `parent_id`, `name` and `order` are all absent
+least one entry; `kind` is `campaign` exactly when `parent_id` and `order` are both absent
 (revised 2026-11-25: it used to be "the file is at the campaign root"). A directory's children are
 the nodes whose `parent_id` names it, ordered by `order`; the list is derived and never stored.
 
@@ -387,8 +387,8 @@ the nodes; the amendment is stored once, at the campaign root, and `changes` nam
 | First value | `"0.1.0"`. The crate stays at `0.x` until M7, so the format does too. Revised 2026-11-25: `0.1.0` is redefined by [contracts.md](contracts.md) (flat nodes, no ids on checks and references); nothing was stored in the old shape, so no layer reads it |
 | Constant | `FORMAT_VERSION` in `rdm-schema` |
 | Bump X (`0.X.y`) | A breaking change while the major is `0`: a field removed, renamed or given another meaning, or a field made required |
-| Bump Y (`0.x.Y`) | A compatible addition or fix: a new optional field, or a new enum value that old readers can ignore |
-| Reader | Reads the `schema_version` first. A file newer than the binary (a higher major, or at major 0 a higher X) is refused with `NewerFormat { found, supported }` before anything else of it is parsed. It reads a higher Y and keeps unknown fields (I12), and reads an older file through the layer of its version (`Layer`) |
+| Bump Y (`0.x.Y`) | An addition that does not change the meaning of what exists: a new optional field, or a new enum value. Revised 2026-11-25: older binaries refuse it too |
+| Reader | Reads the `schema_version` first. **Every** file newer than the binary, a higher Y included (Eliott, 2026-11-25), is refused with `NewerFormat { found, supported }` before anything else of it is parsed. It keeps unknown fields (I12), warning once per key, and reads an older file through the layer of its version (`Layer`) |
 | Layer | One `FormatLayer` per format line `(major, minor)`, each overriding only what changed; a behaviour a version lacks is `NotInVersion`. The chain, the reading order and the write-version rule are in contracts.md §Version chain |
 | Writer | An edit rewrites the files it touches in the current version, stamped `FORMAT_VERSION`; a read never writes. One campaign may hold files of different versions |
 | Where bumps come from | The commit messages (see `Release`): the crate's version is decided from commit types and scopes by the repository's existing multi-semantic-release setup, not by hand |
@@ -452,3 +452,5 @@ rule in `Leaf`. Decided 2026-11-16 (coordinator).
 | 8 | The audit also moved `Amendment.snapshot` to node-id keys and added `Reference.node_id` for node targets | coordinator, 2026-11-16 (follows from row 7) |
 | 9 | Flat layout: a node holds `name`, `parent_id` and `order`; the filesystem no longer mirrors the tree; depth is computed from the `parent_id` chain | Eliott, 2026-11-25 (A2) |
 | 10 | An id is given by the rule "pointed at from outside, and its natural key can change". Row 7 is narrowed: checks and references lose their ids, and their edits are recorded at the array level. `Reference.target` is absent when `node_id` is set | contracts_design, 2026-11-25, under Eliott's rulings 3 and 6 (A2) |
+| 11 | The campaign root's `name` is the campaign slug (still no `parent_id`, no `order`); `open` is given the expected slug and treats the parentless node carrying it as the root. Cross-file damage is reported, not refused | Eliott, 2026-11-25 (review), coordinator, 2026-11-25 |
+| 12 | A file newer than the binary is refused whether the higher part is X or Y; each unknown key kept is reported as a warning | Eliott, 2026-11-25 (review) |
