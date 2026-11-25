@@ -6,7 +6,9 @@
 pub mod campaign;
 pub mod error;
 pub mod ids;
+pub mod links;
 pub mod moves;
+pub mod ops;
 pub mod read;
 pub mod stored;
 

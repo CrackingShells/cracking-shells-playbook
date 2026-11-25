@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
+use crate::error::{Rule, StoreError};
 use crate::ids::{AmendmentId, CommentId, CriterionId, ItemId, Name, NodeId, OpId, OrderKey, StepId};
 
 /// A multi-line prose field, stored as one line per element.
@@ -175,15 +176,30 @@ impl Node {
     }
 }
 
+impl Node {
+    /// Reads a node from JSON by its `kind`: `leaf` is a [`Leaf`], `campaign` and `directory`
+    /// are a [`Directory`].
+    ///
+    /// # Errors
+    /// `Invalid` with the rule `kind` when `kind` is missing or another value, and with the rule
+    /// `parse` when the value is not an object of the type its `kind` names. The file is
+    /// `<request>`: the codec, which knows the file, names it.
+    pub fn decode(raw: Value) -> Result<Node, StoreError> {
+        let invalid = |rule, detail: String| StoreError::Invalid { file: "<request>".to_owned(), rule, detail };
+        match raw.get("kind").and_then(Value::as_str) {
+            Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(|e| invalid(Rule::Parse, e.to_string())),
+            Some("campaign" | "directory") => {
+                serde_json::from_value(raw).map(Self::Directory).map_err(|e| invalid(Rule::Parse, e.to_string()))
+            }
+            _ => Err(invalid(Rule::Kind, "`kind` is not `leaf`, `directory` or `campaign`".to_owned())),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for Node {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         use serde::de::Error as _;
-        let raw = Value::deserialize(d)?;
-        match raw.get("kind").and_then(Value::as_str) {
-            Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(D::Error::custom),
-            Some("campaign" | "directory") => serde_json::from_value(raw).map(Self::Directory).map_err(D::Error::custom),
-            _ => Err(D::Error::custom("`kind` is not `leaf`, `directory` or `campaign`")),
-        }
+        Self::decode(Value::deserialize(d)?).map_err(D::Error::custom)
     }
 }
 

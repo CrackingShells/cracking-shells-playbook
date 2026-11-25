@@ -1,8 +1,15 @@
 //! Rule codes, the error type of every store operation and the lock record
 //! (`contracts.md`, `Errors`).
 
+use std::fmt;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::ids::{NodeId, Rev, SubtreeRev, TreeRev};
+use crate::links::RecordRef;
+use crate::stored::Ts;
+use crate::{Version, version_string};
 
 /// A rule a file or a request can break, or a warning a load reports. Each variant has a stable
 /// snake-case code, its serde name; M2 may add codes without changing existing ones.
@@ -143,3 +150,97 @@ impl Rule {
         }
     }
 }
+
+/// What the presented revision should have been, in a [`StoreError::Stale`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Current {
+    /// The current `rev` of a node; `None`: the node no longer exists.
+    Node { id: NodeId, rev: Option<Rev> },
+    /// The current `SubtreeRev` of a node; `None`: the node no longer exists.
+    Subtree { id: NodeId, rev: Option<SubtreeRev> },
+    /// The current `TreeRev` of the campaign.
+    Tree { tree_rev: TreeRev },
+}
+
+/// The advisory record of the writer lock (`store.md`, §Lock). Nothing decides by it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct LockHolder {
+    pub pid: u32,
+    pub host: String,
+    /// The UTC instant of the acquisition.
+    pub since: Ts,
+}
+
+/// The one error type of every store operation and load. M4 maps its variants to tool errors and
+/// the CLI to exit codes; nothing maps a message string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StoreError {
+    /// A presented `expected_rev`, `expected_subtree_rev` or `expected_tree_rev` is not the
+    /// current one (I4). Nothing was written.
+    Stale { current: Current },
+    /// The writer lock was not taken within the wait. `holder` is the advisory record, `None` if
+    /// it is absent or unreadable. Nothing was written.
+    Locked { holder: Option<LockHolder> },
+    /// A file's `schema_version` is newer than this binary reads. Raised before anything else of
+    /// the file is parsed.
+    NewerFormat { found: Version, supported: Version, file: String },
+    /// A file or a request breaks a rule. `file` is the path relative to the campaign root
+    /// (`nodes/<id>.json`), or `<request>` when the fault is in the request.
+    Invalid { file: String, rule: Rule, detail: String },
+    /// A node a request names does not exist.
+    NotFound { target: RecordRef },
+    /// The operating system refused a read or a write.
+    Io { file: String, message: String },
+    /// One op of a batch failed. `source` is any of the above; nothing was written.
+    InBatch { index: usize, source: Box<StoreError> },
+}
+
+impl StoreError {
+    /// The error itself, with `InBatch` unwrapped.
+    #[must_use]
+    pub fn root(&self) -> &StoreError {
+        let mut error = self;
+        while let Self::InBatch { source, .. } = error {
+            error = source;
+        }
+        error
+    }
+
+    /// The stable code of the root: `STALE`, `LOCKED`, `NEWER_FORMAT`, `INVALID`, `NOT_FOUND` or
+    /// `IO`.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Stale { .. } => "STALE",
+            Self::Locked { .. } => "LOCKED",
+            Self::NewerFormat { .. } => "NEWER_FORMAT",
+            Self::Invalid { .. } => "INVALID",
+            Self::NotFound { .. } => "NOT_FOUND",
+            Self::Io { .. } => "IO",
+            Self::InBatch { source, .. } => source.code(),
+        }
+    }
+}
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stale { .. } => f.write_str("stale revision: re-read and reapply the intent"),
+            Self::Locked { holder: Some(h) } => write!(f, "campaign locked by pid {} on {} since {}", h.pid, h.host, h.since),
+            Self::Locked { holder: None } => f.write_str("campaign locked by an unknown writer"),
+            Self::NewerFormat { found, supported, file } => write!(
+                f,
+                "{file}: format {} is newer than the supported {}",
+                version_string(*found),
+                version_string(*supported)
+            ),
+            Self::Invalid { file, rule, detail } => write!(f, "{file}: {}: {detail}", rule.code()),
+            Self::NotFound { target } => write!(f, "not found: {target:?}"),
+            Self::Io { file, message } => write!(f, "{file}: {message}"),
+            Self::InBatch { index, source } => write!(f, "op {index} of the batch failed: {source}"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {}

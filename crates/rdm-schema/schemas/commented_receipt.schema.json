@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Receipt",
+  "description": "What a primitive returns: its result and where the campaign stands after it.",
+  "type": "object",
+  "properties": {
+    "result": {
+      "$ref": "#/$defs/Commented"
+    },
+    "amendment": {
+      "description": "The one amendment the operation wrote, if any.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AmendmentId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tree_rev": {
+      "description": "After the write.",
+      "$ref": "#/$defs/TreeRev"
+    },
+    "replayed": {
+      "description": "`true`: nothing was written and the first outcome is returned.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "result",
+    "tree_rev",
+    "replayed"
+  ],
+  "$defs": {
+    "Commented": {
+      "description": "The result of a comment.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/CommentId"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    }
+  }
+}

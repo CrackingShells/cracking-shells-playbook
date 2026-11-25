@@ -1,7 +1,7 @@
 mod common;
 use common::*;
 use rdm_schema::campaign::Campaign;
-use rdm_schema::error::Rule;
+use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::NodeId;
 use rdm_schema::stored::Node;
 use schemars::schema_for;
@@ -35,10 +35,12 @@ fn a_node_reads_as_the_type_its_kind_names() {
     assert!(matches!(serde_json::from_value::<Node>(root).unwrap(), Node::Directory(_)));
     let mut other = fixture("stored_leaf.json");
     other["kind"] = "milestone".into();
+    assert!(matches!(Node::decode(other.clone()), Err(StoreError::Invalid { rule: Rule::Kind, .. })));
     assert!(serde_json::from_value::<Node>(other).is_err());
     // A leaf body under a directory kind is not read as a leaf.
     let mut mixed = fixture("stored_leaf.json");
     mixed["kind"] = "directory".into();
+    assert!(matches!(Node::decode(mixed.clone()), Err(StoreError::Invalid { rule: Rule::Parse, .. })));
     assert!(serde_json::from_value::<Node>(mixed).is_err());
 }
 
