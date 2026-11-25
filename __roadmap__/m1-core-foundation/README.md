@@ -14,8 +14,8 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 
 ## Pre-conditions
 - [x] Plan approved by Eliott (2026-11-25), with amendment A2 landed on the meta-roadmap
-- [ ] `feat/m1-core-foundation` is cut from `claude/m1-core-foundation-json-33306d`
-- [ ] The shared target directory `$CARGO_TARGET_DIR` is set for every agent (see Gotchas)
+- [x] `feat/m1-core-foundation` is cut from `claude/m1-core-foundation-json-33306d`
+- [x] The shared target directory `$CARGO_TARGET_DIR` is set for every agent (see Gotchas)
 
 ## Success Gates
 - ⬜ Eliott has reviewed `__design__/rdm/store.md` and `__design__/rdm/contracts.md`, and R01 matches them in the same merge
@@ -53,8 +53,8 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 ## Status
 ```mermaid
 graph TD
-    store_design[Store design]:::planned
-    contracts_design[Contracts design]:::planned
+    store_design[Store design]:::inprogress
+    contracts_design[Contracts design]:::inprogress
     settle[Settle]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -66,8 +66,8 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `store_design.md` | 📄 Leaf Task | ⬜ Planned |
-| `contracts_design.md` | 📄 Leaf Task | ⬜ Planned |
+| `store_design.md` | 📄 Leaf Task | 🔄 In Progress |
+| `contracts_design.md` | 📄 Leaf Task | 🔄 In Progress |
 | `settle/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
