@@ -576,12 +576,14 @@ impl Store {
             .iter()
             .map(|d| (d.file.as_str(), d.rule))
             .collect();
-        // Renaming a root is the repair of a root defect: the root rules are one family, so a
-        // rename that trades `root_count` for `root_name_mismatch` does not add a defect.
+        // While the campaign has no validated root, renaming a root is the repair of a root
+        // defect: the root rules are one family, so a rename that trades `root_count` for
+        // `root_name_mismatch` does not add a defect. With a validated root they follow the
+        // rule like every other code, so a write cannot take a sound root away.
         let root_family = |r: Rule| matches!(r, Rule::RootCount | Rule::RootNameMismatch);
-        let had_root_defect = before.iter().any(|(_, r)| root_family(*r));
+        let no_root_before = self.state.campaign.root().is_none();
         for d in w.campaign.diagnostics() {
-            if root_family(d.rule) && had_root_defect {
+            if root_family(d.rule) && no_root_before {
                 continue;
             }
             if structural_rule(d.rule) && !before.contains(&(d.file.as_str(), d.rule)) {

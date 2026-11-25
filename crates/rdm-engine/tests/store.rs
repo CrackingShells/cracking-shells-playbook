@@ -2182,6 +2182,31 @@ fn structure_rows() {
         other => panic!("renaming a sound root: want a root rule, got {other:?}"),
     }
     assert_eq!(snapshot(&healthy), before);
+    // A stray parentless node does not make the sound root renamable: the exemption is for a
+    // campaign with no validated root.
+    let stray = Disk::new();
+    let mut nodes = base();
+    nodes.push(dir_node(8, "other", None, ""));
+    stray.write_all(&nodes);
+    let mut store = stray.open().unwrap();
+    assert_eq!(store.campaign().root(), Some(&nid(1)));
+    let before = snapshot(&stray);
+    let op = relocate_op(&store, 1, Some("zzz"), None, None);
+    match store.move_node(req(note, op)) {
+        Err(StoreError::Invalid {
+            rule: Rule::RootCount | Rule::RootNameMismatch,
+            ..
+        }) => {}
+        other => {
+            panic!("renaming a sound root beside a stray root: want a root rule, got {other:?}")
+        }
+    }
+    assert_eq!(snapshot(&stray), before);
+    assert_eq!(
+        validated(&store).len(),
+        5,
+        "the sound root is still the root"
+    );
     let mut renamed = Store::open(&healthy.root, &name("other"), Options::default()).unwrap();
     assert_eq!(renamed.campaign().root(), None);
     let op = relocate_op(&renamed, 1, Some("other"), None, None);
