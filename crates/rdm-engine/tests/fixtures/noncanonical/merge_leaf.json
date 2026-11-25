@@ -1,0 +1,143 @@
+{
+  "schema_version": "0.1.0",
+  "id": "n_7k3q9x2m",
+  "kind": "leaf",
+  "name": "m1_core_foundation",
+  "parent_id": "n_3d9f6h1v",
+  "order": "V",
+  "title":"M1 Core foundation, renamed",
+  "status": "ongoing",
+  "goal": "`rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.",
+  "preconditions": [
+    {
+      "id": "c_2n6r0b",
+      "text": "`../m0_feasibility_spike.md` is `done` with a go",
+      "met": false
+    },
+    {
+      "id": "c_5g8j2c",
+      "text": "`../m0b_domain_model_spec.md` is `done`",
+      "met": false
+    },
+    {
+      "id": "c_9t3w5z",
+      "text": "Reminder `skills-rdm-M1` read",
+      "met": false
+    }
+  ],
+  "success_gates": [
+    {
+      "id": "c_8m2xqv",
+      "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message",
+      "met": false
+    }
+  ],
+  "references": [
+    {
+      "label": "R01",
+      "title": "§Data Model, §Concurrency, §Contracts & Invariants",
+      "target": "../../__design__/rdm/architecture.md",
+      "note": "the file layout, the schema sketch, the lock, the journal and the revisions"
+    },
+    {
+      "label": "R02",
+      "title": "The directory this milestone sits in",
+      "note": "a reference to a campaign node holds its id and no path",
+      "node_id": "n_3d9f6h1v"
+    }
+  ],
+  "steps": [
+    {
+      "id": "s_0f4tzn",
+      "title": "Plan the milestone",
+      "goal": "The campaign `__roadmap__/m1-core-foundation/` exists and Eliott has approved it.",
+      "implementation_logic": [
+        "In plan mode, author the campaign with `managing-roadmaps`, deciding: the id minting, to the format M0b fixes; … [cut]"
+      ],
+      "deliverables": [
+        "`__roadmap__/m1-core-foundation/README.md` and its leaves"
+      ],
+      "references": [],
+      "checks": [
+        {
+          "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
+          "expected": "PASS"
+        }
+      ],
+      "commit": {
+        "type": "chore",
+        "scope": "roadmap",
+        "breaking": false,
+        "summary": "plan the m1-core-foundation milestone"
+      },
+      "requires": [
+        "a prose prerequisite"
+      ],
+      "done": false
+    }
+  ],
+  "progress": {
+    "branch": "task/m1",
+    "commits": 1,
+    "notes": [
+      "first note",
+      "second note"
+    ]
+  },
+  "history": [
+    {
+      "ts": "2026-11-16T10:20:30Z",
+      "from": "planned",
+      "to": "paused",
+      "actor": {
+        "kind": "agent",
+        "name": "session-1"
+      },
+      "reason": "waiting for M0b",
+      "op_id": "op1"
+    },
+    {
+      "ts": "2026-11-16T11:00:00Z",
+      "from": "paused",
+      "to": "ongoing",
+      "actor": {
+        "kind": "human"
+      },
+      "reason": "unblocked",
+      "override": true
+    },
+    {
+      "ts": "2026-11-17T10:00:00Z",
+      "from": "done",
+      "to": "ongoing",
+      "actor": {
+        "kind": "human"
+      },
+      "reason": "a gate was ticked in error",
+      "correction": true
+    }
+  ],
+  "marks": [
+    {
+      "ts": "2026-11-16T10:30:00Z",
+      "actor": {
+        "kind": "agent",
+        "name": "session-1"
+      },
+      "criterion_id": "c_8m2xqv",
+      "met": true,
+      "evidence": "cargo test -p rdm-schema --locked: ok"
+    },
+    {
+      "ts": "2026-11-17T09:00:00Z",
+      "actor": {
+        "kind": "human"
+      },
+      "criterion_id": "c_8m2xqv",
+      "met": false,
+      "evidence": "the gate was ticked too early",
+      "reason": "a re-run showed a failing test",
+      "correction": true
+    }
+  ]
+}

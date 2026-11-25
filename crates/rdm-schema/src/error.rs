@@ -151,6 +151,17 @@ impl Rule {
     }
 }
 
+/// A behaviour no layer of the format chain defines (`contracts.md`, `Version chain`). The caller
+/// turns it into `Invalid` with the rule `not_in_version`, naming the file and its version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotInVersion {
+    /// The behaviour asked for, by the name of the layer method.
+    pub behaviour: &'static str,
+}
+
+/// The answer of a layer: the behaviour, or `NotInVersion`.
+pub type Behaviour<T> = Result<T, NotInVersion>;
+
 /// What the presented revision should have been, in a [`StoreError::Stale`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Current {

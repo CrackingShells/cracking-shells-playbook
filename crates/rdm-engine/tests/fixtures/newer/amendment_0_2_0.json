@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.2.0",
+  "id": "01JD0000000000000000000002",
+  "ts": 1763296200,
+  "actor": {
+    "kind": "agent"
+  },
+  "description": "A newer layer changed `ts` to a number and `changes` to an object.",
+  "changes": {
+    "n_7k3q9x2m": {
+      "set": {
+        "/goal": "after"
+      }
+    }
+  }
+}

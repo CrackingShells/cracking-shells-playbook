@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1.0",
+  "id": "01JD0000000000000000000003",
+  "node_id": "n_7k3q9x2m",
+  "ts": "2026-11-25T15:00:00Z",
+  "actor": {
+    "kind": "human",
+    "name": "Éliott"
+  },
+  "text": [
+    "quote \" backslash \\ tab\there, slash / stays",
+    "control \u0007 and \u001f, form feed \f, backspace \b, carriage return \r",
+    "accents é, dash —, 日本語, emoji 🙂, line separator   kept as is",
+    ""
+  ]
+}

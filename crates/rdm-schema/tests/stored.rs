@@ -6,60 +6,11 @@ use rdm_schema::*;
 use serde_json::json;
 
 #[test]
-fn leaf_fixture_round_trips() {
-    round_trip::<Leaf>(&fixture("stored_leaf.json"));
-}
-#[test]
-fn directory_fixture_round_trips() {
-    round_trip::<Directory>(&fixture("stored_directory.json"));
-}
-#[test]
-fn comment_fixture_round_trips() {
-    round_trip::<Comment>(&fixture("stored_comment.json"));
-}
-#[test]
-fn amendment_fixture_round_trips_and_keeps_null_new() {
-    let v = fixture("stored_amendment.json");
-    round_trip::<Amendment>(&v);
-    let a: Amendment = serde_json::from_value(v).unwrap();
-    assert_eq!(a.changes[0].new, Some(serde_json::Value::Null));
-    assert_eq!(a.changes[1].new, None);
-}
-
-#[test]
-fn unknown_fields_survive_at_every_level() {
-    // One key per typed object of the fixture, counted by hand: the leaf has 21 (itself, 4 criteria,
-    // 2 references, a step with a check and a commit, progress, 3 history entries and their actors,
-    // 2 marks and their actors), the directory 3, the comment 2 and the amendment 7 (itself, its
-    // actor and 5 changes; `snapshot`, `old` and `new` are opaque).
-    assert_eq!(unknown_fields_survive::<Leaf>("stored_leaf.json"), 21);
-    assert_eq!(unknown_fields_survive::<Directory>("stored_directory.json"), 3);
-    assert_eq!(unknown_fields_survive::<Comment>("stored_comment.json"), 2);
-    assert_eq!(unknown_fields_survive::<Amendment>("stored_amendment.json"), 7);
-}
-
-#[test]
-fn unknown_field_keeps_its_place_after_known_ones() {
-    let mut v = fixture("stored_comment.json");
-    v["zzz"] = serde_json::json!(1);
-    let c: Comment = serde_json::from_value(v).unwrap();
-    let s = serde_json::to_string(&c).unwrap();
-    assert!(s.find("\"op_id\"").unwrap() < s.find("\"zzz\"").unwrap());
-}
-
-#[test]
 fn status_is_lowercase_and_has_five_values() {
     let all = [Status::Planned, Status::Ongoing, Status::Paused, Status::Cancelled, Status::Done];
     let names: Vec<_> = all.iter().map(|s| serde_json::to_string(s).unwrap()).collect();
     assert_eq!(names, ["\"planned\"", "\"ongoing\"", "\"paused\"", "\"cancelled\"", "\"done\""]);
     assert!(serde_json::from_str::<Status>("\"blocked\"").is_err());
-}
-
-#[test]
-fn absent_optionals_stay_absent() {
-    let c: Commit = serde_json::from_str(r#"{"type":"docs","breaking":false,"summary":"x"}"#).unwrap();
-    assert_eq!(c.scope, None);
-    assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"type":"docs","breaking":false,"summary":"x"}"#);
 }
 
 #[test]
@@ -95,14 +46,6 @@ fn parse_version_is_strict() {
     }
     assert_eq!(parse_version("0.0.0"), Some((0, 0, 0)));
     assert_eq!(parse_version("10.20.30"), Some((10, 20, 30)));
-}
-
-#[test]
-fn unknown_keys_keep_their_order_in_the_output_string() {
-    // Non-alphabetical unknown keys at two nesting levels, and one known key after them.
-    let input = r#"{"schema_version":"0.1.0","id":"01JD0000000000000000000001","node_id":"n_7k3q9x2m","ts":"2026-11-16T12:00:00Z","actor":{"kind":"human","zeta":1,"alpha":2},"text":["a"],"zz":{"y":1,"b":2,"m":3},"aa":true}"#;
-    let c: Comment = serde_json::from_str(input).unwrap();
-    assert_eq!(serde_json::to_string(&c).unwrap(), input);
 }
 
 #[test]
