@@ -20,6 +20,11 @@ pub fn env_u64(key: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+/// The case count of a proptest block: `PROPTEST_CASES` when set, else `default`.
+pub fn soak_cases(default: u32) -> u32 {
+    u32::try_from(env_u64("PROPTEST_CASES", u64::from(default))).unwrap_or(default)
+}
+
 pub const ROLE: &str = "RDM_CHILD_ROLE";
 pub const DIR: &str = "RDM_CHILD_DIR";
 

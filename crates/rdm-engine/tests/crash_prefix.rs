@@ -10,6 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::campaign::*;
+use common::env_u64;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::fs::{Durability, Effect, Fs, RecordingFs, replay_prefix};
 use rdm_engine::store::Options;
@@ -19,7 +20,10 @@ use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Receipt, Reloc
 use rdm_schema::stored::*;
 use serde_json::Value;
 
-const SEED: u64 = 0x5EED;
+/// The seed of the store's ULIDs, from the soak knob `RDM_SOAK_SEED` (the one `crash_kill` reads).
+fn seed() -> u64 {
+    env_u64("RDM_SOAK_SEED", 0x5EED)
+}
 
 // ---------------------------------------------------------------------------------------------
 // The campaign every row starts from, and the operations
@@ -281,7 +285,7 @@ fn rows() -> Vec<Row> {
 fn copy_options(fs: Option<Arc<dyn Fs + Send + Sync>>) -> Options {
     Options {
         durability: Durability::Process,
-        ..seeded_options(SEED, fs)
+        ..seeded_options(seed(), fs)
     }
 }
 
@@ -540,7 +544,7 @@ fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
     let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
-        seeded_options(SEED, Some(rec.clone())),
+        seeded_options(seed(), Some(rec.clone())),
     )
     .unwrap();
     let skip = rec.effects().len();

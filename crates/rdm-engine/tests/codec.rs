@@ -10,7 +10,6 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use proptest::prelude::*;
-use proptest::test_runner::FileFailurePersistence;
 use rdm_engine::codec::{Stored, decode, encode};
 use rdm_schema::Version;
 use rdm_schema::campaign::Diagnostic;
@@ -848,11 +847,8 @@ fn identity<T: Stored + PartialEq + Debug>(value: &T) -> Result<(), TestCaseErro
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 256,
-        failure_persistence: Some(Box::new(FileFailurePersistence::Direct("proptest-regressions/codec.txt"))),
-        ..ProptestConfig::default()
-    })]
+    // 256 cases unless `PROPTEST_CASES` says otherwise: the default config reads it.
+    #![proptest_config(ProptestConfig::default())]
 
     #[test]
     fn decode_encode_is_identity(n in node(), c in comment(), a in amendment()) {

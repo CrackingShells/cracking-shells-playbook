@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use common::campaign::*;
+use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
 use rdm_engine::ids::{IdRng, MAX_COLLISIONS, MintError, mint_id};
@@ -1734,7 +1735,7 @@ mod reverse {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
+        #![proptest_config(ProptestConfig { cases: soak_cases(24), ..ProptestConfig::default() })]
         #[test]
         fn reverse_index_equals_brute_force_scan(steps in prop::collection::vec((any::<u8>(), any::<u8>(), any::<u8>()), 1..16)) {
             let mut nodes = base();
