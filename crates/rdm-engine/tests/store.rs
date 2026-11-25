@@ -722,7 +722,7 @@ fn stale_replace_changes_nothing() {
         StoreError::Stale {
             current: Current::Node { id, rev },
         } => {
-            assert_eq!((id, rev), (nid(3), Some(fresh)));
+            assert_eq!((id, rev), (nid(3), fresh));
         }
         other => panic!("want Stale, got {other:?}"),
     }
@@ -2105,7 +2105,7 @@ fn structure_rows() {
         Err(StoreError::Stale {
             current: Current::Subtree { id, rev },
         }) => {
-            assert_eq!((id, rev), (nid(5), store.subtree_rev(&nid(5))));
+            assert_eq!((id, Some(rev)), (nid(5), store.subtree_rev(&nid(5))));
         }
         other => panic!("a stale subtree: want Stale, got {other:?}"),
     }

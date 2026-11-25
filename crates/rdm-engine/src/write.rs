@@ -481,12 +481,13 @@ impl Store {
             Some(_) if created_here => Ok(()),
             Some(e) => match w.disk_revs.get(id) {
                 Some(current) if current == e => Ok(()),
-                current => Err(StoreError::Stale {
+                Some(current) => Err(StoreError::Stale {
                     current: Current::Node {
                         id: id.clone(),
-                        rev: current.cloned(),
+                        rev: current.clone(),
                     },
                 }),
+                None => Err(not_found(id)),
             },
         }
     }
@@ -1071,10 +1072,12 @@ impl Store {
                 return Err(request_fault(Rule::ExpectedRevRequired, why));
             }
             (Some(expected), false) => {
-                let on_disk = self.state.campaign.get(&id).is_some();
-                let current: Option<SubtreeRev> = on_disk
-                    .then(|| rev::subtree_rev(self.state.campaign.subtree(&id), &w.disk_revs));
-                if current.as_ref() != Some(expected) {
+                if self.state.campaign.get(&id).is_none() {
+                    return Err(not_found(&id));
+                }
+                let current: SubtreeRev =
+                    rev::subtree_rev(self.state.campaign.subtree(&id), &w.disk_revs);
+                if &current != expected {
                     return Err(StoreError::Stale {
                         current: Current::Subtree { id, rev: current },
                     });

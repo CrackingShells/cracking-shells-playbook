@@ -165,10 +165,10 @@ pub type Behaviour<T> = Result<T, NotInVersion>;
 /// What the presented revision should have been, in a [`StoreError::Stale`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Current {
-    /// The current `rev` of a node; `None`: the node no longer exists.
-    Node { id: NodeId, rev: Option<Rev> },
-    /// The current `SubtreeRev` of a node; `None`: the node no longer exists.
-    Subtree { id: NodeId, rev: Option<SubtreeRev> },
+    /// The current `rev` of a node. A node that no longer exists is `NotFound`, never `Stale`.
+    Node { id: NodeId, rev: Rev },
+    /// The current `SubtreeRev` of a node.
+    Subtree { id: NodeId, rev: SubtreeRev },
     /// The current `TreeRev` of the campaign.
     Tree { tree_rev: TreeRev },
 }
