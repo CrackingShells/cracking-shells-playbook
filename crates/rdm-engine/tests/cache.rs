@@ -735,33 +735,19 @@ fn a_replayed_op_id_is_found_after_another_process_wrote_it() {
     assert_eq!(names_under(&disk.root), files, "a replay writes nothing");
 }
 
-fn names_under(root: &Path) -> BTreeSet<String> {
-    fn walk(dir: &Path, base: &Path, out: &mut BTreeSet<String>) {
-        for e in std::fs::read_dir(dir).unwrap() {
-            let p = e.unwrap().path();
-            if p.is_dir() {
-                if p.file_name().is_some_and(|n| n == ".rdm" || n == ".git") {
-                    continue;
-                }
-                walk(&p, base, out);
-            } else {
-                let m = std::fs::metadata(&p).unwrap();
-                out.insert(format!(
-                    "{} {} {:?}",
-                    p.strip_prefix(base).unwrap().display(),
-                    m.len(),
-                    m.modified().unwrap()
-                ));
-            }
-        }
-    }
-    let mut out = BTreeSet::new();
-    walk(root, root, &mut out);
-    out
-}
-
 // ---------------------------------------------------------------------------------------------
 // write_through_visible_to_cold_reader_on_return
+
+/// Every file with its size and modification time: a write that rewrote identical bytes shows.
+fn names_under(root: &Path) -> BTreeSet<String> {
+    files_of(root)
+        .keys()
+        .map(|rel| {
+            let m = std::fs::metadata(root.join(rel)).unwrap();
+            format!("{rel} {} {:?}", m.len(), m.modified().unwrap())
+        })
+        .collect()
+}
 
 #[test]
 fn write_through_visible_to_cold_reader_on_return() {
