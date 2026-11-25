@@ -4,6 +4,7 @@
 //! and the store belong to M1.
 
 pub mod campaign;
+pub mod diff;
 pub mod error;
 pub mod ids;
 pub mod links;
@@ -11,6 +12,7 @@ pub mod moves;
 pub mod ops;
 pub mod read;
 pub mod stored;
+pub mod validate;
 
 /// A `(major, minor, patch)` triple, `0.X.Y` while the major is 0, comparable field by field.
 pub type Version = (u16, u16, u16);

@@ -2,10 +2,9 @@ mod common;
 use common::*;
 use rdm_schema::campaign::Campaign;
 use rdm_schema::error::{Rule, StoreError};
-use rdm_schema::ids::NodeId;
+use rdm_schema::ids::{Name, NodeId};
 use rdm_schema::stored::Node;
 use schemars::schema_for;
-use std::collections::{BTreeMap, BTreeSet};
 
 fn node(name: &str) -> Node {
     serde_json::from_value(fixture(name)).unwrap()
@@ -13,17 +12,20 @@ fn node(name: &str) -> Node {
 
 #[test]
 fn unvalidated_nodes_stay_loaded_but_are_not_validated() {
-    // A directory and a leaf, the leaf off the root: both load, only the directory is validated.
+    // A directory and a leaf under it, but no root: both load, none is validated, and the
+    // missing root and the orphan are reported.
     let (dir, leaf) = (node("stored_directory.json"), node("stored_leaf.json"));
     let (dir_id, leaf_id) = (dir.id().clone(), leaf.id().clone());
-    let nodes = BTreeMap::from([(dir_id.clone(), dir), (leaf_id.clone(), leaf)]);
-    let c = Campaign::from_parts(nodes, None, BTreeSet::from([leaf_id.clone()]), Vec::new());
+    let slug = Name::parse("m1_core_foundation").unwrap();
+    let opened = Campaign::open([dir, leaf], &slug).unwrap();
+    let c = &opened.campaign;
     assert!(c.get(&leaf_id).is_some() && c.get(&dir_id).is_some());
     assert_eq!(c.nodes().count(), 2);
-    assert!(c.is_validated(&dir_id));
-    assert!(!c.is_validated(&leaf_id));
+    assert!(!c.is_validated(&dir_id) && !c.is_validated(&leaf_id));
     assert!(!c.is_validated(&NodeId::parse("n_0m5r8c3h").unwrap()), "a node that is not loaded is not validated");
     assert_eq!(c.root(), None);
+    let rules: Vec<Rule> = opened.diagnostics.iter().map(|d| d.rule).collect();
+    assert!(rules.contains(&Rule::RootCount) && rules.contains(&Rule::ParentMissing), "{rules:?}");
 }
 
 #[test]
