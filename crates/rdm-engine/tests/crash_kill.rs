@@ -5,9 +5,10 @@
 //! parent kills them at random, restarts them, and at the end checks every acknowledgement
 //! against the records.
 //!
-//! Knobs: `RDM_CRASH_ITERS` is the number of kill rounds (default 25, a few seconds; the CI soak
-//! sets thousands), `RDM_CRASH_SEED` seeds the kill schedule and the workers' choices (default 1),
-//! `RDM_CRASH_WORKERS` is the worker count (default 3).
+//! Knobs: `RDM_SOAK_ITERS` is the number of kill rounds (default 25, a few seconds; the CI soak
+//! sets thousands), `RDM_SOAK_SEED` seeds the kill schedule and the workers' choices (default 1;
+//! the same knob seeds `crash_prefix`'s store, default 0x5EED), `RDM_SOAK_WORKERS` is the worker
+//! count (default 3).
 //!
 //! What a short run catches: a revision check made against a read taken before the lock is red on
 //! every default run (a lost update). A lock released after the check but before the write
@@ -24,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use common::campaign::*;
-use common::{ChildProc, child_role, spawn_child};
+use common::{ChildProc, child_role, env_u64, spawn_child};
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::ids::mint_id;
 use rdm_engine::store::{Options, Store};
@@ -40,13 +41,6 @@ const DEFAULT_WORKERS: usize = 3;
 const HOT: [u32; 3] = [2, 3, 4];
 /// A worker that outlives its parent by this long (a parent killed without cleanup) ends itself.
 const WORKER_LIFETIME: Duration = Duration::from_secs(600);
-
-fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
 
 // ---------------------------------------------------------------------------------------------
 // The campaign
@@ -339,9 +333,9 @@ fn run_worker(root: &Path) -> ! {
         std::thread::sleep(WORKER_LIFETIME);
         std::process::exit(3);
     });
-    let id = env_u64("RDM_KILL_WORKER", 0);
-    let incarnation = env_u64("RDM_KILL_INC", 0);
-    let acks = std::env::var("RDM_KILL_ACKS").expect("RDM_KILL_ACKS");
+    let id = env_u64("RDM_SOAK_WORKER", 0);
+    let incarnation = env_u64("RDM_SOAK_INC", 0);
+    let acks = std::env::var("RDM_SOAK_ACKS").expect("RDM_SOAK_ACKS");
     let file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -351,7 +345,7 @@ fn run_worker(root: &Path) -> ! {
         root: root.to_path_buf(),
         id,
         incarnation,
-        rng: SeededRng(env_u64("RDM_KILL_SEED", 0)),
+        rng: SeededRng(env_u64("RDM_SOAK_STREAM", 0)),
         acks: Acks(file),
         counter: 0,
         owned: Vec::new(),
@@ -373,10 +367,10 @@ fn spawn_worker(root: &Path, acks: &Path, seed: u64, id: usize, incarnation: u64
         "worker",
         root,
         &[
-            ("RDM_KILL_WORKER", &id.to_string()),
-            ("RDM_KILL_INC", &incarnation.to_string()),
-            ("RDM_KILL_SEED", &stream.to_string()),
-            ("RDM_KILL_ACKS", &acks.display().to_string()),
+            ("RDM_SOAK_WORKER", &id.to_string()),
+            ("RDM_SOAK_INC", &incarnation.to_string()),
+            ("RDM_SOAK_STREAM", &stream.to_string()),
+            ("RDM_SOAK_ACKS", &acks.display().to_string()),
         ],
     )
 }
@@ -465,9 +459,9 @@ fn killed_workers_lose_no_acknowledged_write() {
         run_worker(&root);
     }
 
-    let iters = env_u64("RDM_CRASH_ITERS", DEFAULT_ITERS);
-    let seed = env_u64("RDM_CRASH_SEED", 1);
-    let workers = usize::try_from(env_u64("RDM_CRASH_WORKERS", DEFAULT_WORKERS as u64))
+    let iters = env_u64("RDM_SOAK_ITERS", DEFAULT_ITERS);
+    let seed = env_u64("RDM_SOAK_SEED", 1);
+    let workers = usize::try_from(env_u64("RDM_SOAK_WORKERS", DEFAULT_WORKERS as u64))
         .unwrap()
         .max(1);
     let disk = Disk::with(&base());

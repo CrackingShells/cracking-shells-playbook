@@ -38,7 +38,7 @@ jobs:
         if: ${{ inputs.soak }}
         shell: bash
         run: |
-          echo "RDM_CRASH_ITERS=1000" >> "$GITHUB_ENV"
+          echo "RDM_SOAK_ITERS=1000" >> "$GITHUB_ENV"
           echo "PROPTEST_CASES=10000" >> "$GITHUB_ENV"
       - name: Fixture line endings (CRLF probe)
         if: ${{ runner.os == 'Windows' }}
@@ -56,6 +56,6 @@ jobs:
       - name: Soak counts
         if: ${{ inputs.soak }}
         run: |
-          echo "RDM_CRASH_ITERS=1000" >> "$GITHUB_ENV"
+          echo "RDM_SOAK_ITERS=1000" >> "$GITHUB_ENV"
           echo "PROPTEST_CASES=10000" >> "$GITHUB_ENV"
       - run: cargo test --workspace --locked

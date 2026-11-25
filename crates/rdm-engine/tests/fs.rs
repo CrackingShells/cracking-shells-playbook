@@ -2,12 +2,10 @@
 
 mod common;
 
-use common::{child_role, say, spawn_child};
+use common::{LIMIT, child_role, env_u64, say, spawn_child};
 use rdm_engine::fs::{Durability, Effect, RealFs, RecordingFs, atomic_replace};
 use std::path::Path;
 use std::time::Duration;
-
-const LIMIT: Duration = Duration::from_secs(60);
 
 /// Version `i` of the file: one repeated byte, with a length that depends on the byte, so a
 /// truncated, empty or mixed read is recognisable whatever the point it was torn at.
@@ -110,7 +108,7 @@ const HOLD_SHORT: Duration = Duration::from_millis(150);
 /// on Windows; on Unix any open file will do), hold it for the time in `RDM_HOLD_MS`, release.
 fn holder_child(dir: &Path) {
     let target = dir.join("node.json");
-    let hold: u64 = std::env::var("RDM_HOLD_MS").unwrap().parse().unwrap();
+    let hold = env_u64("RDM_HOLD_MS", 0);
     let mut opts = std::fs::OpenOptions::new();
     opts.read(true);
     #[cfg(windows)]

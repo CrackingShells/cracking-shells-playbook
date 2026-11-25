@@ -10,18 +10,20 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::campaign::*;
+use common::env_u64;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::fs::{Durability, Effect, Fs, RecordingFs, replay_prefix};
 use rdm_engine::store::Options;
 use rdm_schema::error::Rule;
 use rdm_schema::ids::*;
-use rdm_schema::ops::{
-    BatchOp, CommentOp, CreateOp, DeleteOp, Op, Receipt, RelocateOp, ReplaceOp, Request,
-};
+use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Receipt, RelocateOp, ReplaceOp};
 use rdm_schema::stored::*;
 use serde_json::Value;
 
-const SEED: u64 = 0x5EED;
+/// The seed of the store's ULIDs, from the soak knob `RDM_SOAK_SEED` (the one `crash_kill` reads).
+fn seed() -> u64 {
+    env_u64("RDM_SOAK_SEED", 0x5EED)
+}
 
 // ---------------------------------------------------------------------------------------------
 // The campaign every row starts from, and the operations
@@ -68,13 +70,6 @@ fn cycle() -> Vec<Node> {
         dir_node(n(21), "cy2", Some(n(20)), "x"),
         leaf_node(n(22), "below", n(20), "V"),
     ]
-}
-
-fn req<T>(note: Option<&str>, op: T) -> Request<T> {
-    Request {
-        header: header(note, Some("crash-op")),
-        op,
-    }
 }
 
 fn node_of(store: &mut CachedCampaign, n: u32) -> Node {
@@ -134,7 +129,7 @@ fn batch(
         ops,
         dry_run: false,
     };
-    store.batch(req(Some(note), op)).unwrap()
+    store.batch(req(Some(note), Some("crash-op"), op)).unwrap()
 }
 
 type Run = Box<dyn Fn(&mut CachedCampaign)>;
@@ -168,14 +163,14 @@ fn rows() -> Vec<Row> {
                     node,
                     position: None,
                 };
-                s.create(req(Some("add"), op)).unwrap();
+                s.create(req(Some("add"), Some("crash-op"), op)).unwrap();
             }),
         ),
         row(
             "replace with a note",
             Box::new(|s| {
                 let op = edited_goal(s, 3);
-                s.replace(req(Some("edit"), op)).unwrap();
+                s.replace(req(Some("edit"), Some("crash-op"), op)).unwrap();
             }),
         ),
         row(
@@ -189,21 +184,23 @@ fn rows() -> Vec<Row> {
                     expected_rev: Some(rev_of(s, 4)),
                     node: Node::Leaf(leaf),
                 };
-                s.replace(req(None, op)).unwrap();
+                s.replace(req(None, Some("crash-op"), op)).unwrap();
             }),
         ),
         row(
             "relocate: move",
             Box::new(|s| {
                 let op = move_op(s, 3, Some(5), None);
-                s.move_node(req(Some("move"), op)).unwrap();
+                s.move_node(req(Some("move"), Some("crash-op"), op))
+                    .unwrap();
             }),
         ),
         row(
             "relocate: rename only",
             Box::new(|s| {
                 let op = move_op(s, 4, None, Some("beta2"));
-                s.move_node(req(Some("rename"), op)).unwrap();
+                s.move_node(req(Some("rename"), Some("crash-op"), op))
+                    .unwrap();
             }),
         ),
         Row {
@@ -212,7 +209,8 @@ fn rows() -> Vec<Row> {
                 "delete a deep subtree",
                 Box::new(|s| {
                     let op = delete_op(s, 7);
-                    s.delete_subtree(req(Some("delete"), op)).unwrap();
+                    s.delete_subtree(req(Some("delete"), Some("crash-op"), op))
+                        .unwrap();
                 }),
             )
         },
@@ -228,7 +226,8 @@ fn rows() -> Vec<Row> {
             recovery_cuts: 0,
             run: Box::new(|s| {
                 let op = delete_op(s, 21);
-                s.delete_subtree(req(Some("delete the cycle"), op)).unwrap();
+                s.delete_subtree(req(Some("delete the cycle"), Some("crash-op"), op))
+                    .unwrap();
             }),
         },
         row(
@@ -238,7 +237,7 @@ fn rows() -> Vec<Row> {
                     node_id: nid(4),
                     text: vec!["a remark".into()],
                 };
-                s.comment(req(None, op)).unwrap();
+                s.comment(req(None, Some("crash-op"), op)).unwrap();
             }),
         ),
         Row {
@@ -286,7 +285,7 @@ fn rows() -> Vec<Row> {
 fn copy_options(fs: Option<Arc<dyn Fs + Send + Sync>>) -> Options {
     Options {
         durability: Durability::Process,
-        ..seeded_options(SEED, fs)
+        ..seeded_options(seed(), fs)
     }
 }
 
@@ -396,6 +395,10 @@ fn facts(row: &str, pre: &Files, post: &Files) {
             assert_eq!(node_ids(post).len(), node_ids(pre).len() + 1, "{row}");
         }
         "replace with a note" => assert_eq!(json_of(post, 3)["goal"], "edited goal", "{row}"),
+        "replace without a note (a criterion met)" => {
+            assert_eq!(json_of(pre, 4)["success_gates"][0]["met"], false, "{row}");
+            assert_eq!(json_of(post, 4)["success_gates"][0]["met"], true, "{row}");
+        }
         "relocate: move" => assert_eq!(json_of(post, 3)["parent_id"], nid(5).to_string(), "{row}"),
         "relocate: rename only" => {
             assert_eq!(json_of(post, 4)["name"], "beta2", "{row}");
@@ -426,7 +429,7 @@ fn facts(row: &str, pre: &Files, post: &Files) {
                 "{row}"
             );
         }
-        _ => {}
+        other => panic!("facts() has no oracle for the row {other:?}: add one beside the others"),
     }
 }
 
@@ -545,7 +548,7 @@ fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
     let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
-        seeded_options(SEED, Some(rec.clone())),
+        seeded_options(seed(), Some(rec.clone())),
     )
     .unwrap();
     let skip = rec.effects().len();

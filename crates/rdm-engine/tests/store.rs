@@ -4,220 +4,40 @@
 //! producer of node files. The damage a merge leaves is made by what makes it: `git merge` of two
 //! branches, a `cp`, an editor's rewrite of one file.
 
-use std::collections::BTreeSet;
+mod common;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+use std::time::Duration;
 
+use common::campaign::*;
+use common::hooked::{frozen_stat, options_with};
+use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
+use rdm_engine::fs::{Durability, Effect, RealFs, RecordingFs};
 use rdm_engine::ids::{IdRng, MAX_COLLISIONS, MintError, mint_id};
+use rdm_engine::intent::{self, INTENT_FORMAT, Intent, IntentEffect};
+use rdm_engine::lock::WriterLock;
 use rdm_engine::store::Options;
 use rdm_schema::error::{Current, Rule, StoreError};
 use rdm_schema::ids::*;
 use rdm_schema::links::RecordRef;
-use rdm_schema::ops::{EditNote, Header, ReplaceOp, Request};
+use rdm_schema::ops::{
+    BatchOp, CommentOp, CreateOp, DeleteOp, Header, Op, Position, RelocateOp, ReplaceOp, Request,
+};
 use rdm_schema::stored::*;
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------------------------
 // Building campaigns
 
-const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
-
-/// A deterministic body of `len` characters for `n`.
-fn body(mut n: u32, len: usize) -> String {
-    let a = ALPHABET.as_bytes();
-    let mut s = vec![b'0'; len];
-    for i in (0..len).rev() {
-        s[i] = a[(n % 32) as usize];
-        n /= 32;
-    }
-    String::from_utf8(s).unwrap()
-}
-
-fn nid(n: u32) -> NodeId {
-    NodeId::parse(&format!("n_{}", body(n, 8))).unwrap()
-}
-
-fn cid(n: u32) -> CriterionId {
-    CriterionId::parse(&format!("c_{}", body(n, 6))).unwrap()
-}
-
-fn sid(n: u32) -> StepId {
-    StepId::parse(&format!("s_{}", body(n, 6))).unwrap()
-}
-
-fn name(s: &str) -> Name {
-    Name::parse(s).unwrap()
-}
-
-fn criterion(n: u32) -> Criterion {
-    Criterion {
-        id: cid(n),
-        text: format!("criterion {n}"),
-        met: false,
-        extra: Default::default(),
-    }
-}
-
-/// A directory (`parent` given) or the campaign root (`parent` none).
-fn dir_node(n: u32, nm: &str, parent: Option<u32>, order: &str) -> Node {
-    Node::Directory(Directory {
-        schema_version: "0.1.0".into(),
-        id: nid(n),
-        kind: if parent.is_some() {
-            DirectoryKind::Directory
-        } else {
-            DirectoryKind::Campaign
-        },
-        name: name(nm),
-        parent_id: parent.map(nid),
-        order: parent.map(|_| OrderKey::new(order)),
-        title: format!("Directory {nm}"),
-        context: vec!["context".into()],
-        references: vec![],
-        goal: "a goal".into(),
-        preconditions: vec![criterion(n * 10 + 1)],
-        success_gates: vec![criterion(n * 10 + 2)],
-        gotchas: vec![],
-        notes: vec![],
-        marks: vec![],
-        extra: Default::default(),
-    })
-}
-
-fn leaf_node(n: u32, nm: &str, parent: u32, order: &str) -> Node {
-    Node::Leaf(Leaf {
-        schema_version: "0.1.0".into(),
-        id: nid(n),
-        kind: LeafKind::Leaf,
-        name: name(nm),
-        parent_id: nid(parent),
-        order: OrderKey::new(order),
-        title: format!("Leaf {nm}"),
-        status: Status::Planned,
-        status_reason: None,
-        goal: "a goal".into(),
-        preconditions: vec![criterion(n * 10 + 1)],
-        success_gates: vec![criterion(n * 10 + 2)],
-        references: vec![Reference {
-            label: None,
-            title: "design".into(),
-            target: Some("__design__/x.md".into()),
-            note: None,
-            node_id: None,
-            extra: Default::default(),
-        }],
-        steps: vec![Step {
-            id: sid(n * 10 + 3),
-            title: "step".into(),
-            goal: "a goal".into(),
-            implementation_logic: vec!["do it".into()],
-            deliverables: vec!["a file".into()],
-            references: vec![],
-            checks: vec![Check {
-                text: "check".into(),
-                expected: Expected::Pass,
-                command: None,
-                extra: Default::default(),
-            }],
-            commit: Commit {
-                r#type: "feat".into(),
-                scope: None,
-                breaking: false,
-                summary: "do".into(),
-                extra: Default::default(),
-            },
-            requires: None,
-            done: false,
-            commit_sha: None,
-            done_at: None,
-            extra: Default::default(),
-        }],
-        progress: Progress {
-            branch: None,
-            commits: None,
-            notes: vec![],
-            extra: Default::default(),
-        },
-        history: vec![],
-        marks: vec![],
-        extra: Default::default(),
-    })
-}
-
-/// A campaign directory under a temporary one.
-struct Disk {
-    _tmp: tempfile::TempDir,
-    root: PathBuf,
-}
-
 impl Disk {
-    fn new() -> Self {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join("demo");
-        std::fs::create_dir_all(root.join("nodes")).unwrap();
-        Self { _tmp: tmp, root }
-    }
-
-    fn write(&self, node: &Node) {
-        std::fs::write(
-            self.root.join(format!("nodes/{}.json", node.id())),
-            encode(node),
-        )
-        .unwrap();
-    }
-
-    fn write_all(&self, nodes: &[Node]) {
-        nodes.iter().for_each(|n| self.write(n));
-    }
-
-    fn path(&self, rel: &str) -> PathBuf {
-        self.root.join(rel)
-    }
-
     fn open(&self) -> Result<CachedCampaign, StoreError> {
         CachedCampaign::open(&self.root, &name("demo"), Options::default())
     }
-}
-
-/// The sound campaign every row of `open_names_invalid_campaigns` starts from:
-///
-/// ```text
-/// demo (1)
-///   core (2)         alpha (3), beta (4)
-///   spare (5)
-/// ```
-fn base() -> Vec<Node> {
-    vec![
-        dir_node(1, "demo", None, ""),
-        dir_node(2, "core", Some(1), "V"),
-        leaf_node(3, "alpha", 2, "V"),
-        leaf_node(4, "beta", 2, "k"),
-        dir_node(5, "spare", Some(1), "k"),
-    ]
-}
-
-fn git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .args([
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@example.com",
-            "-c",
-            "commit.gpgsign=false",
-        ])
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .expect("git runs");
-    assert!(
-        out.status.success(),
-        "git {args:?}: {}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
 }
 
 /// What one branch does to the files.
@@ -258,10 +78,6 @@ fn merged(first: Vec<Edit>, second: Vec<Edit>) -> Disk {
     git(&disk.root, &["checkout", "-q", "one"]);
     git(&disk.root, &["merge", "-q", "--no-edit", "two"]);
     disk
-}
-
-fn file(n: u32) -> String {
-    format!("nodes/{}.json", nid(n))
 }
 
 fn rules(store: &mut CachedCampaign) -> Vec<(String, Rule)> {
@@ -408,7 +224,7 @@ fn open_names_invalid_campaigns() {
     // One branch deletes `core` while the other adds a leaf under it: orphans.
     let disk = merged(
         vec![Edit::Remove(2)],
-        vec![Edit::new(leaf_node(6, "gamma", 2, "s"))],
+        vec![Edit::new(leaf_n(6, "gamma", 2, "s"))],
     );
     let mut store = disk.open().unwrap();
     assert_eq!(
@@ -429,8 +245,8 @@ fn open_names_invalid_campaigns() {
 
     // One branch makes a directory out of a leaf's id while the other adds a child under it.
     let disk = merged(
-        vec![Edit::new(leaf_node(5, "spare", 1, "k"))],
-        vec![Edit::new(leaf_node(6, "gamma", 5, "s"))],
+        vec![Edit::new(leaf_n(5, "spare", 1, "k"))],
+        vec![Edit::new(leaf_n(6, "gamma", 5, "s"))],
     );
     let mut store = disk.open().unwrap();
     assert_eq!(rules(&mut store), vec![(file(6), Rule::ParentNotDirectory)]);
@@ -441,8 +257,8 @@ fn open_names_invalid_campaigns() {
 
     // Two branches each move one of two directories under the other: a cycle.
     let disk = merged(
-        vec![Edit::new(dir_node(2, "core", Some(5), "V"))],
-        vec![Edit::new(dir_node(5, "spare", Some(2), "V"))],
+        vec![Edit::new(dir_n(2, "core", Some(5), "V"))],
+        vec![Edit::new(dir_n(5, "spare", Some(2), "V"))],
     );
     let mut store = disk.open().unwrap();
     assert_eq!(
@@ -460,8 +276,8 @@ fn open_names_invalid_campaigns() {
     // Two branches each add a node of one name under one parent: the files differ, so git sees no
     // conflict, and the colliding siblings and their subtrees are unvalidated.
     let disk = merged(
-        vec![Edit::new(leaf_node(6, "gamma", 2, "s"))],
-        vec![Edit::new(leaf_node(7, "gamma", 2, "t"))],
+        vec![Edit::new(leaf_n(6, "gamma", 2, "s"))],
+        vec![Edit::new(leaf_n(7, "gamma", 2, "t"))],
     );
     let mut store = disk.open().unwrap();
     assert_eq!(rules(&mut store), vec![(file(6), Rule::NameCollision)]);
@@ -472,7 +288,7 @@ fn open_names_invalid_campaigns() {
 
     // Two branches each add a campaign root: the two roots are one defect, no tree is picked,
     // and every node is unvalidated until a root is renamed.
-    let disk = merged(vec![Edit::new(dir_node(8, "demo", None, ""))], vec![]);
+    let disk = merged(vec![Edit::new(dir_n(8, "demo", None, ""))], vec![]);
     let mut store = disk.open().unwrap();
     assert_eq!(rules(&mut store), vec![(file(1), Rule::RootCount)]);
     assert_eq!(
@@ -574,26 +390,6 @@ fn minting_retries_on_collision() {
 // ---------------------------------------------------------------------------------------------
 // Revisions and replace
 
-fn actor() -> Actor {
-    Actor {
-        kind: ActorKind::Agent,
-        name: Some("tester".into()),
-        extra: Default::default(),
-    }
-}
-
-fn header(note: Option<&str>, op_id: Option<&str>) -> Header {
-    Header {
-        op_id: op_id.map(|o| OpId::parse(o).unwrap()),
-        actor: actor(),
-        note: note.map(|d| EditNote {
-            description: d.into(),
-            source: None,
-            correction: false,
-        }),
-    }
-}
-
 fn replace_req(h: Header, expected: Option<&Rev>, node: Node) -> Request<ReplaceOp> {
     Request {
         header: h,
@@ -604,27 +400,6 @@ fn replace_req(h: Header, expected: Option<&Rev>, node: Node) -> Request<Replace
     }
 }
 
-/// Every file of the campaign directory except the scratch area, by relative path.
-fn snapshot(disk: &Disk) -> std::collections::BTreeMap<String, Vec<u8>> {
-    fn walk(dir: &Path, base: &Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
-        for e in std::fs::read_dir(dir).unwrap() {
-            let p = e.unwrap().path();
-            let rel = p.strip_prefix(base).unwrap().to_string_lossy().into_owned();
-            if rel == ".rdm" || rel == ".git" {
-                continue;
-            }
-            if p.is_dir() {
-                walk(&p, base, out);
-            } else {
-                out.insert(rel, std::fs::read(&p).unwrap());
-            }
-        }
-    }
-    let mut out = Default::default();
-    walk(&disk.root, &disk.root, &mut out);
-    out
-}
-
 fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
     match store.read().unwrap().campaign().get(&nid(n)).unwrap() {
         Node::Leaf(l) => l.clone(),
@@ -632,7 +407,11 @@ fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
     }
 }
 
+/// The first 16 hex digits of SHA-256 over the file without `schema_version`: `jq` is the
+/// independent canonicaliser; the hash is the `sha2` crate's, since a stock Windows runner has
+/// no `shasum`.
 fn sha16_of_jq(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
     use std::io::Write;
     let mut jq = Command::new("jq")
         .args(["del(.schema_version)"])
@@ -642,15 +421,11 @@ fn sha16_of_jq(bytes: &[u8]) -> String {
         .unwrap();
     jq.stdin.take().unwrap().write_all(bytes).unwrap();
     let out = jq.wait_with_output().unwrap().stdout;
-    let mut sum = Command::new("shasum")
-        .args(["-a", "256"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    sum.stdin.take().unwrap().write_all(&out).unwrap();
-    let hash = String::from_utf8(sum.wait_with_output().unwrap().stdout).unwrap();
-    hash[..16].to_owned()
+    let hex: String = Sha256::digest(&out)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    hex[..16].to_owned()
 }
 
 #[test]
@@ -708,48 +483,100 @@ fn rev_tracks_value_not_formatting() {
 
 #[test]
 fn stale_replace_changes_nothing() {
-    let disk = Disk::new();
-    disk.write_all(&base());
-    let mut a = disk.open().unwrap();
-    let mut b = disk.open().unwrap();
-    let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
-    let mut changed = leaf_of(&mut b, 3);
-    changed.goal = "b was here".into();
-    let won = b
-        .replace(replace_req(
-            header(Some("b edits"), None),
-            Some(&old),
-            Node::Leaf(changed),
-        ))
-        .unwrap();
-    let fresh = won.result.rev.clone();
-    let before = snapshot(&disk);
+    // Bug caught: a write judged against what the cache holds instead of the disk. The cache `a`
+    // holds the old revision of node 3 while the disk has moved on, as two actors leave it: another
+    // handle replaced the node through the store, or an editor wrote in place at the same size and
+    // the signature hides it (a coarse-timestamp file system), which only the write's own read
+    // from the disk can see. The stale `expected_rev` would match the entry and the write would go
+    // over the other actor's edit.
+    type Make = fn(&Disk) -> (CachedCampaign, Rev);
+    let rows: [(&str, Make, &str); 2] = [
+        (
+            "another handle replaced the node",
+            |disk| {
+                let mut a = disk.open().unwrap();
+                let mut b = disk.open().unwrap();
+                let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
+                let mut changed = leaf_of(&mut b, 3);
+                changed.goal = "b was here".into();
+                b.replace(replace_req(
+                    header(Some("b edits"), None),
+                    Some(&old),
+                    Node::Leaf(changed),
+                ))
+                .unwrap();
+                (a, old)
+            },
+            "b was here",
+        ),
+        (
+            "an editor wrote in place at the same size",
+            |disk| {
+                age(&disk.root);
+                let mut a =
+                    CachedCampaign::open(&disk.root, &name("demo"), options_with(frozen_stat()))
+                        .unwrap();
+                let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
+                rewrite_in_place(&disk.path(&file(3)), "a goal", "b goal");
+                assert_eq!(
+                    leaf_of(&mut a, 3).goal,
+                    "a goal",
+                    "the signature hides the edit from a read (the documented limit)"
+                );
+                (a, old)
+            },
+            "b goal",
+        ),
+    ];
+    for (row, make, goal) in rows {
+        let disk = Disk::new();
+        disk.write_all(&base());
+        let (mut a, old) = make(&disk);
+        let fresh = disk
+            .open()
+            .unwrap()
+            .read()
+            .unwrap()
+            .rev(&nid(3))
+            .unwrap()
+            .clone();
+        assert_ne!(fresh, old, "{row}: the disk moved on");
+        let before = files_of(&disk.root);
 
-    // `a` still holds the old revision in memory; the write is judged against the disk.
-    let mut mine = leaf_of(&mut a, 3);
-    mine.goal = "a was here".into();
-    let err = a
-        .replace(replace_req(
+        // `a` still holds the old revision in memory; the write is judged against the disk.
+        let mut mine = leaf_of(&mut a, 3);
+        mine.goal = "a was here".into();
+        let Err(err) = a.replace(replace_req(
             header(Some("a edits"), None),
             Some(&old),
             Node::Leaf(mine),
-        ))
-        .unwrap_err();
-    match err {
-        StoreError::Stale {
-            current: Current::Node { id, rev },
-        } => {
-            assert_eq!((id, rev), (nid(3), fresh));
+        )) else {
+            panic!("{row}: the stale replace was accepted");
+        };
+        match err {
+            StoreError::Stale {
+                current: Current::Node { id, rev },
+            } => assert_eq!((id, rev), (nid(3), fresh), "{row}"),
+            other => panic!("{row}: want Stale, got {other:?}"),
         }
-        other => panic!("want Stale, got {other:?}"),
+        assert_eq!(
+            files_of(&disk.root),
+            before,
+            "{row}: a stale replace writes no file"
+        );
+        assert_eq!(
+            std::fs::read_dir(disk.path(".rdm/intent"))
+                .map(|d| d.count())
+                .unwrap_or(0),
+            0,
+            "{row}"
+        );
+        assert_eq!(
+            leaf_of(&mut a, 3).goal,
+            goal,
+            "{row}: the write learnt the file it read"
+        );
     }
-    assert_eq!(snapshot(&disk), before, "a stale replace writes no file");
-    assert_eq!(
-        std::fs::read_dir(disk.path(".rdm/intent"))
-            .map(|d| d.count())
-            .unwrap_or(0),
-        0
-    );
 }
 
 #[test]
@@ -767,7 +594,7 @@ fn replayed_op_id_writes_nothing() {
     );
     let first = store.replace(req.clone()).unwrap();
     assert!(!first.replayed && first.amendment.is_some());
-    let after_first = snapshot(&disk);
+    let after_first = files_of(&disk.root);
 
     // The same request again: its `expected_rev` is now stale, and it must not matter.
     let again = store.replace(req.clone()).unwrap();
@@ -776,24 +603,24 @@ fn replayed_op_id_writes_nothing() {
         (again.result.clone(), again.amendment.clone()),
         (first.result.clone(), first.amendment.clone())
     );
-    assert_eq!(snapshot(&disk), after_first, "a replay writes nothing");
+    assert_eq!(files_of(&disk.root), after_first, "a replay writes nothing");
 
     // A new process learns the op from the files.
     let mut reopened = disk.open().unwrap();
     let third = reopened.replace(req).unwrap();
     assert!(third.replayed);
     assert_eq!(third.amendment, first.amendment);
-    assert_eq!(snapshot(&disk), after_first);
+    assert_eq!(files_of(&disk.root), after_first);
 }
 
 #[test]
 fn requests_breaking_a_rule_are_refused() {
     let mut nodes = base();
-    nodes.push(leaf_node(6, "orphan", 99, "V"));
+    nodes.push(leaf_n(6, "orphan", 99, "V"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     let mut store = disk.open().unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let rev3 = store.read().unwrap().rev(&nid(3)).unwrap().clone();
     let rev2 = store.read().unwrap().rev(&nid(2)).unwrap().clone();
     let rev6 = store.read().unwrap().rev(&nid(6)).unwrap().clone();
@@ -911,7 +738,7 @@ fn requests_breaking_a_rule_are_refused() {
             }
             other => panic!("{row}: want Invalid, got {other:?}"),
         }
-        assert_eq!(snapshot(&disk), before, "{row}: nothing was written");
+        assert_eq!(files_of(&disk.root), before, "{row}: nothing was written");
     }
     match store.replace(replace_req(
         header(note, None),
@@ -1033,18 +860,6 @@ mod order_keys {
 // ---------------------------------------------------------------------------------------------
 // The other primitives
 
-use rdm_engine::fs::{Effect, RecordingFs};
-use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Position, RelocateOp};
-use std::collections::BTreeMap;
-use std::sync::Arc;
-
-fn req<T>(note: Option<&str>, op: T) -> Request<T> {
-    Request {
-        header: header(note, None),
-        op,
-    }
-}
-
 fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
     store.read().unwrap().rev(&nid(n)).unwrap().clone()
 }
@@ -1124,7 +939,7 @@ fn with_reference(node: Node, target: u32) -> Node {
 #[test]
 fn move_writes_one_file_and_keeps_ids() {
     let mut nodes = base();
-    nodes.push(dir_node(10, "inner", Some(2), "t"));
+    nodes.push(dir_n(10, "inner", Some(2), "t"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     let rec = Arc::new(RecordingFs::new(&disk.root));
@@ -1160,11 +975,11 @@ fn move_writes_one_file_and_keeps_ids() {
         ),
     ];
     for (n, new_name, parent, position, path) in rows {
-        let before = snapshot(&disk);
+        let before = files_of(&disk.root);
         let op = relocate_op(&mut store, n, new_name, parent, position);
         let skip = rec.effects().len();
-        let done = store.move_node(req(Some("tidy"), op)).unwrap();
-        let after = snapshot(&disk);
+        let done = store.move_node(req(Some("tidy"), None, op)).unwrap();
+        let after = files_of(&disk.root);
         let touched: Vec<String> = published(&rec.effects()[skip..])
             .into_iter()
             .filter(|p| p.contains("nodes/"))
@@ -1213,15 +1028,15 @@ fn tree_rev_changes_on_node_ops_not_comments() {
     // `schema_version`; the tree line is `<id> <rev>`):
     //   cd <campaign>/nodes
     //   for f in n_*.json; do echo "${f%.json} $(jq 'del(.schema_version)' $f | shasum -a 256 | cut -c1-16)"; done > revs
-    //   (printf 'rdm-tree\n'; cat revs) | shasum -a 256 | cut -c1-16                          # 4d9d2d44c7bc77b4
-    //   (printf 'rdm-subtree\n'; grep -E 'n_0000000[234]' revs) | shasum -a 256 | cut -c1-16  # cfe39e89990ef78c
+    //   (printf 'rdm-tree\n'; cat revs) | shasum -a 256 | cut -c1-16                          # fc89487f2b437ecf
+    //   (printf 'rdm-subtree\n'; grep -E 'n_0000000[234]' revs) | shasum -a 256 | cut -c1-16  # a2193ef8f52ef79a
     assert_eq!(
         store.read().unwrap().tree_rev().as_str(),
-        "4d9d2d44c7bc77b4"
+        "fc89487f2b437ecf"
     );
     assert_eq!(
         store.read().unwrap().subtree_rev(&nid(2)).unwrap().as_str(),
-        "cfe39e89990ef78c"
+        "a2193ef8f52ef79a"
     );
     let mut seen = BTreeSet::from([store.read().unwrap().tree_rev()]);
 
@@ -1232,8 +1047,8 @@ fn tree_rev_changes_on_node_ops_not_comments() {
         (
             "create",
             Box::new(|s| {
-                let n = leaf_node(20, "newleaf", 2, "V");
-                s.create(req(Some("n"), create_op(n, None)))
+                let n = leaf_n(20, "newleaf", 2, "V");
+                s.create(req(Some("n"), None, create_op(n, None)))
                     .unwrap()
                     .tree_rev
             }),
@@ -1255,26 +1070,26 @@ fn tree_rev_changes_on_node_ops_not_comments() {
             "relocate",
             Box::new(|s| {
                 let op = relocate_op(s, 4, Some("beta2"), None, None);
-                s.move_node(req(Some("m"), op)).unwrap().tree_rev
+                s.move_node(req(Some("m"), None, op)).unwrap().tree_rev
             }),
         ),
         (
             "delete",
             Box::new(|s| {
                 let op = delete_op(s, 5);
-                s.delete_subtree(req(Some("d"), op)).unwrap().tree_rev
+                s.delete_subtree(req(Some("d"), None, op)).unwrap().tree_rev
             }),
         ),
         (
             "batch",
             Box::new(|s| {
-                let n = leaf_node(21, "batched", 2, "V");
+                let n = leaf_n(21, "batched", 2, "V");
                 let b = BatchOp {
                     expected_tree_rev: None,
                     ops: vec![Op::Create(create_op(n, None))],
                     dry_run: false,
                 };
-                s.batch(req(Some("b"), b)).unwrap().tree_rev
+                s.batch(req(Some("b"), None, b)).unwrap().tree_rev
             }),
         ),
     ];
@@ -1303,7 +1118,7 @@ fn tree_rev_changes_on_node_ops_not_comments() {
         node_id: nid(3),
         text: vec!["noted".into()],
     };
-    let done = store.comment(req(None, c)).unwrap();
+    let done = store.comment(req(None, None, c)).unwrap();
     assert_eq!(done.tree_rev, before);
     assert_eq!(disk.open().unwrap().read().unwrap().tree_rev(), before);
     assert_eq!(store.read().unwrap().comments().len(), 1);
@@ -1314,12 +1129,12 @@ fn failed_batch_writes_nothing() {
     let disk = Disk::new();
     disk.write_all(&base());
     let mut store = disk.open().unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let good = |store: &mut CachedCampaign| {
         let mut edited = leaf_of(store, 3);
         edited.goal = "batch edit".into();
         vec![
-            Op::Create(create_op(leaf_node(20, "fresh", 2, "V"), None)),
+            Op::Create(create_op(leaf_n(20, "fresh", 2, "V"), None)),
             Op::Replace(ReplaceOp {
                 expected_rev: Some(rev_of(store, 3)),
                 node: Node::Leaf(edited),
@@ -1329,10 +1144,11 @@ fn failed_batch_writes_nothing() {
 
     // The third op breaks a rule: the first two are not written.
     let mut ops = good(&mut store);
-    ops.push(Op::Create(create_op(leaf_node(21, "alpha", 2, "V"), None)));
+    ops.push(Op::Create(create_op(leaf_n(21, "alpha", 2, "V"), None)));
     let err = store
         .batch(req(
             Some("b"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -1356,7 +1172,11 @@ fn failed_batch_writes_nothing() {
         }
         other => panic!("want InBatch, got {other:?}"),
     }
-    assert_eq!(snapshot(&disk), before, "a failed batch writes nothing");
+    assert_eq!(
+        files_of(&disk.root),
+        before,
+        "a failed batch writes nothing"
+    );
     assert!(
         store.read().unwrap().campaign().get(&nid(20)).is_none(),
         "and the store holds nothing of it"
@@ -1372,11 +1192,12 @@ fn failed_batch_writes_nothing() {
     store
         .replace(replace_req(header(None, None), Some(&rev3), Node::Leaf(l)))
         .unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let ops = good(&mut store);
     let err = store
         .batch(req(
             Some("b"),
+            None,
             BatchOp {
                 expected_tree_rev: Some(stale),
                 ops,
@@ -1393,13 +1214,14 @@ fn failed_batch_writes_nothing() {
         ),
         "{err:?}"
     );
-    assert_eq!(snapshot(&disk), before);
+    assert_eq!(files_of(&disk.root), before);
 
     // A dry run checks everything and writes nothing; the same batch then writes one amendment.
     let ops = good(&mut store);
     let dry = store
         .batch(req(
             Some("b"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -1408,11 +1230,12 @@ fn failed_batch_writes_nothing() {
         ))
         .unwrap();
     assert_eq!(dry.result.len(), 2);
-    assert_eq!(snapshot(&disk), before, "a dry run writes nothing");
+    assert_eq!(files_of(&disk.root), before, "a dry run writes nothing");
     let ops = good(&mut store);
     let real = store
         .batch(req(
             Some("b"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -1420,7 +1243,7 @@ fn failed_batch_writes_nothing() {
             },
         ))
         .unwrap();
-    let after = snapshot(&disk);
+    let after = files_of(&disk.root);
     assert_eq!(
         new_files(&before, &after, "_amendments/"),
         1,
@@ -1456,8 +1279,8 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
     // alpha references deep (outside the subtree of spare); deep references inner (inside it, so
     // its record goes with it and is not reported); a comment names deep.
     let mut nodes = base();
-    nodes.push(dir_node(6, "inner", Some(5), "V"));
-    nodes.push(with_reference(leaf_node(7, "deep", 6, "V"), 6));
+    nodes.push(dir_n(6, "inner", Some(5), "V"));
+    nodes.push(with_reference(leaf_n(7, "deep", 6, "V"), 6));
     nodes[2] = with_reference(nodes[2].clone(), 7);
     let disk = Disk::new();
     disk.write_all(&nodes);
@@ -1465,16 +1288,19 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
     store
         .comment(req(
             None,
+            None,
             CommentOp {
                 node_id: nid(7),
                 text: vec!["watch".into()],
             },
         ))
         .unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
 
     let op = delete_op(&mut store, 5);
-    let done = store.delete_subtree(req(Some("drop spare"), op)).unwrap();
+    let done = store
+        .delete_subtree(req(Some("drop spare"), None, op))
+        .unwrap();
     assert_eq!(
         done.result.removed,
         vec![nid(5), nid(6), nid(7)],
@@ -1491,7 +1317,7 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
         vec![(RecordRef::Node(nid(3)), "/references/1/node_id".to_owned())],
         "only a Report-class record outside the subtree: not the reference inside it, not the comment"
     );
-    let after = snapshot(&disk);
+    let after = files_of(&disk.root);
     assert_eq!(
         nodes_changed(&before, &after),
         vec![file(5), file(6), file(7)],
@@ -1544,13 +1370,15 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
 /// name, and the unlinks of one.
 fn published(effects: &[Effect]) -> Vec<String> {
     let visible = |p: &Path| !p.starts_with(".rdm/tmp") && !p.starts_with(".rdm/.gitignore");
+    // The logical name, `/`-joined, whatever the platform spells a path with.
+    let logical = |p: &Path| p.to_string_lossy().replace('\\', "/");
     effects
         .iter()
         .filter_map(|e| match e {
             Effect::Link { link: p, .. } | Effect::Rename { to: p, .. } if visible(p) => {
-                Some(format!("+{}", p.display()))
+                Some(format!("+{}", logical(p)))
             }
-            Effect::Remove { path } if visible(path) => Some(format!("-{}", path.display())),
+            Effect::Remove { path } if visible(path) => Some(format!("-{}", logical(path))),
             _ => None,
         })
         .collect()
@@ -1559,7 +1387,7 @@ fn published(effects: &[Effect]) -> Vec<String> {
 #[test]
 fn write_order_follows_the_three_rules() {
     let mut nodes = base();
-    nodes.push(leaf_node(6, "child", 5, "V"));
+    nodes.push(leaf_n(6, "child", 5, "V"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     let rec = Arc::new(RecordingFs::new(&disk.root));
@@ -1581,12 +1409,13 @@ fn write_order_follows_the_three_rules() {
             expected_rev: Some(rev_of(&mut store, 4)),
             node: Node::Leaf(edited),
         }),
-        Op::Create(create_op(dir_node(20, "made", Some(2), ""), None)),
-        Op::Create(create_op(leaf_node(21, "madeleaf", 20, "V"), None)),
+        Op::Create(create_op(dir_n(20, "made", Some(2), ""), None)),
+        Op::Create(create_op(leaf_n(21, "madeleaf", 20, "V"), None)),
     ];
     let done = store
         .batch(req(
             Some("all kinds"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -1640,9 +1469,13 @@ fn rebalance_keeps_order_and_length() {
     let mut order = Vec::new();
     for i in 0..150u32 {
         let n = 100 + i;
-        let node = leaf_node(n, &format!("x{i}"), 5, "V");
+        let node = leaf_n(n, &format!("x{i}"), 5, "V");
         store
-            .create(req(Some("grow"), create_op(node, Some(Position::First))))
+            .create(req(
+                Some("grow"),
+                None,
+                create_op(node, Some(Position::First)),
+            ))
             .unwrap();
         order.insert(0, nid(n));
         let campaign = store.read().unwrap().campaign();
@@ -1843,11 +1676,11 @@ mod reverse {
             0 => {
                 *next += 1;
                 let parent = dirs[a as usize % dirs.len()].clone();
-                let mut node = leaf_node(*next, &format!("x{next}"), number(&parent), "V");
+                let mut node = leaf_n(*next, &format!("x{next}"), number(&parent), "V");
                 if b % 2 == 0 {
                     node = with_reference(node, number(&pick(b)));
                 }
-                let _ = store.create(req(Some("c"), create_op(node, None)));
+                let _ = store.create(req(Some("c"), None, create_op(node, None)));
             }
             1 if !leaves.is_empty() => {
                 let id = leaves[a as usize % leaves.len()].clone();
@@ -1873,7 +1706,7 @@ mod reverse {
                     name: None,
                     position: None,
                 };
-                let _ = store.move_node(req(Some("m"), op));
+                let _ = store.move_node(req(Some("m"), None, op));
             }
             4 => {
                 let id = pick(a);
@@ -1881,10 +1714,11 @@ mod reverse {
                     id: id.clone(),
                     expected_subtree_rev: store.read().unwrap().subtree_rev(&id),
                 };
-                let _ = store.delete_subtree(req(Some("d"), op));
+                let _ = store.delete_subtree(req(Some("d"), None, op));
             }
             5 => {
                 let _ = store.comment(req(
+                    None,
                     None,
                     CommentOp {
                         node_id: pick(a),
@@ -1902,7 +1736,7 @@ mod reverse {
                 *next += 1;
                 let parent = dirs[a as usize % dirs.len()].clone();
                 let node = step_reference(
-                    leaf_node(*next, &format!("x{next}"), number(&parent), "V"),
+                    leaf_n(*next, &format!("x{next}"), number(&parent), "V"),
                     number(&pick(b)),
                 );
                 let ops = vec![
@@ -1914,6 +1748,7 @@ mod reverse {
                 ];
                 let _ = store.batch(req(
                     Some("b"),
+                    None,
                     BatchOp {
                         expected_tree_rev: None,
                         ops,
@@ -1932,7 +1767,7 @@ mod reverse {
                     name: Some(name(&format!("r{next}"))),
                     position: None,
                 };
-                let _ = store.move_node(req(Some("m"), op));
+                let _ = store.move_node(req(Some("m"), None, op));
             }
             9 if !dirs.is_empty() => {
                 let id = dirs[a as usize % dirs.len()].clone();
@@ -1941,6 +1776,7 @@ mod reverse {
             }
             _ => {
                 let _ = store.comment(req(
+                    None,
                     None,
                     CommentOp {
                         node_id: pick(a),
@@ -1952,11 +1788,11 @@ mod reverse {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
+        #![proptest_config(ProptestConfig { cases: soak_cases(24), ..ProptestConfig::default() })]
         #[test]
         fn reverse_index_equals_brute_force_scan(steps in prop::collection::vec((any::<u8>(), any::<u8>(), any::<u8>()), 1..16)) {
             let mut nodes = base();
-            nodes.push(step_reference(with_reference(leaf_node(6, "linked", 5, "V"), 3), 4));
+            nodes.push(step_reference(with_reference(leaf_n(6, "linked", 5, "V"), 3), 4));
             let disk = Disk::new();
             disk.write_all(&nodes);
             let mut store = disk.open().unwrap();
@@ -1983,22 +1819,22 @@ fn structure_rows() {
     // demo(1) / core(2) { alpha(3), beta(4), inner(10) };  spare(5) { twin(7), twin(8) };
     // orphans: leaf(6) and directory(9) under a parent that does not exist.
     let mut nodes = base();
-    nodes.push(leaf_node(6, "orphan", 99, "V"));
-    nodes.push(leaf_node(7, "twin", 5, "V"));
-    nodes.push(leaf_node(8, "twin", 5, "k"));
-    nodes.push(dir_node(9, "lost", Some(99), "V"));
-    nodes.push(dir_node(10, "inner", Some(2), "t"));
+    nodes.push(leaf_n(6, "orphan", 99, "V"));
+    nodes.push(leaf_n(7, "twin", 5, "V"));
+    nodes.push(leaf_n(8, "twin", 5, "k"));
+    nodes.push(dir_n(9, "lost", Some(99), "V"));
+    nodes.push(dir_n(10, "inner", Some(2), "t"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     let mut store = disk.open().unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let note = Some("why");
 
     let rows: Vec<Row> = vec![
         (
             "create: an id that exists",
             Box::new(move |s| {
-                s.create(req(note, create_op(leaf_node(3, "zz", 2, "V"), None)))
+                s.create(req(note, None, create_op(leaf_n(3, "zz", 2, "V"), None)))
                     .map(drop)
             }),
             file(3),
@@ -2007,7 +1843,7 @@ fn structure_rows() {
         (
             "create: no such parent",
             Box::new(move |s| {
-                s.create(req(note, create_op(leaf_node(20, "a20", 77, "V"), None)))
+                s.create(req(note, None, create_op(leaf_n(20, "a20", 77, "V"), None)))
                     .map(drop)
             }),
             file(20),
@@ -2016,7 +1852,7 @@ fn structure_rows() {
         (
             "create: the parent is a leaf",
             Box::new(move |s| {
-                s.create(req(note, create_op(leaf_node(20, "a20", 3, "V"), None)))
+                s.create(req(note, None, create_op(leaf_n(20, "a20", 3, "V"), None)))
                     .map(drop)
             }),
             file(20),
@@ -2025,7 +1861,7 @@ fn structure_rows() {
         (
             "create: the parent is not validated",
             Box::new(move |s| {
-                s.create(req(note, create_op(leaf_node(20, "a20", 9, "V"), None)))
+                s.create(req(note, None, create_op(leaf_n(20, "a20", 9, "V"), None)))
                     .map(drop)
             }),
             file(20),
@@ -2034,8 +1870,12 @@ fn structure_rows() {
         (
             "create: a sibling has the name",
             Box::new(move |s| {
-                s.create(req(note, create_op(leaf_node(20, "alpha", 2, "V"), None)))
-                    .map(drop)
+                s.create(req(
+                    note,
+                    None,
+                    create_op(leaf_n(20, "alpha", 2, "V"), None),
+                ))
+                .map(drop)
             }),
             file(20),
             Rule::NameCollision,
@@ -2043,8 +1883,12 @@ fn structure_rows() {
         (
             "create: a second root",
             Box::new(move |s| {
-                s.create(req(note, create_op(dir_node(20, "demo", None, ""), None)))
-                    .map(drop)
+                s.create(req(
+                    note,
+                    None,
+                    create_op(dir_n(20, "demo", None, ""), None),
+                ))
+                .map(drop)
             }),
             file(20),
             Rule::RootCount,
@@ -2054,7 +1898,8 @@ fn structure_rows() {
             Box::new(move |s| {
                 s.create(req(
                     note,
-                    create_op(leaf_node(20, "a20", 2, "V"), Some(Position::Before(nid(5)))),
+                    None,
+                    create_op(leaf_n(20, "a20", 2, "V"), Some(Position::Before(nid(5)))),
                 ))
                 .map(drop)
             }),
@@ -2064,7 +1909,7 @@ fn structure_rows() {
         (
             "create: no note",
             Box::new(move |s| {
-                s.create(req(None, create_op(leaf_node(20, "a20", 2, "V"), None)))
+                s.create(req(None, None, create_op(leaf_n(20, "a20", 2, "V"), None)))
                     .map(drop)
             }),
             "<request>".into(),
@@ -2074,7 +1919,7 @@ fn structure_rows() {
             "relocate: nothing to do",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, None, None, None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             "<request>".into(),
             Rule::NothingToDo,
@@ -2083,7 +1928,7 @@ fn structure_rows() {
             "relocate: the root gets a parent",
             Box::new(move |s| {
                 let op = relocate_op(s, 1, None, Some(5), None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(1),
             Rule::RootDeleteOrMove,
@@ -2092,7 +1937,7 @@ fn structure_rows() {
             "relocate: into its own subtree",
             Box::new(move |s| {
                 let op = relocate_op(s, 2, None, Some(10), None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(2),
             Rule::Cycle,
@@ -2101,7 +1946,7 @@ fn structure_rows() {
             "relocate: a name a sibling has",
             Box::new(move |s| {
                 let op = relocate_op(s, 4, Some("alpha"), None, None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(4),
             Rule::NameCollision,
@@ -2110,7 +1955,7 @@ fn structure_rows() {
             "relocate: a position that is no sibling",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, None, None, Some(Position::Before(nid(5))));
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             "<request>".into(),
             Rule::PositionNotSibling,
@@ -2119,7 +1964,7 @@ fn structure_rows() {
             "relocate: no such parent",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, None, Some(77), None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(3),
             Rule::ParentMissing,
@@ -2128,7 +1973,7 @@ fn structure_rows() {
             "relocate: the parent is a leaf",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, None, Some(4), None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(3),
             Rule::ParentNotDirectory,
@@ -2137,7 +1982,7 @@ fn structure_rows() {
             "relocate: into an unvalidated parent",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, None, Some(9), None);
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(3),
             Rule::UnvalidatedNode,
@@ -2146,7 +1991,7 @@ fn structure_rows() {
             "relocate: a place among the siblings of an unvalidated node",
             Box::new(move |s| {
                 let op = relocate_op(s, 9, None, None, Some(Position::First));
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             file(9),
             Rule::UnvalidatedNode,
@@ -2155,7 +2000,7 @@ fn structure_rows() {
             "relocate: no note",
             Box::new(move |s| {
                 let op = relocate_op(s, 3, Some("q"), None, None);
-                s.move_node(req(None, op)).map(drop)
+                s.move_node(req(None, None, op)).map(drop)
             }),
             "<request>".into(),
             Rule::NoteRequired,
@@ -2165,7 +2010,7 @@ fn structure_rows() {
             Box::new(move |s| {
                 let mut op = relocate_op(s, 3, Some("q"), None, None);
                 op.expected_rev = None;
-                s.move_node(req(note, op)).map(drop)
+                s.move_node(req(note, None, op)).map(drop)
             }),
             "<request>".into(),
             Rule::ExpectedRevRequired,
@@ -2175,6 +2020,7 @@ fn structure_rows() {
             Box::new(move |s| {
                 s.delete_subtree(req(
                     note,
+                    None,
                     DeleteOp {
                         id: nid(5),
                         expected_subtree_rev: None,
@@ -2189,7 +2035,7 @@ fn structure_rows() {
             "delete: the root",
             Box::new(move |s| {
                 let op = delete_op(s, 1);
-                s.delete_subtree(req(note, op)).map(drop)
+                s.delete_subtree(req(note, None, op)).map(drop)
             }),
             file(1),
             Rule::RootDeleteOrMove,
@@ -2198,7 +2044,7 @@ fn structure_rows() {
             "delete: no note",
             Box::new(move |s| {
                 let op = delete_op(s, 5);
-                s.delete_subtree(req(None, op)).map(drop)
+                s.delete_subtree(req(None, None, op)).map(drop)
             }),
             "<request>".into(),
             Rule::NoteRequired,
@@ -2208,6 +2054,7 @@ fn structure_rows() {
             Box::new(move |s| {
                 s.comment(req(
                     note,
+                    None,
                     CommentOp {
                         node_id: nid(3),
                         text: vec!["c".into()],
@@ -2226,12 +2073,13 @@ fn structure_rows() {
             }
             other => panic!("{row}: want Invalid, got {other:?}"),
         }
-        assert_eq!(snapshot(&disk), before, "{row}: nothing was written");
+        assert_eq!(files_of(&disk.root), before, "{row}: nothing was written");
     }
     // Stale and missing.
     let wrong = store.read().unwrap().subtree_rev(&nid(2));
     match store.delete_subtree(req(
         note,
+        None,
         DeleteOp {
             id: nid(5),
             expected_subtree_rev: wrong,
@@ -2250,6 +2098,7 @@ fn structure_rows() {
     assert!(matches!(
         store.delete_subtree(req(
             note,
+            None,
             DeleteOp {
                 id: nid(77),
                 expected_subtree_rev: None
@@ -2260,6 +2109,7 @@ fn structure_rows() {
     assert!(matches!(
         store.comment(req(
             None,
+            None,
             CommentOp {
                 node_id: nid(77),
                 text: vec!["c".into()]
@@ -2267,12 +2117,13 @@ fn structure_rows() {
         )),
         Err(StoreError::NotFound { .. })
     ));
-    assert_eq!(snapshot(&disk), before);
+    assert_eq!(files_of(&disk.root), before);
 
     // A repair is accepted: a comment on the damage, a node moved into the tree, a colliding
     // sibling renamed, an orphan subtree deleted.
     store
         .comment(req(
+            None,
             None,
             CommentOp {
                 node_id: nid(9),
@@ -2281,20 +2132,20 @@ fn structure_rows() {
         ))
         .unwrap();
     let op = relocate_op(&mut store, 6, None, Some(2), None);
-    store.move_node(req(note, op)).unwrap();
+    store.move_node(req(note, None, op)).unwrap();
     assert!(store.read().unwrap().campaign().is_validated(&nid(6)));
     assert!(
         !store.read().unwrap().campaign().is_validated(&nid(8)),
         "still colliding"
     );
     let op = relocate_op(&mut store, 8, Some("twin2"), None, None);
-    store.move_node(req(note, op)).unwrap();
+    store.move_node(req(note, None, op)).unwrap();
     assert!(
         store.read().unwrap().campaign().is_validated(&nid(7))
             && store.read().unwrap().campaign().is_validated(&nid(8))
     );
     let op = delete_op(&mut store, 9);
-    store.delete_subtree(req(note, op)).unwrap();
+    store.delete_subtree(req(note, None, op)).unwrap();
     let damage: Vec<Rule> = rules(&mut store)
         .into_iter()
         .map(|(_, r)| r)
@@ -2316,27 +2167,27 @@ fn structure_rows() {
     let healthy = Disk::new();
     healthy.write_all(&base());
     let mut store = healthy.open().unwrap();
-    let before = snapshot(&healthy);
+    let before = files_of(&healthy.root);
     let op = relocate_op(&mut store, 1, Some("other"), None, None);
-    match store.move_node(req(note, op)) {
+    match store.move_node(req(note, None, op)) {
         Err(StoreError::Invalid {
             rule: Rule::RootCount | Rule::RootNameMismatch,
             ..
         }) => {}
         other => panic!("renaming a sound root: want a root rule, got {other:?}"),
     }
-    assert_eq!(snapshot(&healthy), before);
+    assert_eq!(files_of(&healthy.root), before);
     // A stray parentless node does not make the sound root renamable: the exemption is for a
     // campaign with no validated root.
     let stray = Disk::new();
     let mut nodes = base();
-    nodes.push(dir_node(8, "other", None, ""));
+    nodes.push(dir_n(8, "other", None, ""));
     stray.write_all(&nodes);
     let mut store = stray.open().unwrap();
     assert_eq!(store.read().unwrap().campaign().root(), Some(&nid(1)));
-    let before = snapshot(&stray);
+    let before = files_of(&stray.root);
     let op = relocate_op(&mut store, 1, Some("zzz"), None, None);
-    match store.move_node(req(note, op)) {
+    match store.move_node(req(note, None, op)) {
         Err(StoreError::Invalid {
             rule: Rule::RootCount | Rule::RootNameMismatch,
             ..
@@ -2345,7 +2196,7 @@ fn structure_rows() {
             panic!("renaming a sound root beside a stray root: want a root rule, got {other:?}")
         }
     }
-    assert_eq!(snapshot(&stray), before);
+    assert_eq!(files_of(&stray.root), before);
     assert_eq!(
         validated(&mut store).len(),
         5,
@@ -2355,7 +2206,7 @@ fn structure_rows() {
         CachedCampaign::open(&healthy.root, &name("other"), Options::default()).unwrap();
     assert_eq!(renamed.read().unwrap().campaign().root(), None);
     let op = relocate_op(&mut renamed, 1, Some("other"), None, None);
-    renamed.move_node(req(note, op)).unwrap();
+    renamed.move_node(req(note, None, op)).unwrap();
     assert_eq!(
         renamed.read().unwrap().campaign().root(),
         Some(&nid(1)),
@@ -2366,15 +2217,15 @@ fn structure_rows() {
     // Two roots after a merge of two inits: every node is unvalidated; renaming or deleting one
     // of them is the repair.
     for (row, rename) in [("rename", true), ("delete", false)] {
-        let disk = merged(vec![Edit::new(dir_node(8, "demo", None, ""))], vec![]);
+        let disk = merged(vec![Edit::new(dir_n(8, "demo", None, ""))], vec![]);
         let mut store = disk.open().unwrap();
         assert_eq!(store.read().unwrap().campaign().root(), None);
         if rename {
             let op = relocate_op(&mut store, 8, Some("second"), None, None);
-            store.move_node(req(note, op)).unwrap();
+            store.move_node(req(note, None, op)).unwrap();
         } else {
             let op = delete_op(&mut store, 8);
-            store.delete_subtree(req(note, op)).unwrap();
+            store.delete_subtree(req(note, None, op)).unwrap();
         }
         assert_eq!(
             store.read().unwrap().campaign().root(),
@@ -2387,13 +2238,13 @@ fn structure_rows() {
     // A cycle that a merge of two branches leaves: core under spare on one branch, spare under
     // core on the other. Deleting a member deletes the cycle and everything below it.
     let disk = merged(
-        vec![Edit::new(dir_node(2, "core", Some(5), "V"))],
-        vec![Edit::new(dir_node(5, "spare", Some(2), "k"))],
+        vec![Edit::new(dir_n(2, "core", Some(5), "V"))],
+        vec![Edit::new(dir_n(5, "spare", Some(2), "k"))],
     );
     let mut store = disk.open().unwrap();
     assert!(rules(&mut store).iter().any(|(_, r)| *r == Rule::Cycle));
     let op = delete_op(&mut store, 5);
-    let done = store.delete_subtree(req(note, op)).unwrap();
+    let done = store.delete_subtree(req(note, None, op)).unwrap();
     assert_eq!(done.result.removed, vec![nid(5), nid(2), nid(3), nid(4)]);
     for n in [2, 3, 4, 5] {
         assert!(!disk.path(&file(n)).exists(), "n{n} is gone from the disk");
@@ -2422,10 +2273,10 @@ fn structure_rows() {
 #[test]
 fn marks_name_criteria() {
     let marked = |gates_with_extra: bool| {
-        let Node::Leaf(mut l) = leaf_node(3, "alpha", 2, "V") else {
+        let Node::Leaf(mut l) = leaf_n(3, "alpha", 2, "V") else {
             unreachable!()
         };
-        let mut extra = criterion(39);
+        let mut extra = extra_criterion(39);
         extra.met = true;
         if gates_with_extra {
             l.success_gates.push(extra);
@@ -2458,7 +2309,7 @@ fn marks_name_criteria() {
     let mut stray = bad.marks[0].clone();
     stray.criterion_id = cid(999);
     bad.marks.push(stray);
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let rev = rev_of(&mut store, 3);
     match store.replace(replace_req(header(None, None), Some(&rev), Node::Leaf(bad))) {
         Err(StoreError::Invalid {
@@ -2468,7 +2319,7 @@ fn marks_name_criteria() {
         }) => assert_eq!(f, file(3)),
         other => panic!("want mark_target, got {other:?}"),
     }
-    assert_eq!(snapshot(&disk), before);
+    assert_eq!(files_of(&disk.root), before);
 
     // A removal through the store leaves the amendment that explains the mark; no diagnostic.
     let mut fewer = leaf_of(&mut store, 3);
@@ -2501,27 +2352,6 @@ fn marks_name_criteria() {
 // ---------------------------------------------------------------------------------------------
 // Recovery
 
-fn copy_tree(src: &Path, dst: &Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for e in std::fs::read_dir(src).unwrap() {
-        let e = e.unwrap();
-        let to = dst.join(e.file_name());
-        if e.path().is_dir() {
-            copy_tree(&e.path(), &to);
-        } else {
-            std::fs::copy(e.path(), &to).unwrap();
-        }
-    }
-}
-
-fn snapshot_dir(root: &Path) -> BTreeMap<String, Vec<u8>> {
-    let disk = Disk {
-        _tmp: tempfile::tempdir().unwrap(),
-        root: root.to_path_buf(),
-    };
-    snapshot(&disk)
-}
-
 /// An operation that writes several files, run over a recording file system: the state before,
 /// the state after and the effects between.
 type Snap = BTreeMap<String, Vec<u8>>;
@@ -2529,7 +2359,7 @@ type Recorded = (tempfile::TempDir, Snap, Snap, Vec<Effect>);
 
 fn recorded(run: impl FnOnce(&mut CachedCampaign)) -> Recorded {
     let mut nodes = base();
-    nodes.push(leaf_node(6, "child", 5, "V"));
+    nodes.push(leaf_n(6, "child", 5, "V"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     let pre_dir = tempfile::tempdir().unwrap();
@@ -2547,8 +2377,8 @@ fn recorded(run: impl FnOnce(&mut CachedCampaign)) -> Recorded {
     let skip = rec.effects().len();
     run(&mut store);
     let log = rec.effects()[skip..].to_vec();
-    let pre = snapshot_dir(&pre_dir.path().join("demo"));
-    let post = snapshot(&disk);
+    let pre = files_of(&pre_dir.path().join("demo"));
+    let post = files_of(&disk.root);
     (pre_dir, pre, post, log)
 }
 
@@ -2558,14 +2388,6 @@ fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) -> PathBuf {
     copy_tree(&pre_dir.join("demo"), &work);
     rdm_engine::fs::replay_prefix(log, k, &work).unwrap();
     work
-}
-
-fn scratch_is_empty(root: &Path) -> bool {
-    ["intent", "tmp"].iter().all(|d| {
-        std::fs::read_dir(root.join(".rdm").join(d))
-            .map(|e| e.count() == 0)
-            .unwrap_or(true)
-    })
 }
 
 #[test]
@@ -2582,6 +2404,7 @@ fn recover_redoes_an_interrupted_operation() {
         ];
         s.batch(req(
             Some("two kinds"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -2599,7 +2422,7 @@ fn recover_redoes_an_interrupted_operation() {
     let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
     std::fs::create_dir_all(work.join(".rdm/tmp")).unwrap();
     std::fs::write(work.join(".rdm/tmp/stray"), b"half").unwrap();
-    assert_eq!(snapshot_dir(&work), pre, "a reader sees the state before");
+    assert_eq!(files_of(&work), pre, "a reader sees the state before");
     let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     let report = store.recover().unwrap();
     assert_eq!(
@@ -2610,11 +2433,7 @@ fn recover_redoes_an_interrupted_operation() {
         ),
         (1, 1, 0)
     );
-    assert_eq!(
-        snapshot_dir(&work),
-        post,
-        "recovery completes the operation"
-    );
+    assert_eq!(files_of(&work), post, "recovery completes the operation");
     assert!(scratch_is_empty(&work));
     assert_eq!(
         store.read().unwrap().campaign().get(&nid(5)),
@@ -2636,9 +2455,9 @@ fn recover_redoes_an_interrupted_operation() {
 /// write.
 #[test]
 fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
-    let created = leaf_node(20, "fresh", 2, "V");
+    let created = leaf_n(20, "fresh", 2, "V");
     let (pre_dir, _pre, _post, log) = recorded(|s| {
-        s.create(req(Some("add"), create_op(created.clone(), None)))
+        s.create(req(Some("add"), None, create_op(created.clone(), None)))
             .unwrap();
     });
     // Cut just after the intent was published: the create of the node has not happened.
@@ -2704,7 +2523,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
     let c = store
         .create(Request {
             header: header(note, Some("op-create")),
-            op: create_op(leaf_node(20, "fresh", 2, "V"), None),
+            op: create_op(leaf_n(20, "fresh", 2, "V"), None),
         })
         .unwrap();
     assert!(!c.replayed);
@@ -2731,7 +2550,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
             },
         })
         .unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
 
     let with = |op_id: &str| header(note, Some(op_id));
     // A different node under the op_id of a create or a relocate.
@@ -2739,7 +2558,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
         "create of another node",
         store.create(Request {
             header: with("op-create"),
-            op: create_op(leaf_node(21, "other", 2, "V"), None),
+            op: create_op(leaf_n(21, "other", 2, "V"), None),
         }),
     );
     let op = relocate_op(&mut store, 4, Some("beta2"), None, None);
@@ -2786,7 +2605,7 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
         "a create under the op_id of a comment",
         store.create(Request {
             header: with("op-comment"),
-            op: create_op(leaf_node(22, "third", 2, "V"), None),
+            op: create_op(leaf_n(22, "third", 2, "V"), None),
         }),
     );
     reused(
@@ -2799,28 +2618,27 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
             },
         }),
     );
-    assert_eq!(snapshot(&disk), before, "no refusal wrote anything");
+    assert_eq!(files_of(&disk.root), before, "no refusal wrote anything");
     // The node of the first create is gone: its rev cannot be rebuilt.
     let op = delete_op(&mut store, 20);
-    store.delete_subtree(req(note, op)).unwrap();
-    let before_gone = snapshot(&disk);
+    store.delete_subtree(req(note, None, op)).unwrap();
+    let before_gone = files_of(&disk.root);
     reused(
         "a create whose node is gone",
         store.create(Request {
             header: with("op-create"),
-            op: create_op(leaf_node(20, "fresh", 2, "V"), None),
+            op: create_op(leaf_n(20, "fresh", 2, "V"), None),
         }),
     );
-    assert_eq!(snapshot(&disk), before_gone, "a refusal writes nothing");
+    assert_eq!(
+        files_of(&disk.root),
+        before_gone,
+        "a refusal writes nothing"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
 // Recovery, at the store level
-
-use rdm_engine::fs::{Durability, RealFs};
-use rdm_engine::intent::{self, INTENT_FORMAT, Intent, IntentEffect};
-use rdm_engine::lock::WriterLock;
-use std::time::Duration;
 
 const PLANTED: &str = "01M88Y1HSKTXC19PQH7AQK75A3";
 
@@ -2927,6 +2745,7 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
         ];
         s.batch(req(
             Some("two kinds"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,
@@ -2947,6 +2766,7 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
     store
         .comment(req(
             None,
+            None,
             CommentOp {
                 node_id: nid(3),
                 text: vec!["hi".into()],
@@ -2959,13 +2779,14 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
         1,
         "it completed the interrupted operation"
     );
-    let mut now = snapshot_dir(&work);
+    let mut now = files_of(&work);
     now.retain(|k, _| !k.starts_with("_comments/"));
     assert_eq!(now, post, "the interrupted operation is complete");
     assert_eq!(store.read().unwrap().campaign().get(&nid(5)), None);
     // The next write recovers nothing, and the store says so.
     store
         .comment(req(
+            None,
             None,
             CommentOp {
                 node_id: nid(3),
@@ -2986,7 +2807,7 @@ fn an_intent_newer_than_this_binary_refuses_recovery_and_every_write() {
     };
     intent::begin(&RealFs, &disk.root, PLANTED, &newer, Durability::default()).unwrap();
     let mut store = disk.open().unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let want = |e: StoreError| match e {
         StoreError::NewerFormat {
             found,
@@ -3012,7 +2833,7 @@ fn an_intent_newer_than_this_binary_refuses_recovery_and_every_write() {
             ))
             .unwrap_err(),
     );
-    assert_eq!(snapshot(&disk), before, "nothing was written");
+    assert_eq!(files_of(&disk.root), before, "nothing was written");
     assert!(
         disk.path(&format!(".rdm/intent/{PLANTED}.json")).exists(),
         "the record is left"
@@ -3033,7 +2854,7 @@ fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
         },
     )
     .unwrap();
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let mut edited = leaf_of(&mut store, 3);
     edited.goal = "edit".into();
     let rev = rev_of(&mut store, 3);
@@ -3048,7 +2869,7 @@ fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
         matches!(err, StoreError::Locked { holder: None }),
         "{err:?}"
     );
-    assert_eq!(snapshot(&disk), before);
+    assert_eq!(files_of(&disk.root), before);
     drop(held);
 }
 
@@ -3058,7 +2879,7 @@ fn diagnostics_are_sorted_across_their_producers() {
     // mark diagnostic (n4). The store collects them in that order of producer, n3 then n6 then n4,
     // so only a sort puts n4 before n6.
     let mut nodes = base();
-    nodes.push(leaf_node(6, "orphan", 99, "V"));
+    nodes.push(leaf_n(6, "orphan", 99, "V"));
     let disk = Disk::new();
     disk.write_all(&nodes);
     edit_file(&disk, 3, |v| v["zz"] = json!(1));
@@ -3083,7 +2904,7 @@ fn diagnostics_are_sorted_across_their_producers() {
 
 fn stamped_ok(disk: &Disk, before: &BTreeMap<String, Vec<u8>>, row: &str) {
     let want = rdm_schema::version_string(rdm_schema::FORMAT_VERSION);
-    let after = snapshot(disk);
+    let after = files_of(&disk.root);
     let mut checked = 0;
     for (path, bytes) in &after {
         if before.get(path) == Some(bytes) {
@@ -3115,12 +2936,14 @@ fn every_write_stamps_the_current_format_version() {
     let mut store = disk.open().unwrap();
     let stale = "0.0.1";
 
-    let before = snapshot(&disk);
-    let node = with_stamp(&leaf_node(20, "fresh", 2, "V"), stale);
-    store.create(req(Some("c"), create_op(node, None))).unwrap();
+    let before = files_of(&disk.root);
+    let node = with_stamp(&leaf_n(20, "fresh", 2, "V"), stale);
+    store
+        .create(req(Some("c"), None, create_op(node, None)))
+        .unwrap();
     stamped_ok(&disk, &before, "create");
 
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let mut edited = leaf_of(&mut store, 3);
     edited.goal = "edit".into();
     let rev = rev_of(&mut store, 3);
@@ -3133,14 +2956,15 @@ fn every_write_stamps_the_current_format_version() {
         .unwrap();
     stamped_ok(&disk, &before, "replace");
 
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let op = relocate_op(&mut store, 4, Some("beta2"), None, None);
-    store.move_node(req(Some("m"), op)).unwrap();
+    store.move_node(req(Some("m"), None, op)).unwrap();
     stamped_ok(&disk, &before, "relocate");
 
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     store
         .comment(req(
+            None,
             None,
             CommentOp {
                 node_id: nid(3),
@@ -3150,17 +2974,17 @@ fn every_write_stamps_the_current_format_version() {
         .unwrap();
     stamped_ok(&disk, &before, "comment");
 
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let op = delete_op(&mut store, 5);
-    store.delete_subtree(req(Some("d"), op)).unwrap();
+    store.delete_subtree(req(Some("d"), None, op)).unwrap();
     stamped_ok(&disk, &before, "delete");
 
-    let before = snapshot(&disk);
+    let before = files_of(&disk.root);
     let mut edited = leaf_of(&mut store, 4);
     edited.goal = "again".into();
     let ops = vec![
         Op::Create(create_op(
-            with_stamp(&leaf_node(21, "batched", 2, "V"), stale),
+            with_stamp(&leaf_n(21, "batched", 2, "V"), stale),
             None,
         )),
         Op::Replace(ReplaceOp {
@@ -3171,6 +2995,7 @@ fn every_write_stamps_the_current_format_version() {
     store
         .batch(req(
             Some("b"),
+            None,
             BatchOp {
                 expected_tree_rev: None,
                 ops,

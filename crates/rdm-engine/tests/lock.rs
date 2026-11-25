@@ -2,12 +2,10 @@
 
 mod common;
 
-use common::{child_role, say, spawn_child};
+use common::{LIMIT, child_role, env_u64, say, spawn_child};
 use rdm_engine::lock::{LockError, WriterLock};
 use std::path::Path;
 use std::time::{Duration, Instant};
-
-const LIMIT: Duration = Duration::from_secs(60);
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -158,13 +156,13 @@ fn garbage_holder_record_does_not_break_locking() {
 fn timed_holder_child(root: &Path) {
     let lock = WriterLock::acquire(root, Duration::from_secs(10), b"timed-holder").unwrap();
     say("locked");
-    match std::env::var("RDM_HOLD_MS") {
-        Ok(ms) => {
-            std::thread::sleep(Duration::from_millis(ms.parse().unwrap()));
+    match env_u64("RDM_HOLD_MS", u64::MAX) {
+        u64::MAX => std::thread::sleep(Duration::from_secs(120)), // bounded; the parent kills it
+        ms => {
+            std::thread::sleep(Duration::from_millis(ms));
             lock.release();
             say("released");
         }
-        Err(_) => std::thread::sleep(Duration::from_secs(120)), // bounded; the parent kills it
     }
 }
 
