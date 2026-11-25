@@ -2,3 +2,5 @@
 crates/**/tests/fixtures/**/*.json text eol=lf
 # The CRLF fixture is a Windows checkout's file, kept as written; a later rule overrides the one above.
 crates/rdm-engine/tests/fixtures/noncanonical/crlf_*.json -text
+# The committed schemas are generated output compared byte for byte with the generator's.
+crates/rdm-schema/schemas/*.json text eol=lf
