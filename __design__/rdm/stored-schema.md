@@ -384,12 +384,13 @@ the nodes; the amendment is stored once, at the campaign root, and `changes` nam
 | Item | Decision |
 |:--|:--|
 | Field | `schema_version`, a string `"0.X.Y"`, in every file |
-| First value | `"0.1.0"`. The crate stays at `0.x` until M7, so the format does too |
+| First value | `"0.1.0"`. The crate stays at `0.x` until M7, so the format does too. Revised 2026-11-25: `0.1.0` is redefined by [contracts.md](contracts.md) (flat nodes, no ids on checks and references); nothing was stored in the old shape, so no layer reads it |
 | Constant | `FORMAT_VERSION` in `rdm-schema` |
 | Bump X (`0.X.y`) | A breaking change while the major is `0`: a field removed, renamed or given another meaning, or a field made required |
 | Bump Y (`0.x.Y`) | A compatible addition or fix: a new optional field, or a new enum value that old readers can ignore |
-| Reader | Refuses a different major or a higher X, with an upgrade message. It reads a higher Y and keeps unknown fields (I12) |
-| Writer | Stamps the version it writes. One campaign may hold files of different Y |
+| Reader | Reads the `schema_version` first. A file newer than the binary (a higher major, or at major 0 a higher X) is refused with `NewerFormat { found, supported }` before anything else of it is parsed. It reads a higher Y and keeps unknown fields (I12), and reads an older file through the layer of its version (`Layer`) |
+| Layer | One `FormatLayer` per format line `(major, minor)`, each overriding only what changed; a behaviour a version lacks is `NotInVersion`. The chain, the reading order and the write-version rule are in contracts.md §Version chain |
+| Writer | An edit rewrites the files it touches in the current version, stamped `FORMAT_VERSION`; a read never writes. One campaign may hold files of different versions |
 | Where bumps come from | The commit messages (see `Release`): the crate's version is decided from commit types and scopes by the repository's existing multi-semantic-release setup, not by hand |
 | Relation to the crate | A breaking format change forces a crate X bump, a compatible one at least a Y bump. The read-model version is a separate constant, in `read-model.md` |
 
@@ -421,7 +422,7 @@ goes to 1.0.0 by default), is M7's job. No CI check is added for versions.
 | Progress | `{branch?, notes}` | adds `commits?` (import only); `notes` is `lines` |
 | Gotchas, context | strings or lines unstated | `lines` |
 | Unknown fields | I12 stated | Every type keeps them, nested ones too |
-| Format version | "every file carries `schema_version`" | `"0.X.Y"`, first value `"0.1.0"`, reader rules above |
+| Format version | "every file carries `schema_version`" | `"0.X.Y"`, first value `"0.1.0"`, reader rules above; a version chain of layers (A2) |
 
 **Finding against R01 (invariant I8).** R01 says a leaf is `done` only when every step is done
 with its commit recorded. A leaf imported from legacy markdown is `done` and has no `commit_sha`

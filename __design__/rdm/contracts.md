@@ -500,7 +500,7 @@ impl StoreError {
 | `Io { file, message }` | the operating system refused a read or a write | maybe a recoverable prefix (store.md §Intent and recovery) | retry or report |
 | `InBatch { index, source }` | one op of a batch failed. `source` is any of the above | none: a batch is atomic | as `source` |
 
-`Rule` is a closed enum **per document version**, `#[non_exhaustive]`, with a stable snake-case code.
+`Rule` is `#[non_exhaustive]`, each variant with a stable snake-case code.
 M2 may add codes without changing existing ones. A warning (`dangling_reference`,
 `references_empty`) is a diagnostic of `validate`, not a `StoreError`.
 
@@ -509,6 +509,7 @@ M2 may add codes without changing existing ones. A warning (`dangling_reference`
 | `parse` | the file is not JSON, or not an object of the expected type | codec |
 | `schema_version` | `schema_version` is missing, not a string, or not `N.N.N` | `Version chain` |
 | `unknown_format` | no layer reads this version though it is not newer (older than the first layer) | `Version chain` |
+| `not_in_version` | a layer reports `NotInVersion` for a behaviour the file needs | `Version chain` |
 | `kind` | `kind` is not `leaf`, `directory` or `campaign` | `Node fields` |
 | `malformed_id` | an id field does not parse as its type | `Id types` |
 | `root_shape`, `name_format` | see `Node fields` | `Node fields` |
@@ -520,3 +521,168 @@ M2 may add codes without changing existing ones. A warning (`dangling_reference`
 **Stale, replay and the lock.** `Locked` is the only error a caller retries unchanged. `Stale` is
 never retried unchanged: the intent is reapplied on the fresh state. A replayed write returns
 `Ok`, never `Stale`.
+
+## Version chain
+
+Eliott, 2026-11-25: each format version is a layer that overrides only what changed; behaviour a
+version lacks defaults to "not in this version"; a field removed later is overridden back to that
+default; an older file falls through to the layer that reads it; a file newer than the binary is
+refused. The pattern is a **chain of responsibility** whose handlers are upcasters (as in event
+sourcing): a layer reads the files of its own version into the *current* in-memory types, so the
+rest of the code knows one model.
+
+```rust
+pub struct NotInVersion { pub behaviour: &'static str, pub version: Version }
+pub type Behaviour<T> = Result<T, NotInVersion>;
+
+pub trait FormatLayer: Sync {
+    /// The format line this layer reads: (major, minor). A patch bump (Y) is compatible and has no layer.
+    fn line(&self) -> (u16, u16);
+    /// The layer this one overrides. `&Nothing` under the first layer.
+    fn base(&self) -> &dyn FormatLayer;
+    // Each behaviour defaults to the base layer's. A layer overrides only the ones that changed.
+    fn decode_node(&self, raw: serde_json::Value) -> Behaviour<Node>           { self.base().decode_node(raw) }
+    fn decode_comment(&self, raw: serde_json::Value) -> Behaviour<Comment>     { self.base().decode_comment(raw) }
+    fn decode_amendment(&self, raw: serde_json::Value) -> Behaviour<Amendment> { self.base().decode_amendment(raw) }
+}
+pub struct Nothing;   // the root of the chain: every behaviour is Err(NotInVersion)
+pub static CHAIN: &[&dyn FormatLayer];                          // oldest first; one entry today
+pub fn is_newer(found: Version, supported: Version) -> bool;    // (major, minor) greater; the patch is ignored
+pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer>;  // the newest layer whose line <= found's
+```
+
+- **`NotInVersion`.** `Nothing` implements every behaviour as `Err(NotInVersion)`, so a behaviour no
+  layer defines is absent by default. A layer **removes** a behaviour by overriding it back to
+  `Err(NotInVersion)`: that stops the lookup before it reaches an older layer that still has it.
+  A caller turns `NotInVersion` into `Invalid` with the rule `not_in_version`. No behaviour is
+  absent today, so no code path reaches it yet.
+- **A layer is a struct holding `base`.** It overrides a behaviour by implementing the method, and
+  inherits every other by not mentioning it. The layer of the current format (`0.1`) decodes with
+  the serde of the types of this document, so its decoders are one line each. The decoded value is
+  always the current type, with every unknown key kept in `extra` (I12): old data is *upgraded on
+  read*, never converted in place.
+- **There is one encoder, not one per layer.** Writing always serialises the current types. A
+  layer cannot write, so no version can be written that is not the current one.
+
+### Reading order
+
+The version is read first. Every file read, a node, a comment or an amendment, goes through the
+same steps, in this order:
+
+1. Read the bytes and extract **only** `schema_version`: a probe struct `{ schema_version: String }`
+   that ignores every other key and builds no typed value. No id is validated and no shape rule
+   runs. The text must be valid JSON; otherwise `Invalid` (rule `parse`). A missing or non-string
+   stamp is `Invalid` (rule `schema_version`).
+2. `parse_version` the stamp (strict, as today). A malformed one is `Invalid` (rule `schema_version`).
+3. If `is_newer(found, FORMAT_VERSION)`, return `NewerFormat { found, supported: FORMAT_VERSION, file }`
+   **and stop**. Nothing of the file is parsed past the stamp. A load that meets such a file fails
+   as a whole, because a campaign with a missing node breaks the shape rules; it names the file.
+4. Otherwise pick `layer_for(found)`. If there is none (older than the first layer), `Invalid`
+   (rule `unknown_format`).
+5. Call the layer's `decode_*` on the value. An older version falls through to its own layer
+   here, not through the current one, and the layer's inherited behaviours come from its `base`.
+
+`is_newer` replaces `is_readable` for stored files. `is_readable` stays for the read model, whose
+rule is the consumer's (`read-model.md`, `Versions`), and it agrees with `is_newer` on every case
+that has a newer file: a higher major, or a higher minor at major 0, is refused; a higher patch is
+read. Making the refusal transparent is M7's (A2, ruling 5, and the answer recorded for M7).
+
+**A higher Y is read, not refused.** A Y change is by definition an optional field or an enum value
+that old readers can ignore, and unknown keys survive in `extra` (I12). This follows the `Format
+version` table of `stored-schema.md`; ruling 5 says "a file newer than the binary" and no layer
+could interpret an X change, which is the case that is refused. See the finding in the report of
+this leaf.
+
+### Write-version rule
+
+**An edit rewrites the files it touches in the current version, and no others.** A write encodes
+the whole file with the current types and stamps `FORMAT_VERSION`. A file the operation does not
+touch keeps its version; **a read never writes** (readers need no coordination). So one campaign may
+hold files of different versions, and of different patch levels, and that is legal.
+
+Consequences, accepted: after a new binary edits a node, an older binary refuses the campaign on
+that file with `NewerFormat`, which is the refusal doing its job. Rewriting on touch (not keeping
+the old stamp) is the only choice that needs no per-layer encoder, and it stops an old shape from
+outliving the code that reads it. A patch-level bump can make a file's stamp understate its content:
+an older-Y binary that rewrites a file keeps the unknown keys of a newer Y and stamps its own
+`0.1.0`. That is harmless, since a Y change never changes the meaning of an existing field.
+
+### `FORMAT_VERSION`
+
+**It stays `0.1.0`.** Nothing is stored yet: the importer is M3, the store is built after this
+document, and the only `0.1.0` files that exist are the crate's own hand-written fixtures, in a
+shape this document replaces (the flat node fields, no ids on checks and references, no `Change`
+paths). There is no old file to read, so no layer for the old shape, and the campaign rule
+"fixtures come only from real producers" forbids writing one. `0.1.0` is therefore **redefined**
+by this document, and the chain starts with one layer, `0.1`. The fixtures are rewritten, not read.
+
+**From now on**, with the freeze at the merge of the M1 campaign into `main` (until then a change
+edits layer `0.1` in place and amends this document):
+
+| Change to a stored type | Bump | Chain |
+|:--|:--|:--|
+| a field removed, renamed, given another meaning, or made required; a record kind removed | X (`0.X.y`) | a **new layer**, with `base` the previous one; `CHAIN` gains an entry; the older layer stays |
+| a new optional field, a new enum value old readers can ignore, a new record kind in a new directory | Y (`0.x.Y`) | none: the same layer reads it, and unknown keys survive |
+| a field added with a default for old files | Y if optional, else X | a layer only if the default needs code |
+
+A bump changes, in one commit: `FORMAT_VERSION`, the types, the committed JSON Schemas (re-blessed
+and reviewed), `stored-schema.md`, and, for X, the layer. The commit type and scope decide the
+crate version (`stored-schema.md`, `Release`; wiring is M7's). Nothing checks "bumped when the
+schema changed" automatically: the schema drift guard shows the change in the diff, and a reviewer
+decides X or Y.
+
+## Invariants and guards
+
+Every invariant of this document, with the guard that holds it. The names are those of the campaign
+README, or of [store.md](store.md) for what it owns. A name marked † is **new here** and is added
+to the README's guard list by the coordinator. "Not tested" is followed by the reason.
+
+| # | Invariant | Guarded by |
+|:--|:--|:--|
+| C1 | An id field holds a string of the format of store.md §Ids with its type's kind prefix; a malformed one is refused at deserialisation | `malformed_ids_are_refused` |
+| C2 | `NodeId`s are unique in the campaign; `CriterionId`s and `StepId`s are unique within their node file | `duplicate_ids_are_refused` † |
+| C3 | Checks and references have no id; `Change.item_id` names a criterion or a step | `committed_schemas_match_the_types` (the generated schema has no such field) |
+| C4 | A node holds `name`, `parent_id` and `order`; the root shape rule holds | `directory_and_leaf_shape_rules_refuse_bad_nodes` † |
+| C5 | The campaign shape rules hold: one root, parents exist and are directories, no cycle, sibling names unique, file name equals `id` | `bad_campaign_shapes_are_refused` † |
+| C6 | Children, depth and path are derived from the `parent_id` chain and never stored; the incremental indexes equal a rebuild | `derived_views_equal_a_rebuild` † |
+| C7 | A move or rename writes one node file and one amendment, and changes no id (I7) | `move_writes_one_file_and_keeps_ids` |
+| C8 | `MOVES` equals the move table of `statuses.md` | `move_table_matches_statuses_doc` |
+| C9 | `LINKS` lists every id field of every record | `links_cover_every_id_field` |
+| C10 | The reverse index equals a brute-force scan, after any operation sequence | `reverse_index_equals_brute_force_scan` |
+| C11 | A delete rewrites nothing outside the subtree, and reports every `Report` referrer | `delete_reports_referrers_and_touches_only_the_subtree` † |
+| C12 | No stored field holds a value derivable from an id: a `Reference` with both `node_id` and `target` is refused | `reference_target_is_derived` † |
+| C13 | The committed JSON Schemas equal those generated from the types, request and result types included | `committed_schemas_match_the_types` |
+| C14 | Every object keeps the keys it does not know, in place, at every level (I12) | `unknown_keys_survive_in_place_at_every_level` |
+| C15 | A canonical file round-trips byte for byte; valid non-canonical input reads and re-encodes canonically | `canonical_files_round_trip_byte_for_byte` † |
+| C16 | A file newer than the binary is refused with `NewerFormat { found, supported }` before anything else of it is parsed | `newer_file_refused_before_parsing` |
+| C17 | An older version reads through its own layer; a removed behaviour is `NotInVersion` | Not tested: one layer exists, and the README defers chain fall-through "until a second real layer exists". The trait and `Nothing` are exercised by that first second layer |
+| C18 | An edit rewrites only the files it touches, in the current version; a read writes nothing | `written_files_carry_the_current_version` †; "a read writes nothing" is `cached_read_equals_cold_read` of store.md (the files do not change) |
+| C19 | A stale `expected_rev`, `expected_subtree_rev` or `expected_tree_rev` changes nothing (I4) | `stale_replace_changes_nothing` |
+| C20 | No content change goes unrecorded; an amendment is written exactly when a note is present, and never empty (I5) | `content_edit_needs_one_amendment` † |
+| C21 | A replace cannot change `id`, `name`, `parent_id` or `order` | `replace_cannot_move_a_node` † |
+| C22 | A batch is atomic: a failed op leaves nothing written; a dry run writes nothing | `every_write_prefix_loads_and_recovers_to_pre_or_post` (store.md) for the crash side; `failed_batch_writes_nothing` † for the logical side |
+| C23 | A retried `op_id` returns the first outcome and writes nothing | `replayed_op_id_writes_nothing` † |
+| C24 | A held lock yields `Locked { holder }` and is released when the holder dies | `lock_survives_holder_kill` (store.md) |
+| C25 | Every `StoreError` variant has a stable `code()`, and `root()` unwraps `InBatch` | Not tested: a total `match` the compiler checks; M4 tests its own mapping |
+| C26 | `FORMAT_VERSION` is `0.1.0` and its string round-trips | `version_constants_and_strings` (existing) |
+| C27 | A bump of X or Y accompanies a change to a stored type | Not tested: needs the git history of the schemas; a reviewer reads the drift diff |
+
+### Existing tests that change on purpose
+
+`schema_contracts` changes these first, so each failure is a decision and not a surprise:
+
+| Test (`crates/rdm-schema/tests/`) | Why its behaviour changes |
+|:--|:--|
+| `stored.rs`: `ids_are_unique_and_changes_name_items_by_id` | checks and references no longer have ids, so the collected id set shrinks to criteria and steps; the ids are typed; the fixture change `item_id` names a step |
+| `stored.rs`: `reordering_criteria_leaves_marks_valid` | it builds a `Criterion` with the literal id `cg_new`, which is now malformed; it mints a valid `CriterionId` |
+| `stored.rs`: `unknown_keys_keep_their_order_in_the_output_string`, `unknown_field_keeps_its_place_after_known_ones` | their inline JSON uses ids such as `"c"` and `"n"`, now malformed |
+| `stored.rs`: `amendment_fixture_round_trips_and_keeps_null_new` | the fixture's `remove` and `move` changes carry `path_before` and `path_after`, which `Change` no longer has |
+| `stored.rs`: `leaf_fixture_round_trips`, `directory_fixture_round_trips`, `comment_fixture_round_trips`, `unknown_fields_survive_at_every_level` | every fixture is rewritten with valid ids, the node fields, no check or reference ids, and no `Reference.target` beside a `node_id`; the injection counts are recomputed |
+| `stored.rs`: `marks_point_by_criterion_id_and_corrections_are_flagged` | reads fixture ids that become typed |
+| `schemas.rs`: `committed_schemas_match_the_types` | the generated schemas change on purpose and are re-blessed under review; request and result schemas join the list |
+| `read.rs` and `fixtures/{outline,node,ready,ready_scoped,amendments}.json` | read-model id fields (`id`, `leaf_ids`, `held_by`, `parent` ids) become the newtypes, and `rev` and `tree_rev` become `Rev` and `TreeRev`; their fixtures hold valid ids. The read model stays a projection, outside `LINKS` |
+| `Reference.target` fixtures (`stored_leaf.json`, `node.json`) | `target` is relative to the campaign root, not the node file (`../../../__design__/…` becomes `../../__design__/…` from `__roadmap__/<campaign>/`); a reference with `node_id` has none |
+
+`reader_refuses_per_the_read_model_rule` and `parse_version_is_strict` do not change:
+`is_readable` and `parse_version` stay as they are, and `is_newer` is added beside them with its
+own guard rows inside `newer_file_refused_before_parsing`.
