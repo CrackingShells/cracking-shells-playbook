@@ -4,13 +4,14 @@
 **Pre-conditions**:
 - [ ] `../schema_contracts.md` is done
 **Success Gates**:
-- ⬜ [run] `cargo test -p rdm-engine --test codec canonical_files_round_trip_byte_for_byte` passes over hand-written canonical fixtures, each reviewed line by line against `contracts.md`
-- ⬜ [run] `cargo test -p rdm-engine --test codec decode_encode_is_identity` passes: a proptest over arbitrary stored values
-- ⬜ [run] `cargo test -p rdm-engine --test codec noncanonical_valid_input_reads_and_reencodes_canonically` passes, with one row per real class: reordered keys, four-space indent, CRLF, no trailing newline, `\u` escapes, and the output of `git merge-file` on two edits of one node (the fixture records the command that produced it)
-- ⬜ [run] `cargo test -p rdm-engine --test codec unknown_keys_survive_in_place_at_every_level` passes at the byte level, and decoding reports exactly one `unknown_key` diagnostic per kept key, naming the file and the key's JSON path (Eliott, 2026-11-25)
-- ⬜ [run] `cargo test -p rdm-engine --test codec newer_file_refused_before_parsing` passes with two rows, a higher X (`0.2.0`, a known field changed type) and a higher Y (`0.1.1`): each returns `NewerFormat { found, supported }`, not a parse error. Every newer file is refused, whatever part is higher (Eliott, 2026-11-25)
-- ⬜ [static] The value-level stored-type tests of `crates/rdm-schema/tests/stored.rs` that these byte-level guards supersede are culled, and the report lists them; the read-model tests stay, because M4 serialises those directly
-- ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each guard, the bug that turned it red
+- ✅ [run] `cargo test -p rdm-engine --test codec canonical_files_round_trip_byte_for_byte` passes over hand-written canonical fixtures, each reviewed line by line against `contracts.md`
+- ✅ [run] `cargo test -p rdm-engine --test codec decode_encode_is_identity` passes: a proptest over arbitrary stored values
+- ✅ [run] `cargo test -p rdm-engine --test codec noncanonical_valid_input_reads_and_reencodes_canonically` passes, with one row per real class: reordered keys, four-space indent, CRLF, no trailing newline, `\u` escapes, and the output of `git merge-file` on two edits of one node (the fixture records the command that produced it)
+- ✅ [run] `cargo test -p rdm-engine --test codec unknown_keys_survive_in_place_at_every_level` passes at the byte level, and decoding reports exactly one `unknown_key` diagnostic per kept key, naming the file and the key's JSON path (Eliott, 2026-11-25)
+- ✅ [run] `cargo test -p rdm-engine --test codec newer_file_refused_before_parsing` passes with two rows, a higher X (`0.2.0`, a known field changed type) and a higher Y (`0.1.1`): each returns `NewerFormat { found, supported }`, not a parse error. Every newer file is refused, whatever part is higher (Eliott, 2026-11-25)
+- ✅ [run] The verifier's fix round added `refused_files_name_their_rule_and_file` (every refusal names the file and its rule; duplicate JSON keys at any level are refused as `parse`, since a clean git merge can produce one and the last value won silently), a leading UTF-8 byte order mark row and a `jq -S` row with unknown keys in the non-canonical guard, and `legacy_id` and `op_id` in the canonical amendment, each seen red except the `jq -S` row, which no mutant turns red alone
+- ✅ [static] The value-level stored-type tests of `crates/rdm-schema/tests/stored.rs` that these byte-level guards supersede are culled, and the report lists them; the read-model tests stay, because M4 serialises those directly
+- ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each guard, the bug that turned it red
 **References**: [contracts.md](../../../../../__design__/rdm/contracts.md) — Version chain, the canonical form; [stored-schema.md](../../../../../__design__/rdm/stored-schema.md) — field order, line arrays for prose, where `null` is allowed
 
 ## Step 1: Canonical encoding

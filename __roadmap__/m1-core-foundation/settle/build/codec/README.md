@@ -18,7 +18,7 @@ Bytes in and out of a node file are canonical, lossless and version-aware.
 ## Status
 ```mermaid
 graph TD
-    codec_and_versions[Codec and versions]:::inprogress
+    codec_and_versions[Codec and versions]:::done
     store[Store]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -30,7 +30,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `codec_and_versions.md` | 📄 Leaf Task | 🔄 In Progress |
+| `codec_and_versions.md` | 📄 Leaf Task | ✅ Done |
 | `store/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log
