@@ -10,7 +10,7 @@
 - ⬜ An author, execute, amend cycle on a campaign runs from an agent session with no shell call
 - ⬜ Every tool handler maps to one core call (I2), and every call names its campaign (I10)
 - ⬜ Tool results stay within a stated size budget on the largest existing campaign
-**References**: [R01 §Tool surface (suggestion), §Contracts & Invariants](../../../../../../__design__/rdm/architecture.md) — the suggested tools and the constraints that are fixed
+**References**: [R01 §Tool surface (suggestion), §Contracts & Invariants](../../../../../../__design__/rdm/architecture.md) — the suggested tools and the constraints that are fixed; [M0 spike knowledge transfer](../../../../../../__reports__/m0-feasibility-spike/01-knowledge_transfer_v0.md) — the throwaway `crates/rdm-mcp` was deleted at M1; the `rmcp` 3.10 stdio wiring can be read back with `git show 58a4a30:crates/rdm-mcp/…`
 
 ## Step 1: Plan the milestone
 

@@ -10,7 +10,7 @@
 - ⬜ The view writes nothing: it only calls the app-only read tool
 - ⬜ The built HTML is committed, and CI rebuilds it and fails on a difference
 - ⬜ A host without MCP Apps receives the same information as text and structured content
-**References**: [R01 §Graph view, §Tool surface (suggestion)](../../../../../../../__design__/rdm/architecture.md) — what the view shows, how it is built and how it degrades
+**References**: [R01 §Graph view, §Tool surface (suggestion)](../../../../../../../__design__/rdm/architecture.md) — what the view shows, how it is built and how it degrades; [M0 spike knowledge transfer](../../../../../../../__reports__/m0-feasibility-spike/01-knowledge_transfer_v0.md) — the throwaway `crates/rdm-mcp` was deleted at M1; the Svelte graph view and its MCP Apps bridge can be read back with `git show 58a4a30:crates/rdm-mcp/…`
 
 ## Step 1: Plan the milestone
 
