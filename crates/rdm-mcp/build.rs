@@ -44,8 +44,12 @@ fn main() {
     collect(&leaves, &leaves, &mut files);
     let mut table = String::from("pub static LEAVES: &[(&str, &str)] = &[\n");
     for (rel, abs) in &files {
-        writeln!(table, "    ({rel:?}, include_str!({:?})),", abs.to_string_lossy())
-            .expect("write to String");
+        writeln!(
+            table,
+            "    ({rel:?}, include_str!({:?})),",
+            abs.to_string_lossy()
+        )
+        .expect("write to String");
     }
     table.push_str("];\n");
     fs::write(out.join("leaves.rs"), table).expect("write leaves.rs");

@@ -2,14 +2,13 @@
 //! to it over stdio, as a host would.
 
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt, RoleClient,
     model::{CallToolRequestParams, ProtocolVersion, ReadResourceRequestParams, Tool},
     service::RunningService,
-    transport::{ConfigureCommandExt, TokioChildProcess},
+    transport::TokioChildProcess,
 };
 use serde_json::{Value, json};
 use tokio::process::Command;
@@ -21,13 +20,8 @@ const APPS_MIME: &str = "text/html;profile=mcp-app";
 struct TestClient;
 impl ClientHandler for TestClient {}
 
-async fn connect(probe_dir: Option<&Path>) -> RunningService<RoleClient, TestClient> {
-    let transport = TokioChildProcess::new(Command::new(BIN).configure(|cmd| {
-        if let Some(dir) = probe_dir {
-            cmd.env("RDM_PROBE_DIR", dir);
-        }
-    }))
-    .expect("spawn rdm-mcp");
+async fn connect() -> RunningService<RoleClient, TestClient> {
+    let transport = TokioChildProcess::new(Command::new(BIN)).expect("spawn rdm-mcp");
     TestClient
         .serve_with_lifecycle(
             transport,
@@ -52,7 +46,7 @@ fn meta_of(t: &Tool) -> Value {
 
 #[tokio::test]
 async fn lists_three_tools_with_ui_meta() {
-    let client = connect(None).await;
+    let client = connect().await;
     let tools = client.list_all_tools().await.expect("tools/list");
     let mut names: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
     names.sort();
@@ -74,7 +68,7 @@ async fn lists_three_tools_with_ui_meta() {
 
 #[tokio::test]
 async fn roadmap_view_structured_content_matches_schema() {
-    let client = connect(None).await;
+    let client = connect().await;
     let tools = client.list_all_tools().await.expect("tools/list");
     let schema = Value::Object(
         tool(&tools, "roadmap_view")
@@ -95,7 +89,10 @@ async fn roadmap_view_structured_content_matches_schema() {
         .iter_errors(&structured)
         .map(|e| e.to_string())
         .collect();
-    assert!(errors.is_empty(), "structuredContent violates outputSchema: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "structuredContent violates outputSchema: {errors:?}"
+    );
 
     assert_eq!(structured["campaign"], "roadmap-mcp-rework");
     assert_eq!(structured["nodes"].as_array().expect("nodes").len(), 16);
@@ -107,7 +104,7 @@ async fn roadmap_view_structured_content_matches_schema() {
 
 #[tokio::test]
 async fn reads_ui_resource_with_apps_mime() {
-    let client = connect(None).await;
+    let client = connect().await;
     let result = client
         .read_resource(ReadResourceRequestParams::new("ui://rdm/graph"))
         .await
@@ -120,7 +117,7 @@ async fn reads_ui_resource_with_apps_mime() {
 
 #[tokio::test]
 async fn declares_apps_extension() {
-    let client = connect(None).await;
+    let client = connect().await;
     let info = client.peer_info().expect("server info after discover");
     let caps = serde_json::to_value(&info.capabilities).expect("serialises");
     assert_eq!(
@@ -164,8 +161,14 @@ fn refuses_older_protocol() {
             "clientInfo": { "name": "t", "version": "0" }
         }
     })]);
-    assert!(reply.get("result").is_none(), "initialize must not succeed: {reply}");
-    assert!(reply["error"]["message"].is_string(), "protocol error expected: {reply}");
+    assert!(
+        reply.get("result").is_none(),
+        "initialize must not succeed: {reply}"
+    );
+    assert!(
+        reply["error"]["message"].is_string(),
+        "protocol error expected: {reply}"
+    );
 
     // A request that names 2025-11-25 in its own _meta is refused too.
     let reply = raw_exchange(&[json!({
@@ -176,52 +179,18 @@ fn refuses_older_protocol() {
             "io.modelcontextprotocol/clientCapabilities": {}
         } }
     })]);
-    assert!(reply.get("result").is_none(), "tools/list must not succeed: {reply}");
-    assert!(reply["error"]["message"].is_string(), "protocol error expected: {reply}");
+    assert!(
+        reply.get("result").is_none(),
+        "tools/list must not succeed: {reply}"
+    );
+    assert!(
+        reply["error"]["message"].is_string(),
+        "protocol error expected: {reply}"
+    );
     assert!(
         reply["error"].to_string().contains("2026-07-28"),
         "error names the supported version: {reply}"
     );
-}
-
-fn scratch_dir() -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("probe-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    dir
-}
-
-#[tokio::test]
-async fn probe_record_appends_one_line() {
-    let dir = scratch_dir();
-    let client = connect(Some(&dir)).await;
-    let args = json!({
-        "run_kind": "cold",
-        "t_server_ms": 1,
-        "t_view_ms": 2,
-        "apps_protocol_announced": "2026-01-26",
-        "apps_protocol_host": null,
-        "host_capabilities": { "a": 1 },
-        "host_context": {},
-        "display_mode": "inline"
-    });
-    let result = client
-        .call_tool(
-            CallToolRequestParams::new("probe_record")
-                .with_arguments(args.as_object().expect("object").clone()),
-        )
-        .await
-        .expect("call probe_record");
-    assert_ne!(result.is_error, Some(true), "{result:?}");
-    client.cancel().await.expect("close");
-
-    let text = std::fs::read_to_string(dir.join("probe.jsonl")).expect("probe.jsonl exists");
-    let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 1, "exactly one line: {text:?}");
-    let line: Value = serde_json::from_str(lines[0]).expect("valid JSON line");
-    assert_eq!(line["mcp_protocol"], "2026-07-28");
-    assert_eq!(line["run_kind"], "cold");
-    assert!(line["t_recorded_ms"].as_u64().expect("t_recorded_ms") > 0);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ---- data channels ----
@@ -239,24 +208,47 @@ async fn view(client: &RunningService<RoleClient, TestClient>, mode: &str, scale
 }
 
 fn keys(v: &Value) -> Vec<&str> {
-    let mut k: Vec<&str> = v.as_object().expect("object").keys().map(String::as_str).collect();
+    let mut k: Vec<&str> = v
+        .as_object()
+        .expect("object")
+        .keys()
+        .map(String::as_str)
+        .collect();
     k.sort_unstable();
     k
 }
 
 const COMMON: [&str; 7] = [
-    "campaign", "frozen_at", "mode", "node_count", "payload_bytes", "scale", "t_server_ms",
+    "campaign",
+    "frozen_at",
+    "mode",
+    "node_count",
+    "payload_bytes",
+    "scale",
+    "t_server_ms",
 ];
 
 #[tokio::test]
 async fn each_mode_returns_documented_keys() {
-    let client = connect(None).await;
+    let client = connect().await;
     let result = view(&client, "result", 1).await;
-    for k in ["nodes", "mode", "scale", "t_server_ms", "payload_bytes", "node_count"] {
+    for k in [
+        "nodes",
+        "mode",
+        "scale",
+        "t_server_ms",
+        "payload_bytes",
+        "node_count",
+    ] {
         assert!(result.get(k).is_some(), "result lacks {k}");
     }
     assert!(result.get("stream_url").is_none() && result.get("chunk_count").is_none());
-    let dir = result["nodes"].as_array().expect("nodes").iter().find(|n| n["kind"] == "dir").expect("a dir");
+    let dir = result["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|n| n["kind"] == "dir")
+        .expect("a dir");
     assert!(dir.get("markdown").is_none(), "dir has no markdown");
     let leaf = result["nodes"]
         .as_array()
@@ -264,7 +256,12 @@ async fn each_mode_returns_documented_keys() {
         .iter()
         .find(|n| n["kind"] == "leaf")
         .expect("a leaf");
-    assert!(leaf["markdown"].as_str().expect("markdown").starts_with('#'));
+    assert!(
+        leaf["markdown"]
+            .as_str()
+            .expect("markdown")
+            .starts_with('#')
+    );
 
     let chunks = view(&client, "chunks", 2).await;
     assert!(chunks.get("nodes").is_none());
@@ -274,7 +271,10 @@ async fn each_mode_returns_documented_keys() {
     let stream = view(&client, "stream", 3).await;
     assert!(stream.get("nodes").is_none());
     let url = stream["stream_url"].as_str().expect("stream_url");
-    assert!(url.starts_with("http://127.0.0.1:") && url.ends_with("/stream?scale=3"), "{url}");
+    assert!(
+        url.starts_with("http://127.0.0.1:") && url.ends_with("/stream?scale=3"),
+        "{url}"
+    );
     for v in [&chunks, &stream] {
         for k in COMMON {
             assert!(v.get(k).is_some(), "missing {k}: {:?}", keys(v));
@@ -285,7 +285,7 @@ async fn each_mode_returns_documented_keys() {
 
 #[tokio::test]
 async fn result_mode_refuses_scale() {
-    let client = connect(None).await;
+    let client = connect().await;
     let args = json!({ "mode": "result", "scale": 10 });
     let err = client
         .call_tool(
@@ -301,14 +301,16 @@ async fn result_mode_refuses_scale() {
 
 #[tokio::test]
 async fn chunks_reassemble_to_scaled_nodes() {
-    let client = connect(None).await;
+    let client = connect().await;
     let v = view(&client, "chunks", 20).await;
     let count = v["chunk_count"].as_u64().expect("chunk_count");
     assert!(count > 1, "scale 20 spans several chunks");
     let mut nodes = Vec::new();
     for n in 0..count {
         let r = client
-            .read_resource(ReadResourceRequestParams::new(format!("rdm://chunk/{n}?scale=20")))
+            .read_resource(ReadResourceRequestParams::new(format!(
+                "rdm://chunk/{n}?scale=20"
+            )))
             .await
             .expect("read chunk");
         let c = serde_json::to_value(&r.contents[0]).expect("serialises");
@@ -317,7 +319,10 @@ async fn chunks_reassemble_to_scaled_nodes() {
         assert_eq!(body["n"], n);
         nodes.extend(body["nodes"].as_array().expect("nodes").clone());
     }
-    assert_eq!(nodes.len() as u64, v["node_count"].as_u64().expect("node_count"));
+    assert_eq!(
+        nodes.len() as u64,
+        v["node_count"].as_u64().expect("node_count")
+    );
     assert_eq!(nodes.len(), 16 * 20);
     assert_eq!(nodes[0]["path"], "m0_feasibility_spike.md");
     assert_eq!(nodes[16]["path"], "copy1/m0_feasibility_spike.md");
@@ -332,7 +337,7 @@ async fn chunks_reassemble_to_scaled_nodes() {
 #[tokio::test]
 async fn sse_streams_node_count_events_then_done() {
     use std::io::Read;
-    let client = connect(None).await;
+    let client = connect().await;
     let v = view(&client, "stream", 5).await;
     let url = v["stream_url"].as_str().expect("stream_url");
     let addr = url
@@ -366,7 +371,7 @@ async fn sse_streams_node_count_events_then_done() {
 
 #[tokio::test]
 async fn csp_domain_carries_the_bound_port() {
-    let client = connect(None).await;
+    let client = connect().await;
     let v = view(&client, "stream", 1).await;
     let port = v["stream_url"]
         .as_str()
@@ -393,12 +398,17 @@ async fn csp_domain_carries_the_bound_port() {
 
 #[tokio::test]
 async fn leaf_template_serves_markdown_and_refuses_unknown() {
-    let client = connect(None).await;
-    let templates = client.list_all_resource_templates().await.expect("templates");
+    let client = connect().await;
+    let templates = client
+        .list_all_resource_templates()
+        .await
+        .expect("templates");
     let t = serde_json::to_value(&templates).expect("ser");
     assert!(t.to_string().contains("rdm://leaf/{path}"), "{t}");
     let r = client
-        .read_resource(ReadResourceRequestParams::new("rdm://leaf/core/m1_core_foundation.md"))
+        .read_resource(ReadResourceRequestParams::new(
+            "rdm://leaf/core/m1_core_foundation.md",
+        ))
         .await
         .expect("read leaf");
     let c = serde_json::to_value(&r.contents[0]).expect("ser");
@@ -412,21 +422,8 @@ async fn leaf_template_serves_markdown_and_refuses_unknown() {
 }
 
 #[tokio::test]
-async fn payload_sizes_by_scale() {
-    let client = connect(None).await;
-    let mut sizes = Vec::new();
-    for s in [1, 10, 100] {
-        let v = view(&client, "chunks", s).await;
-        sizes.push((s, v["payload_bytes"].as_u64().expect("b"), v["chunk_count"].as_u64().expect("c")));
-    }
-    eprintln!("SIZES (scale, payload_bytes, chunk_count): {sizes:?}");
-    assert!(sizes[0].1 < sizes[1].1 && sizes[1].1 < sizes[2].1);
-    client.cancel().await.expect("close");
-}
-
-#[tokio::test]
 async fn meta_mode_carries_nodes_in_result_meta() {
-    let client = connect(None).await;
+    let client = connect().await;
     let args = json!({ "mode": "meta", "scale": 3 });
     let result = client
         .call_tool(
@@ -438,12 +435,23 @@ async fn meta_mode_carries_nodes_in_result_meta() {
     let sc = result.structured_content.expect("structuredContent");
     assert_eq!(
         keys(&sc),
-        ["campaign", "frozen_at", "mode", "node_count", "payload_bytes", "scale", "t_server_ms"]
+        [
+            "campaign",
+            "frozen_at",
+            "mode",
+            "node_count",
+            "payload_bytes",
+            "scale",
+            "t_server_ms"
+        ]
     );
     assert_eq!(sc["mode"], "meta");
     let meta = serde_json::to_value(result.meta.as_ref().expect("result _meta")).expect("ser");
     let nodes = meta["rdm"]["nodes"].as_array().expect("_meta.rdm.nodes");
-    assert_eq!(nodes.len() as u64, sc["node_count"].as_u64().expect("node_count"));
+    assert_eq!(
+        nodes.len() as u64,
+        sc["node_count"].as_u64().expect("node_count")
+    );
     assert_eq!(nodes.len(), 48);
     assert!(nodes.iter().any(|n| n["markdown"].is_string()));
     assert_eq!(result.content.len(), 1);

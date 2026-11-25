@@ -131,6 +131,8 @@ The Desktop scale-1 and scale-10 rows are not on the same clock. Scale 1 is serv
 | Does noise hide a difference that matters? | The spread between the fast runs is tens of ms. The delays that look large are one to three orders of magnitude bigger and come from attention, not from the host or the page |
 | What would a series add? | Tighter CIs on tens of ms. It would not change a go or no-go |
 
+Payload by scale in `chunks` mode, as the `payload_sizes_by_scale` probe printed it once before it was deleted from `rdm-mcp/tests/stdio.rs`: scale 1 is 43,715 B in 1 chunk, scale 10 is 438,707 B in 7 chunks, scale 100 is 4,391,237 B in 65 chunks.
+
 ## Observations
 
 | Signal | Baseline / Expected | Observed [source] | Interpretation |

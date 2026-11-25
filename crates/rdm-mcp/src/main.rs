@@ -14,10 +14,10 @@ use rmcp::{
         wrapper::{Json, Parameters},
     },
     model::{
-        CallToolResult, ContentBlock, Implementation, ExtensionCapabilities, ListResourcesResult, MetaObject,
-        PaginatedRequestParams, ProtocolVersion, ListResourceTemplatesResult, ResourceTemplate, Resource, ReadResourceRequestParams,
-        ReadResourceResponse, ReadResourceResult, ResourceContents, ServerCapabilities,
-        ServerConfig,
+        CallToolResult, ContentBlock, ExtensionCapabilities, Implementation,
+        ListResourceTemplatesResult, ListResourcesResult, MetaObject, PaginatedRequestParams,
+        ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
+        Resource, ResourceContents, ResourceTemplate, ServerCapabilities, ServerConfig,
     },
     schemars,
     service::RequestContext,
@@ -412,11 +412,14 @@ impl RdmSpike {
                 );
             }
             Mode::Chunks => {
-                view.chunk_count = Some(u64::try_from(chunk_nodes(&nodes).len()).map_err(internal)?);
+                view.chunk_count =
+                    Some(u64::try_from(chunk_nodes(&nodes).len()).map_err(internal)?);
                 view.chunk_uri_template = Some(format!("rdm://chunk/{{n}}?scale={scale}"));
             }
             Mode::Stream => {
-                let port = STREAM_PORT.get().ok_or_else(|| internal("stream listener is not bound"))?;
+                let port = STREAM_PORT
+                    .get()
+                    .ok_or_else(|| internal("stream listener is not bound"))?;
                 view.stream_url = Some(format!("http://127.0.0.1:{port}/stream?scale={scale}"));
             }
             Mode::Meta => {}
@@ -452,8 +455,9 @@ impl RdmSpike {
         &self,
         Parameters(args): Parameters<LeafGetArgs>,
     ) -> Result<Json<LeafGetResult>, ErrorData> {
-        let markdown = leaf_markdown(&args.path)
-            .ok_or_else(|| ErrorData::invalid_params(format!("unknown leaf: {}", args.path), None))?;
+        let markdown = leaf_markdown(&args.path).ok_or_else(|| {
+            ErrorData::invalid_params(format!("unknown leaf: {}", args.path), None)
+        })?;
         Ok(Json(LeafGetResult {
             path: args.path,
             markdown: markdown.to_owned(),
@@ -575,14 +579,18 @@ impl ServerHandler for RdmSpike {
             ResourceContents::text(md, uri).with_mime_type("text/markdown")
         } else if let Some(rest) = uri.strip_prefix("rdm://chunk/") {
             let (n, query) = rest.split_once('?').unwrap_or((rest, ""));
-            let n: usize = n.parse().map_err(|_| bad(format!("bad chunk index: {n}")))?;
-            let scale = query_scale(query).ok_or_else(|| bad("scale must be 1 to 100".to_owned()))?;
+            let n: usize = n
+                .parse()
+                .map_err(|_| bad(format!("bad chunk index: {n}")))?;
+            let scale =
+                query_scale(query).ok_or_else(|| bad("scale must be 1 to 100".to_owned()))?;
             let nodes = scaled_nodes(scale)?;
             let chunks = chunk_nodes(&nodes);
             let chunk = chunks
                 .get(n)
                 .ok_or_else(|| bad(format!("chunk {n} out of range (0..{})", chunks.len())))?;
-            let body = serde_json::to_string(&json!({ "n": n, "nodes": chunk })).map_err(internal)?;
+            let body =
+                serde_json::to_string(&json!({ "n": n, "nodes": chunk })).map_err(internal)?;
             ResourceContents::text(body, uri).with_mime_type("application/json")
         } else {
             return Err(bad(format!("unknown resource: {uri}")));
