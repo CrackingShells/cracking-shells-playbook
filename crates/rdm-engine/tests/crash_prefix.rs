@@ -308,6 +308,110 @@ fn has_intent(root: &Path) -> bool {
     std::fs::read_dir(root.join(".rdm/intent")).is_ok_and(|mut e| e.next().is_some())
 }
 
+fn json_of(files: &Files, id: u32) -> Value {
+    let bytes = files
+        .get(&file_of(&nid(id)))
+        .unwrap_or_else(|| panic!("n{id} is absent"));
+    serde_json::from_slice(bytes).unwrap()
+}
+
+/// The ids of `root` and everything below it, by a plain walk of `parent_id` over the node
+/// files; a visited set ends it on a cycle.
+fn subtree_by_walk(files: &Files, root: u32) -> BTreeSet<String> {
+    let parent_of: Vec<(String, Option<String>)> = files
+        .iter()
+        .filter_map(|(p, b)| {
+            let id = node_id_of(p)?.to_owned();
+            let v: Value = serde_json::from_slice(b).unwrap();
+            Some((
+                id,
+                v.get("parent_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            ))
+        })
+        .collect();
+    let mut found = BTreeSet::from([nid(root).to_string()]);
+    loop {
+        let before = found.len();
+        for (id, parent) in &parent_of {
+            if parent.as_ref().is_some_and(|p| found.contains(p)) {
+                found.insert(id.clone());
+            }
+        }
+        if found.len() == before {
+            return found;
+        }
+    }
+}
+
+fn node_ids(files: &Files) -> BTreeSet<String> {
+    files
+        .keys()
+        .filter_map(|p| node_id_of(p))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// What each operation did, as its request says and not as the store's run shows: a few facts
+/// of the state after, read from the node files by plain JSON and a walk of `parent_id`.
+fn facts(row: &str, pre: &Files, post: &Files) {
+    let gone = |roots: &[u32]| -> BTreeSet<String> {
+        roots
+            .iter()
+            .flat_map(|r| subtree_by_walk(pre, *r))
+            .collect()
+    };
+    let removed = |roots: &[u32]| {
+        let want: BTreeSet<String> = node_ids(pre).difference(&gone(roots)).cloned().collect();
+        assert_eq!(
+            node_ids(post),
+            want,
+            "{row}: the nodes left are those outside the removed subtrees"
+        );
+    };
+    match row {
+        "create a leaf" => {
+            let n = json_of(post, 30);
+            assert_eq!(n["parent_id"], nid(2).to_string(), "{row}");
+            assert_eq!(n["name"], "fresh", "{row}");
+            assert_eq!(node_ids(post).len(), node_ids(pre).len() + 1, "{row}");
+        }
+        "replace with a note" => assert_eq!(json_of(post, 3)["goal"], "edited goal", "{row}"),
+        "relocate: move" => assert_eq!(json_of(post, 3)["parent_id"], nid(5).to_string(), "{row}"),
+        "relocate: rename only" => {
+            assert_eq!(json_of(post, 4)["name"], "beta2", "{row}");
+            assert_eq!(
+                json_of(post, 4)["parent_id"],
+                json_of(pre, 4)["parent_id"],
+                "{row}"
+            );
+        }
+        "delete a deep subtree" => removed(&[7]),
+        "delete a node on a parent_id cycle" => removed(&[21]),
+        "batch: move a node between two subtrees the batch deletes" => removed(&[13, 17]),
+        "comment" => {
+            let new: Vec<_> = post
+                .keys()
+                .filter(|p| p.starts_with("_comments/"))
+                .collect();
+            assert_eq!(new.len(), 1, "{row}");
+            let c: Value = serde_json::from_slice(&post[new[0]]).unwrap();
+            assert_eq!(c["node_id"], nid(4).to_string(), "{row}");
+        }
+        "batch: create, replace, move, comment and delete" => {
+            assert_eq!(json_of(post, 3)["goal"], "edited goal", "{row}");
+            assert_eq!(json_of(post, 4)["parent_id"], nid(5).to_string(), "{row}");
+            assert!(post.contains_key(&file_of(&nid(31))), "{row}");
+            assert!(
+                !node_ids(post).iter().any(|i| gone(&[7]).contains(i)),
+                "{row}"
+            );
+        }
+        _ => {}
+    }
+}
+
 /// The oracle of a row: the state before, the state after, and the diagnostics each shows.
 struct Oracle {
     pre: Files,
@@ -354,9 +458,8 @@ fn assert_reader_sees_a_valid_state(label: &str, o: &Oracle, work: &Path) -> Sto
     if amended {
         for (path, bytes) in &o.post {
             if path.starts_with("nodes/") && o.pre.get(path) != Some(bytes) {
-                assert_eq!(
-                    state.get(path),
-                    Some(bytes),
+                assert!(
+                    state.get(path) == Some(bytes),
                     "{label}: the amendment is written before {path} is"
                 );
             }
@@ -430,6 +533,11 @@ fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
     let skip = rec.effects().len();
     (row.run)(&mut store);
     let log = rec.effects()[skip..].to_vec();
+    assert!(
+        scratch_is_empty(&disk.root),
+        "{}: the operation left .rdm/tmp or .rdm/intent not empty",
+        row.name
+    );
     (pre_dir, log, files_of(&disk.root))
 }
 
@@ -479,6 +587,7 @@ fn every_write_prefix_loads_and_recovers_to_pre_or_post() {
             "{}: the operation changes the campaign",
             row.name
         );
+        facts(row.name, &o.pre, &o.post);
         let (pre_dir, log, recorded_end) = record(&row);
         assert_eq!(
             recorded_end, post,
@@ -491,11 +600,19 @@ fn every_write_prefix_loads_and_recovers_to_pre_or_post() {
 
         let mut outcomes = Vec::new();
         for k in 0..=log.len() {
-            if k > 0 && is_sync(&log[k - 1]) {
+            let last = k == log.len();
+            if k > 0 && is_sync(&log[k - 1]) && !last {
                 continue; // a sync changes nothing a killed process leaves behind
             }
             let label = format!("{} / prefix {k} of {}", row.name, log.len());
             at_prefix(&pre_dir, &log, k, &work);
+            if last {
+                // Before any recovery: an operation that ran to the end leaves nothing behind.
+                assert!(
+                    scratch_is_empty(&work),
+                    "{label}: .rdm/tmp or .rdm/intent is not empty after the last effect"
+                );
+            }
             let store = assert_reader_sees_a_valid_state(&label, &o, &work);
             outcomes.push(recover_and_judge(&label, &o, &work, store));
         }
