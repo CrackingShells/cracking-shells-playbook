@@ -46,6 +46,19 @@ jobs:
         run: git ls-files --eol ':(glob)crates/**/tests/fixtures/**/*.json'
       - run: cargo test --workspace --locked --no-fail-fast
 
+  lint:
+    name: lint (fmt, clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # rdm-mcp is left out: its fate is not decided.
+      - run: cargo fmt --check -p rdm-schema -p rdm-engine
+      - run: cargo clippy --locked -p rdm-schema -p rdm-engine --all-targets -- -D warnings
+
   msrv:
     name: msrv (1.88)
     runs-on: ubuntu-latest
