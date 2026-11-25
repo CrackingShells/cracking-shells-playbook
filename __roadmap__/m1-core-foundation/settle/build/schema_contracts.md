@@ -17,7 +17,7 @@
 **Implementation Logic**:
 1. Add the id newtypes with validating `Deserialize` and their schemas, and the node fields `name`, `parent_id` and `order`.
 2. Remove the ids `contracts.md` drops (checks and references) and make `Reference.target` derived when `node_id` is set.
-3. Change the existing guards whose behaviour changed on purpose, before the code: `ids_are_unique_and_changes_name_items_by_id` and the reference fixtures. Cull `version_constants_and_strings` unless it is the only test of `version_string` formatting.
+3. Change the existing guards whose behaviour changed on purpose, before the code: `ids_are_unique_and_changes_name_items_by_id`, the reference fixtures, and `reader_refuses_per_the_read_model_rule`, which becomes `only_newer_versions_are_refused` over `is_newer` (`is_readable` is removed; one rule, Eliott 2026-11-25). Cull `version_constants_and_strings` unless it is the only test of `version_string` formatting.
 4. Write `malformed_ids_are_refused` first and see it red.
 5. Regenerate the schemas with `RDM_SCHEMA_BLESS=1` and review the diff line by line.
 **Deliverables**: `crates/rdm-schema/src/ids.rs`: types `NodeId`, `CriterionId`, `StepId`; `crates/rdm-schema/src/stored.rs` amended; `crates/rdm-schema/tests/stored.rs`: test `malformed_ids_are_refused`; `crates/rdm-schema/schemas/*.schema.json`

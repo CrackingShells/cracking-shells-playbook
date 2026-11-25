@@ -668,9 +668,10 @@ table, which read a higher Y; stored-schema.md is edited to match. Unknown keys 
 place (I12), but only in a file the binary can read at all; each one is reported
 (`unknown_key`).
 
-`is_newer` replaces `is_readable` for stored files. `is_readable` stays for the read model, whose
-rule is the consumer's (`read-model.md`, `Versions`), and it **differs** from `is_newer` on a higher
-Y, which it reads. Making the refusal transparent is M7's (A2, ruling 5, and the answer recorded
+`is_newer` replaces `is_readable`, which is removed. **One rule serves stored files and the read
+model** (Eliott, 2026-11-25): a consumer refuses a projection whose `read_model_version` is newer than
+its own, a higher Y included, and reads an older one (`read-model.md`, `Versions`, decision 10). An
+older stored file goes to its layer, or `unknown_format` (step 4). Making the refusal transparent is M7's (A2, ruling 5, and the answer recorded
 for M7).
 
 ### Write-version rule
@@ -795,6 +796,8 @@ own guards (revisions, minting, order keys, crash prefixes, lock, cache).
 | `read.rs` and `fixtures/{outline,node,ready,ready_scoped,amendments}.json` | read-model id fields (`id`, `leaf_ids`, `held_by`, `parent` ids) become the newtypes, and `rev` and `tree_rev` become `Rev` and `TreeRev`; their fixtures hold valid ids. The read model stays a projection, outside `LINKS` |
 | `Reference.target` fixtures (`stored_leaf.json`, `node.json`) | `target` is relative to the campaign root, not the node file (`../../../__design__/…` becomes `../../__design__/…` from `__roadmap__/<campaign>/`); a reference with `node_id` has none |
 
-`reader_refuses_per_the_read_model_rule` and `parse_version_is_strict` do not change:
-`is_readable` and `parse_version` stay as they are, and `is_newer` (the whole triple) is added beside
-them with its own rows inside `newer_file_refused_before_parsing`.
+`parse_version_is_strict` does not change. `reader_refuses_per_the_read_model_rule` changes on
+purpose, before the code: `is_readable` is removed, and the guard becomes
+`only_newer_versions_are_refused`, over `is_newer`, with rows a higher major, a higher X and a higher
+Y refused, and the same and lower versions accepted (bug caught: the patch ignored, or an older
+version refused). The stored-file path is guarded besides by `newer_file_refused_before_parsing`.
