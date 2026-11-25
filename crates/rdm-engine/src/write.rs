@@ -223,9 +223,6 @@ impl Store {
         match effect {
             IntentEffect::Put { path, bytes } => {
                 let dest = self.root.join(path);
-                if fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes()) {
-                    return Ok(());
-                }
                 publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier)
                     .map_err(|e| io_error(path, &e))
             }
@@ -798,6 +795,21 @@ impl Store {
 
     // -----------------------------------------------------------------------------------------
     // The primitives
+
+    /// Recovery on request: takes the writer lock, removes the stray temporary files, redoes every
+    /// intent record left by an interrupted write, and reads the campaign again. Every write does
+    /// this on its own on taking the lock; a reader that wants the settled state calls it.
+    ///
+    /// # Errors
+    /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
+    /// create finds other bytes where it must create a file, `Io`.
+    pub fn recover(&mut self) -> Result<Recovered, StoreError> {
+        let _lock = self.lock()?;
+        self.ignore_scratch()?;
+        let report = self.recover_locked()?;
+        self.state = load(self.fs(), &self.root, self.state.campaign.slug())?;
+        Ok(report)
+    }
 
     /// Replaces one node file if its current `rev` is `expected_rev` (I4). It cannot change
     /// `id`, `name`, `parent_id` or `order`; a content edit needs a note and writes an amendment.

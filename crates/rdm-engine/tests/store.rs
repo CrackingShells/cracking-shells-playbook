@@ -2293,3 +2293,133 @@ fn marks_name_criteria() {
         vec![(file(3), Rule::MarkTarget)]
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Recovery
+
+fn copy_tree(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for e in std::fs::read_dir(src).unwrap() {
+        let e = e.unwrap();
+        let to = dst.join(e.file_name());
+        if e.path().is_dir() {
+            copy_tree(&e.path(), &to);
+        } else {
+            std::fs::copy(e.path(), &to).unwrap();
+        }
+    }
+}
+
+fn snapshot_dir(root: &Path) -> BTreeMap<String, Vec<u8>> {
+    let disk = Disk {
+        _tmp: tempfile::tempdir().unwrap(),
+        root: root.to_path_buf(),
+    };
+    snapshot(&disk)
+}
+
+/// An operation that writes several files, run over a recording file system: the state before,
+/// the state after and the effects between.
+type Snap = BTreeMap<String, Vec<u8>>;
+type Recorded = (tempfile::TempDir, Snap, Snap, Vec<Effect>);
+
+fn recorded(run: impl FnOnce(&mut Store)) -> Recorded {
+    let mut nodes = base();
+    nodes.push(leaf_node(6, "child", 5, "V"));
+    let disk = Disk::new();
+    disk.write_all(&nodes);
+    let pre_dir = tempfile::tempdir().unwrap();
+    copy_tree(&disk.root, &pre_dir.path().join("demo"));
+    let rec = Arc::new(RecordingFs::new(&disk.root));
+    let mut store = Store::open(
+        &disk.root,
+        &name("demo"),
+        Options {
+            fs: rec.clone(),
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let skip = rec.effects().len();
+    run(&mut store);
+    let log = rec.effects()[skip..].to_vec();
+    let pre = snapshot_dir(&pre_dir.path().join("demo"));
+    let post = snapshot(&disk);
+    (pre_dir, pre, post, log)
+}
+
+fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) -> PathBuf {
+    let work = into.join("demo");
+    let _ = std::fs::remove_dir_all(&work);
+    copy_tree(&pre_dir.join("demo"), &work);
+    rdm_engine::fs::replay_prefix(log, k, &work).unwrap();
+    work
+}
+
+fn scratch_is_empty(root: &Path) -> bool {
+    ["intent", "tmp"].iter().all(|d| {
+        std::fs::read_dir(root.join(".rdm").join(d))
+            .map(|e| e.count() == 0)
+            .unwrap_or(true)
+    })
+}
+
+#[test]
+fn recover_redoes_an_interrupted_operation() {
+    let (pre_dir, pre, post, log) = recorded(|s| {
+        let mut edited = leaf_of(s, 4);
+        edited.goal = "edit".into();
+        let ops = vec![
+            Op::Delete(delete_op(s, 5)),
+            Op::Replace(ReplaceOp {
+                expected_rev: Some(rev_of(s, 4)),
+                node: Node::Leaf(edited),
+            }),
+        ];
+        s.batch(req(
+            Some("two kinds"),
+            BatchOp {
+                expected_tree_rev: None,
+                ops,
+                dry_run: false,
+            },
+        ))
+        .unwrap();
+    });
+    // Cut just after the intent record was published, with a half-written file left in tmp.
+    let intent = log
+        .iter()
+        .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
+        .unwrap();
+    let work_dir = tempfile::tempdir().unwrap();
+    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    std::fs::create_dir_all(work.join(".rdm/tmp")).unwrap();
+    std::fs::write(work.join(".rdm/tmp/stray"), b"half").unwrap();
+    assert_eq!(snapshot_dir(&work), pre, "a reader sees the state before");
+    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    let report = store.recover().unwrap();
+    assert_eq!(
+        (
+            report.redone.len(),
+            report.stray_temp_files,
+            report.undecodable.len()
+        ),
+        (1, 1, 0)
+    );
+    assert_eq!(
+        snapshot_dir(&work),
+        post,
+        "recovery completes the operation"
+    );
+    assert!(scratch_is_empty(&work));
+    assert_eq!(
+        store.campaign().get(&nid(5)),
+        None,
+        "and the store holds the result"
+    );
+    assert_eq!(
+        store.recover().unwrap(),
+        rdm_engine::write::Recovered::default(),
+        "a second recovery has nothing to do"
+    );
+}
