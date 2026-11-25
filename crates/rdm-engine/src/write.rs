@@ -37,22 +37,12 @@ use crate::rev;
 use crate::store::{OpRef, Store, io_error};
 use std::sync::Arc;
 
-const REQUEST: &str = "<request>";
-
 fn request_fault(rule: Rule, detail: impl Into<String>) -> StoreError {
-    StoreError::Invalid {
-        file: REQUEST.to_owned(),
-        rule,
-        detail: detail.into(),
-    }
+    StoreError::invalid_request(rule, detail)
 }
 
 fn node_fault(id: &NodeId, rule: Rule, detail: impl Into<String>) -> StoreError {
-    StoreError::Invalid {
-        file: RecordKind::Node.logical(id),
-        rule,
-        detail: detail.into(),
-    }
+    StoreError::invalid(RecordKind::Node.logical(id), rule, detail)
 }
 
 fn not_found(id: &NodeId) -> StoreError {
@@ -231,7 +221,8 @@ impl Store {
                 }
                 Pending::Record { ulid, intent } => {
                     for effect in &intent.effects {
-                        self.apply_effect(effect, ExistingCreate::Resume)?;
+                        self.apply_effect(effect, ExistingCreate::Resume)
+                            .map_err(|e| name_intent_record(e, &file))?;
                     }
                     intent::complete(fs, &self.root, &ulid, tier)
                         .map_err(|e| io_error(&file, &e))?;
@@ -267,12 +258,11 @@ impl Store {
                     match fs.read(&dest) {
                         Ok(b) if b == bytes.as_bytes() => return Ok(()),
                         Ok(_) => {
-                            return Err(StoreError::Invalid {
-                                file: path.to_owned(),
-                                rule: Rule::DuplicateId,
-                                detail: "recovery found other bytes where it must create a file"
-                                    .to_owned(),
-                            });
+                            return Err(StoreError::invalid(
+                                path,
+                                Rule::DuplicateId,
+                                "recovery found other bytes where it must create a file",
+                            ));
                         }
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                         Err(e) => return Err(io_err(e)),
@@ -280,11 +270,7 @@ impl Store {
                 }
                 publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(|e| {
                     if e.kind() == io::ErrorKind::AlreadyExists {
-                        StoreError::Invalid {
-                            file: path.to_owned(),
-                            rule: Rule::DuplicateId,
-                            detail: "the file already exists".to_owned(),
-                        }
+                        StoreError::invalid(path, Rule::DuplicateId, "the file already exists")
                     } else {
                         io_err(e)
                     }
@@ -760,11 +746,7 @@ impl Store {
                 continue;
             }
             if structural_rule(d.rule) && !before.contains(&(d.file.as_str(), d.rule)) {
-                return Err(StoreError::Invalid {
-                    file: d.file.clone(),
-                    rule: d.rule,
-                    detail: d.detail.clone(),
-                });
+                return Err(StoreError::invalid(&d.file, d.rule, &d.detail));
             }
         }
         Ok(())
@@ -1564,6 +1546,19 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
         }
     }
     Ok(())
+}
+
+/// A recovery that is refused leaves its intent record in place for a person to resolve, so an
+/// `Invalid` it raises names that record, not only the node file the record could not write.
+fn name_intent_record(error: StoreError, record: &str) -> StoreError {
+    match error {
+        StoreError::Invalid { file, rule, detail } => StoreError::invalid(
+            file,
+            rule,
+            format!("{detail} (the interrupted write is held in {record})"),
+        ),
+        other => other,
+    }
 }
 
 /// A recorded effect may touch only a campaign record: a relative path with no `..`, under

@@ -149,14 +149,6 @@ pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
     }
 }
 
-pub(crate) fn invalid(file: &str, rule: Rule, detail: String) -> StoreError {
-    StoreError::Invalid {
-        file: file.to_owned(),
-        rule,
-        detail,
-    }
-}
-
 impl Store {
     /// Opens the campaign at `root`, given the slug its caller knows it by: the root is the
     /// parentless node that carries it.

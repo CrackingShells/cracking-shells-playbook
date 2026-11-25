@@ -75,7 +75,7 @@ pub(crate) fn current_node(file: &str, raw: Value) -> Result<Decoded<Node>, Stor
         Some("campaign" | "directory") => {
             typed::<Directory>(file, raw).map(|d| scanned(file, d, scan_directory, Node::Directory))
         }
-        _ => Err(invalid(
+        _ => Err(StoreError::invalid(
             file,
             Rule::Kind,
             "`kind` is not `leaf`, `directory` or `campaign`",
@@ -130,17 +130,17 @@ pub fn encode<T: Stored>(value: &T) -> String {
 pub fn decode<T: Stored>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreError> {
     // Editors that write a UTF-8 byte order mark (PowerShell 5, older Notepad): one is skipped.
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    let raw = parse(bytes).map_err(|e| invalid(file, Rule::Parse, &e.to_string()))?;
+    let raw = parse(bytes).map_err(|e| StoreError::invalid(file, Rule::Parse, e.to_string()))?;
     if !raw.is_object() {
-        return Err(invalid(file, Rule::Parse, "the file is not a JSON object"));
+        return Err(StoreError::invalid(file, Rule::Parse, "the file is not a JSON object"));
     }
     let (found, layer) = layer_of(file, &raw)?;
     match T::decode_by(layer, file, raw) {
         Ok(decoded) => decoded,
-        Err(NotInVersion { behaviour }) => Err(invalid(
+        Err(NotInVersion { behaviour }) => Err(StoreError::invalid(
             file,
             Rule::NotInVersion,
-            &format!("`{behaviour}` is not in format {}", version_string(found)),
+            format!("`{behaviour}` is not in format {}", version_string(found)),
         )),
     }
 }
@@ -235,14 +235,6 @@ impl<'de> Visitor<'de> for Unique {
     }
 }
 
-fn invalid(file: &str, rule: Rule, detail: &str) -> StoreError {
-    StoreError::Invalid {
-        file: file.to_owned(),
-        rule,
-        detail: detail.to_owned(),
-    }
-}
-
 /// Reads `raw` as a `T`, telling the rules apart by the tag the id and name types put on their
 /// messages (`rdm_schema::ids`): everything else is `parse`.
 fn typed<T: DeserializeOwned>(file: &str, raw: Value) -> Result<T, StoreError> {
@@ -255,7 +247,7 @@ fn typed<T: DeserializeOwned>(file: &str, raw: Value) -> Result<T, StoreError> {
         } else {
             (Rule::Parse, message.as_str())
         };
-        invalid(file, rule, detail)
+        StoreError::invalid(file, rule, detail)
     })
 }
 

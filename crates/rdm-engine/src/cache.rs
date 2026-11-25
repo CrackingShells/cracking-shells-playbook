@@ -28,7 +28,7 @@ use crate::fs::{FileStat, Fs};
 use crate::layout::RecordKind;
 use crate::links::ReverseIndex;
 use crate::rev;
-use crate::store::{OpIndex, Options, State, Store, invalid, io_error};
+use crate::store::{OpIndex, Options, State, Store, io_error};
 use crate::write::Recovered;
 
 /// A file whose modification time is not older than this when it was read is read again on every
@@ -214,7 +214,7 @@ fn load_file<T: Stored, A>(
     let stem = RecordKind::id_of_file(name).unwrap_or(name);
     let held = (kind.id_of)(&decoded.value);
     if held != stem {
-        return Err(invalid(
+        return Err(StoreError::invalid(
             &file,
             Rule::FileIdMismatch,
             format!("the file is named {stem} and holds the id {held}"),

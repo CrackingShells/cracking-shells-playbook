@@ -187,7 +187,7 @@ impl Node {
     /// `parse` when the value is not an object of the type its `kind` names. The file is
     /// `<request>`: the codec, which knows the file, names it.
     pub fn decode(raw: Value) -> Result<Node, StoreError> {
-        let invalid = |rule, detail: String| StoreError::Invalid { file: "<request>".to_owned(), rule, detail };
+        let invalid = |rule, detail: String| StoreError::invalid_request(rule, detail);
         match raw.get("kind").and_then(Value::as_str) {
             Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(|e| invalid(Rule::Parse, e.to_string())),
             Some("campaign" | "directory") => {

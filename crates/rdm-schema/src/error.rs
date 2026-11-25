@@ -200,7 +200,7 @@ pub enum StoreError {
     /// the file is parsed.
     NewerFormat { found: Version, supported: Version, file: String },
     /// A file or a request breaks a rule. `file` is the path relative to the campaign root
-    /// (`nodes/<id>.json`), or `<request>` when the fault is in the request.
+    /// (`nodes/<id>.json`), or [`REQUEST_FILE`] when the fault is in the request.
     Invalid { file: String, rule: Rule, detail: String },
     /// A node a request names does not exist.
     NotFound { target: RecordRef },
@@ -210,7 +210,23 @@ pub enum StoreError {
     InBatch { index: usize, source: Box<StoreError> },
 }
 
+/// The `file` of an [`StoreError::Invalid`] whose fault is in the request, not in a file.
+pub const REQUEST_FILE: &str = "<request>";
+
 impl StoreError {
+    /// A file breaks a rule: `file` is the path relative to the campaign root. The one way to
+    /// build an `Invalid`.
+    #[must_use]
+    pub fn invalid(file: impl Into<String>, rule: Rule, detail: impl Into<String>) -> StoreError {
+        StoreError::Invalid { file: file.into(), rule, detail: detail.into() }
+    }
+
+    /// A request breaks a rule: the `file` is [`REQUEST_FILE`].
+    #[must_use]
+    pub fn invalid_request(rule: Rule, detail: impl Into<String>) -> StoreError {
+        StoreError::invalid(REQUEST_FILE, rule, detail)
+    }
+
     /// The error itself, with `InBatch` unwrapped.
     #[must_use]
     pub fn root(&self) -> &StoreError {
