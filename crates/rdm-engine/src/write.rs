@@ -939,20 +939,13 @@ impl Store {
     // -----------------------------------------------------------------------------------------
     // The primitives
 
-    /// What the last recovery did: the one a write ran on taking the lock, or a recovery on request.
-    /// `None` until a recovery has run; it holds the report until the next one replaces it.
+    /// See [`crate::cache::CachedCampaign::last_recovered`].
     #[must_use]
-    pub fn last_recovered(&self) -> Option<&Recovered> {
+    pub(crate) fn last_recovered(&self) -> Option<&Recovered> {
         self.last_recovered.as_ref()
     }
 
-    /// Recovery on request: takes the writer lock, removes the stray temporary files, redoes every
-    /// intent record left by an interrupted write, and reads the campaign again. Every write does
-    /// this on its own on taking the lock; a reader that wants the settled state calls it.
-    ///
-    /// # Errors
-    /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
-    /// create finds other bytes where it must create a file, `Io`.
+    /// See [`crate::cache::CachedCampaign::recover`].
     pub(crate) fn recover(&mut self) -> Result<Recovered, StoreError> {
         let _lock = self.lock()?;
         self.ignore_scratch()?;
@@ -962,11 +955,7 @@ impl Store {
         Ok(report)
     }
 
-    /// Replaces one node file if its current `rev` is `expected_rev` (I4). It cannot change
-    /// `id`, `name`, `parent_id` or `order`; a content edit needs a note and writes an amendment.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` with the rule that is broken, `Io`.
+    /// See [`crate::cache::CachedCampaign::replace`].
     pub(crate) fn replace(
         &mut self,
         req: Request<ReplaceOp>,
@@ -980,14 +969,7 @@ impl Store {
 }
 
 impl Store {
-    /// Writes a new node file. The caller minted the ids in `node`; `node.order` is not read, the
-    /// store sets it from `position` (default last) and rebalances the siblings when a key grows
-    /// past the limit.
-    ///
-    /// # Errors
-    /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
-    /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
-    /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
+    /// See [`crate::cache::CachedCampaign::create`].
     pub(crate) fn create(
         &mut self,
         req: Request<CreateOp>,
@@ -999,12 +981,7 @@ impl Store {
         })
     }
 
-    /// Renames or moves one node: one node file and one amendment, no id changes.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
-    /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
-    /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
+    /// See [`crate::cache::CachedCampaign::move_node`].
     pub(crate) fn move_node(
         &mut self,
         req: Request<RelocateOp>,
@@ -1016,12 +993,7 @@ impl Store {
         })
     }
 
-    /// Removes a node and every descendant if the `SubtreeRev` matches. The amendment, with the
-    /// snapshot of the removed nodes, is written before the first node file is removed.
-    ///
-    /// # Errors
-    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
-    /// `expected_rev_required`), `Io`.
+    /// See [`crate::cache::CachedCampaign::delete_subtree`].
     pub(crate) fn delete_subtree(
         &mut self,
         req: Request<DeleteOp>,
@@ -1033,10 +1005,7 @@ impl Store {
         })
     }
 
-    /// Writes one comment file. It has no revision and never conflicts.
-    ///
-    /// # Errors
-    /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
+    /// See [`crate::cache::CachedCampaign::comment`].
     pub(crate) fn comment(
         &mut self,
         req: Request<CommentOp>,
@@ -1048,13 +1017,7 @@ impl Store {
         })
     }
 
-    /// Applies the ops in order as one transaction: each is checked against the state the
-    /// earlier ones produced, the whole result is checked once, and either everything is
-    /// written or nothing. `dry_run` runs every check and writes nothing.
-    ///
-    /// # Errors
-    /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
-    /// `expected_tree_rev`; `Locked`; `Io`.
+    /// See [`crate::cache::CachedCampaign::batch`].
     pub(crate) fn batch(
         &mut self,
         req: Request<BatchOp>,

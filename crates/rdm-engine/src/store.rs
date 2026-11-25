@@ -151,12 +151,7 @@ pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
 
 impl Store {
     /// Opens the campaign at `root`, given the slug its caller knows it by: the root is the
-    /// parentless node that carries it.
-    ///
-    /// # Errors
-    /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
-    /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
-    /// Damage between files loads, and is in [`Store::diagnostics`].
+    /// parentless node that carries it. Errors as [`crate::cache::CachedCampaign::open`].
     pub(crate) fn open(
         root: impl Into<PathBuf>,
         slug: &Name,
