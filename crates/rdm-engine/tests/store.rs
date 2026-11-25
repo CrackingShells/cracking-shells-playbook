@@ -420,7 +420,15 @@ fn sha16_of_jq(bytes: &[u8]) -> String {
         .spawn()
         .unwrap();
     jq.stdin.take().unwrap().write_all(bytes).unwrap();
-    let out = jq.wait_with_output().unwrap().stdout;
+    // A native jq.exe writes its text output with CRLF line ends; the canonical encoding has
+    // none (a carriage return inside a string is escaped), so dropping them recovers jq's bytes.
+    let out: Vec<u8> = jq
+        .wait_with_output()
+        .unwrap()
+        .stdout
+        .into_iter()
+        .filter(|&b| b != b'\r')
+        .collect();
     let hex: String = Sha256::digest(&out)
         .iter()
         .map(|b| format!("{b:02x}"))
