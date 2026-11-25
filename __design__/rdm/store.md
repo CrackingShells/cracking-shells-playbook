@@ -214,7 +214,7 @@ Every primitive runs these steps; the table below gives step 5 per primitive.
 2. Recover: if `.rdm/intent/` or `.rdm/tmp/` holds anything, run Intent and recovery first.
 3. Under the lock, in this order:
    1. **Replay.** If the request carries an `op_id` and the op index finds a record that carries it (Cache), write nothing and return the first outcome with `replayed: true`. The check and the write are one critical section, which is why the store, not M2, owns it. Guarded by `replayed_op_id_writes_nothing`.
-   2. Read the files the operation touches **from disk**, not from the cache. Check `expected_rev`, `expected_subtree_rev` and `expected_tree_rev` where given. On a mismatch release the lock and return `Stale { current }`; nothing has been written. This makes a stale write harmless whatever any cache or earlier read held. Guarded by `stale_replace_changes_nothing`.
+   2. Read the files the operation touches **from disk**, not from the cache: the nodes the request names, their parents, and a deleted subtree, read again until the set is closed; a sibling the plan rewrites (an order-key rebalance) is read before it is written, and the plan is recomputed if it differed. Check `expected_rev`, `expected_subtree_rev` and `expected_tree_rev` where given. On a mismatch release the lock and return `Stale { current }`; nothing has been written. This makes a stale write harmless whatever any cache or earlier read held. Guarded by `stale_replace_changes_nothing`.
    3. Check the structure: sibling `name` unique, no cycle, the parent exists and is a directory, and every id the request introduces is absent from the disk (`duplicate_id`).
    4. **Unvalidated nodes.** If the request builds on a node that is not reachable from the root, refuse it with `Invalid` unless it is a repair (relocate it into the validated tree, rename a colliding sibling, delete). Guarded by `open_names_invalid_campaigns`.
 4. Compute every after-image, mint the amendment's ULID (the only id the store mints), build the amendment.
@@ -374,9 +374,10 @@ any entry changes; they are rebuilt from the entries and never outlive them. Gua
 4. Entries whose file is no longer listed are dropped; a new name is read. A file listed and then gone before its stat or read (a concurrent delete or rename) is treated as absent, as if it had not been listed, never as an `Io` error.
 5. If anything changed, bump the generation.
 
-The re-read of racy entries is the main cost right after writes: at 1 600 nodes, a revalidation with
-every entry racy took 36 ms against 12 ms with every entry aged (`01-cache_probe_v0.md`). It lasts
-`RACY_WINDOW` after the last change to each file.
+A racy entry is read and hashed again but decoded only if its digest changed. On the probe's shared
+machine its cost was lost in the noise: at 1 600 nodes a revalidation took 11 to 13 ms with every
+entry racy and 15 to 16 ms with every entry aged, near the 13 ms floor of the listing and stats
+alone (`01-cache_probe_v0.md`).
 
 **Why not the directory `stat`.** The probe shows a directory's mtime changes for a create, a rename and
 an unlink but not for an in-place write (a text editor saving, `git merge-file`). A directory-stat fast
@@ -418,9 +419,13 @@ a fresh open) that starts after the return sees the written files. Guarded by
 `write_through_visible_to_cold_reader_on_return`; and by `cached_read_equals_cold_read` for external
 change: an editor writing in place, an atomic replacement by another process, `git checkout`, a new
 file, a deleted file, a same-size edit within one tick, and, on aged entries (past `RACY_WINDOW`), a
-same-size replace by rename keeping the old mtime and a size-only edit with the mtime restored, each
-of which only one component of the signature sees. Its oracle is a loader independent of the cache:
-each file decoded by the codec and hashed by `rev`.
+same-size replace by rename keeping the old mtime, a size-only edit with the mtime restored, and on
+Unix a same-size edit with the mtime restored (`touch -r`). On Unix the ctime sees all three, so the
+first two rows each stand for the component that sees them where no ctime exists; the racy row is
+also run on a file system without ctime. Its oracle is a loader independent of the cache: each file
+decoded by the codec and hashed by `rev`. That a write judges the files it touches against the disk,
+even when the signature cannot see an edit, is guarded by
+`a_write_judges_the_files_it_touches_against_the_disk`.
 
 **Persisted form.** Whether a binary cache is built at all is decided by the `hot_cache` leaf from its
 cold-versus-warm measurement. If one is, it lives in `.rdm/cache/` (untracked), carries the crate
