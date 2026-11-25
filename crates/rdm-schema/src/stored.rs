@@ -5,7 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{Rule, StoreError};
-use crate::ids::{AmendmentId, CommentId, CriterionId, ItemId, Name, NodeId, OpId, OrderKey, StepId};
+use crate::ids::{
+    AmendmentId, CommentId, CriterionId, ItemId, MALFORMED_ID_TAG, Name, NodeId, OpId, OrderKey, StepId,
+};
 
 /// A multi-line prose field, stored as one line per element.
 pub type Lines = Vec<String>;
@@ -414,7 +416,7 @@ fn snapshot_keys<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Map<String, V
     let map = Option::<Map<String, Value>>::deserialize(d)?;
     if let Some(m) = &map {
         for key in m.keys() {
-            NodeId::parse(key).map_err(|e| serde::de::Error::custom(format!("snapshot key {key:?}: {e}")))?;
+            NodeId::parse(key).map_err(|e| serde::de::Error::custom(format!("{MALFORMED_ID_TAG}snapshot key {key:?}: {e}")))?;
         }
     }
     Ok(map)

@@ -23,6 +23,12 @@ pub const ULID_LEN: usize = 26;
 /// Longest `OpId`, in characters.
 pub const OP_ID_MAX_LEN: usize = 128;
 
+/// Start of the message of a deserialisation error caused by a malformed id, so a decoder can
+/// tell the rule `malformed_id` from `parse` without parsing prose.
+pub const MALFORMED_ID_TAG: &str = "malformed_id: ";
+/// Start of the message of a deserialisation error caused by a bad [`Name`]: the rule `name_format`.
+pub const NAME_FORMAT_TAG: &str = "name_format: ";
+
 /// Prefix of a node id.
 pub const NODE_PREFIX: &str = "n_";
 /// Prefix of a criterion id. Differs from the step prefix: `ItemId` reads by prefix.
@@ -156,7 +162,7 @@ macro_rules! checked_string {
         impl<'de> Deserialize<'de> for $name {
             fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let s = String::deserialize(d)?;
-                Self::parse(&s).map_err(|e| D::Error::custom(format!("{}: {e}", stringify!($name))))
+                Self::parse(&s).map_err(|e| D::Error::custom(format!("{MALFORMED_ID_TAG}{}: {e}", stringify!($name))))
             }
         }
 
@@ -283,7 +289,7 @@ impl Serialize for ItemId {
 impl<'de> Deserialize<'de> for ItemId {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        Self::parse(&s).map_err(|e| D::Error::custom(format!("ItemId: {e}")))
+        Self::parse(&s).map_err(|e| D::Error::custom(format!("{MALFORMED_ID_TAG}ItemId: {e}")))
     }
 }
 
@@ -373,7 +379,7 @@ impl Serialize for Name {
 impl<'de> Deserialize<'de> for Name {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        Self::parse(&s).map_err(|e| D::Error::custom(format!("Name: {e}")))
+        Self::parse(&s).map_err(|e| D::Error::custom(format!("{NAME_FORMAT_TAG}Name: {e}")))
     }
 }
 

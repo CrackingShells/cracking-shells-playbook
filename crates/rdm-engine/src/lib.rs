@@ -3,6 +3,7 @@
 //! recording implementation can log them in order. This crate defines no contract type: the
 //! holder record and the intent payload are bytes, and the caller gives them their meaning.
 
+pub mod codec;
 pub mod fs;
 pub mod intent;
 pub mod lock;

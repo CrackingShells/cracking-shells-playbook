@@ -23,6 +23,14 @@ pub struct Diagnostic {
     pub detail: String,
 }
 
+/// A record decoded from a file, with the warnings of the decode: one `unknown_key` per key kept
+/// without interpretation (`contracts.md`, `Version chain`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Decoded<T> {
+    pub value: T,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 /// The nodes of one campaign, by id.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Campaign {
