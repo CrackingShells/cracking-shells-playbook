@@ -120,6 +120,87 @@ fn canonical_files_round_trip_byte_for_byte() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Valid input that is not canonical
+
+/// Each row is a file a person, an editor or git writes, made by the command in
+/// `fixtures/noncanonical/produce.sh`, and the canonical text it must re-encode to.
+const NONCANONICAL: &[(&str, &str, &str, &str, Kind)] = &[
+    (
+        "reordered keys (`jq -S`)",
+        "reordered_keys_leaf.json",
+        "canonical",
+        "leaf.json",
+        Kind::Node,
+    ),
+    (
+        "four-space indent (`jq --indent 4`)",
+        "four_space_indent_directory.json",
+        "canonical",
+        "directory.json",
+        Kind::Node,
+    ),
+    (
+        "CRLF (`unix2dos`)",
+        "crlf_comment.json",
+        "canonical",
+        "comment.json",
+        Kind::Comment,
+    ),
+    (
+        "no trailing newline",
+        "no_trailing_newline_leaf_paused.json",
+        "canonical",
+        "leaf_paused.json",
+        Kind::Node,
+    ),
+    (
+        "`\\u` escapes (`jq -a`)",
+        "unicode_escapes_comment.json",
+        "canonical",
+        "comment_escapes.json",
+        Kind::Comment,
+    ),
+    (
+        "explicit nulls on absent optionals",
+        "explicit_nulls_leaf.json",
+        "canonical",
+        "leaf.json",
+        Kind::Node,
+    ),
+    (
+        "`git merge-file` on two edits",
+        "merge_leaf.json",
+        "noncanonical",
+        "merge_leaf.expected.json",
+        Kind::Node,
+    ),
+];
+
+#[test]
+fn noncanonical_valid_input_reads_and_reencodes_canonically() {
+    for (row, file, expected_dir, expected_file, kind) in NONCANONICAL {
+        let input = read("noncanonical", file);
+        let want = read(expected_dir, expected_file);
+        assert_ne!(
+            input, want,
+            "{row}: the fixture is canonical already, so it proves nothing"
+        );
+        let (got, diagnostics) =
+            reencode(*kind, file, input.as_bytes()).unwrap_or_else(|e| panic!("{row}: {e}"));
+        same_bytes(
+            &format!("{row}: {file} does not re-encode to {expected_file}"),
+            &got,
+            &want,
+        );
+        assert_eq!(diagnostics, vec![], "{row}: nothing in the file is unknown");
+    }
+    // The expectation that is not in `canonical/` is itself canonical.
+    let want = read("noncanonical", "merge_leaf.expected.json");
+    let (again, _) = reencode(Kind::Node, "merge_leaf.expected.json", want.as_bytes()).unwrap();
+    same_bytes("merge_leaf.expected.json is canonical", &again, &want);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Unknown keys (I12)
 
 /// Adds three unknown keys to every typed object of `v`, after its known ones, and records the
