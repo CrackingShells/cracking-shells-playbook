@@ -4,12 +4,14 @@
 **Pre-conditions**:
 - [ ] `../r01_sync.md` is done
 **Success Gates**:
-- ⬜ [run] `cargo test -p rdm-engine --test fs reader_sees_old_or_new_never_partial` passes: a reader in another process never sees a torn or empty file while `atomic_replace` runs
-- ⬜ [run] `cargo test -p rdm-engine --test lock` passes, with `second_writer_gets_locked_with_holder`, `lock_survives_holder_kill` (the holder is killed with SIGKILL or `TerminateProcess`, then the lock is acquired) and `garbage_holder_record_does_not_break_locking`
-- ⬜ [run] `cargo test -p rdm-engine --test fs replace_while_target_open` passes: a replace succeeds while another handle holds the target open for reading
-- ⬜ [run] `cargo +1.88 check -p rdm-engine` passes
-- ⬜ [static] The primitives go through a `Fs` trait with a real implementation and a recording one that logs each effect in order (write temp, fsync, rename, remove, create directory), so `crash_test` needs no change to the primitives
-- ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each guard, the bug that turned it red (for example a truncate-then-write, or a pid-file lock with `O_EXCL`)
+- ✅ [run] `cargo test -p rdm-engine --test fs reader_sees_old_or_new_never_partial` passes: a reader in another process never sees a torn or empty file while `atomic_replace` runs
+- ✅ [run] `cargo test -p rdm-engine --test lock` passes, with `second_writer_gets_locked_with_holder`, `lock_survives_holder_kill` (the holder is killed with SIGKILL or `TerminateProcess`, then the lock is acquired) and `garbage_holder_record_does_not_break_locking`
+- ✅ [run] `cargo test -p rdm-engine --test fs replace_while_target_open` passes: a replace succeeds while another handle holds the target open for reading
+- ✅ [run] `cargo +1.88 check -p rdm-engine` passes
+- ✅ [static] The primitives go through a `Fs` trait with a real implementation and a recording one that logs each effect in order (write temp, fsync, rename, remove, create directory), so `crash_test` needs no change to the primitives
+- ✅ [run] The verifier's fix round added `atomic_replace_writes_only_under_tmp_and_syncs_before_publishing`, the two lock-wait guards (`a_writer_waits_for_a_holder_that_releases_inside_the_timeout`, `a_writer_gives_up_with_busy_at_the_timeout_and_not_before_or_long_after`), three `with_retry` unit guards over an injected sleep, `pending_reports_newer_and_undecodable_records_oldest_first` and `begin_refuses_a_name_that_is_not_a_ulid_and_never_overwrites_a_record`, each seen red
+- Note: the gates ran on macOS only (`cargo clippy --target x86_64-pc-windows-msvc -- -D warnings` passes here). `lock_survives_holder_kill` on Linux and Windows, `replace_while_target_open` against a real Windows share lock and the Windows-only guard first run on the gated push of `ci_matrix`
+- ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes, and the report names, for each guard, the bug that turned it red (for example a truncate-then-write, or a pid-file lock with `O_EXCL`)
 **References**: [store.md](../../../../__design__/rdm/store.md) — Reads, Lock, Intent and recovery, Windows, and the chosen lock crate
 
 ## Step 1: Crate, filesystem trait and atomic replace

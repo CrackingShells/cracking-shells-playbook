@@ -20,7 +20,7 @@ The contracts exist as types, the primitives survive real processes on three ope
 ```mermaid
 graph TD
     schema_contracts[Schema contracts]:::done
-    fs_primitives[Filesystem primitives]:::planned
+    fs_primitives[Filesystem primitives]:::done
     ci_matrix[CI matrix]:::done
     codec[Codec]:::planned
     classDef done       fill:#166534,color:#bbf7d0
@@ -34,7 +34,7 @@ graph TD
 | Node | Type | Status |
 |:-----|:-----|:-------|
 | `schema_contracts.md` | 📄 Leaf Task | ✅ Done |
-| `fs_primitives.md` | 📄 Leaf Task | ⬜ Planned |
+| `fs_primitives.md` | 📄 Leaf Task | ✅ Done |
 | `ci_matrix.md` | 📄 Leaf Task | ✅ Done |
 | `codec/` | 📁 Directory | ⬜ Planned |
 
