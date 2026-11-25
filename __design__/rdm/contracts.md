@@ -609,7 +609,7 @@ sourcing): a layer reads the files of its own version into the *current* in-memo
 rest of the code knows one model.
 
 ```rust
-pub struct NotInVersion { pub behaviour: &'static str, pub version: Version }
+pub struct NotInVersion { pub behaviour: &'static str }   // the caller names the file and its version
 pub type Behaviour<T> = Result<T, NotInVersion>;
 pub struct Decoded<T> { pub value: T, pub diagnostics: Vec<Diagnostic> }   // one `unknown_key` per key kept
 
@@ -619,9 +619,10 @@ pub trait FormatLayer: Sync {
     /// The layer this one overrides. `&Nothing` under the first layer.
     fn base(&self) -> &dyn FormatLayer;
     // Each behaviour defaults to the base layer's. A layer overrides only the ones that changed.
-    fn decode_node(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Node>>           { self.base().decode_node(file, raw) }
-    fn decode_comment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Comment>>     { self.base().decode_comment(file, raw) }
-    fn decode_amendment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Amendment>> { self.base().decode_amendment(file, raw) }
+    // The outer Result says whether the version has the behaviour; the inner one whether this file decodes.
+    fn decode_node(&self, file: &str, raw: serde_json::Value) -> Behaviour<Result<Decoded<Node>, StoreError>>           { self.base().decode_node(file, raw) }
+    fn decode_comment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Result<Decoded<Comment>, StoreError>>     { self.base().decode_comment(file, raw) }
+    fn decode_amendment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Result<Decoded<Amendment>, StoreError>> { self.base().decode_amendment(file, raw) }
 }
 pub struct Nothing;   // the root of the chain: every behaviour is Err(NotInVersion)
 pub static CHAIN: &[&dyn FormatLayer];                          // oldest first; one entry today
@@ -632,7 +633,8 @@ pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer>;  // the ne
 - **`NotInVersion`.** `Nothing` implements every behaviour as `Err(NotInVersion)`, so a behaviour no
   layer defines is absent by default. A layer **removes** a behaviour by overriding it back to
   `Err(NotInVersion)`: that stops the lookup before it reaches an older layer that still has it.
-  A caller turns `NotInVersion` into `Invalid` with the rule `not_in_version`. No behaviour is
+  A caller turns `NotInVersion` into `Invalid` with the rule `not_in_version`, naming the file
+  and its version in the detail (`Nothing` has no version of its own to report). No behaviour is
   absent today, so no code path reaches it yet.
 - **A layer is a struct holding `base`.** It overrides a behaviour by implementing the method, and
   inherits every other by not mentioning it. The layer of the current format (`0.1`) decodes with
@@ -648,10 +650,11 @@ pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer>;  // the ne
 The version is read first. Every file read, a node, a comment or an amendment, goes through the
 same steps, in this order:
 
-1. Read the bytes and extract **only** `schema_version`: a probe struct `{ schema_version: String }`
-   that ignores every other key and builds no typed value. No id is validated and no shape rule
-   runs. The text must be valid JSON; otherwise `Invalid` (rule `parse`). A missing or non-string
-   stamp is `Invalid` (rule `schema_version`).
+1. Parse the bytes **once** into a `serde_json::Value` and read **only** `schema_version` from it.
+   No typed value is built, no id is validated and no shape rule runs; the same value is handed
+   to the layer in step 5, so the file is never parsed twice. The text must be valid JSON and its
+   top level an object; otherwise `Invalid` (rule `parse`). A missing or non-string stamp is
+   `Invalid` (rule `schema_version`).
 2. `parse_version` the stamp (strict, as today). A malformed one is `Invalid` (rule `schema_version`).
 3. If `is_newer(found, FORMAT_VERSION)`, return `NewerFormat { found, supported: FORMAT_VERSION, file }`
    **and stop**. Nothing of the file is parsed past the stamp. A load that meets such a file fails
@@ -678,7 +681,9 @@ for M7).
 ### Write-version rule
 
 **An edit rewrites the files it touches in the current version, and no others.** A write encodes
-the whole file with the current types and stamps `FORMAT_VERSION`. A file the operation does not
+the whole file with the current types and stamps `FORMAT_VERSION`: the store sets
+`schema_version` on the value before it calls `encode`, which is a pure serialiser and stamps
+nothing. A file the operation does not
 touch keeps its version; **a read never writes** (readers need no coordination). So one campaign may
 hold files of different versions, and of different patch levels, and that is legal.
 
