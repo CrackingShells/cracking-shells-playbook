@@ -7,7 +7,7 @@
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
@@ -397,13 +397,6 @@ fn replace_req(h: Header, expected: Option<&Rev>, node: Node) -> Request<Replace
             expected_rev: expected.cloned(),
             node,
         },
-    }
-}
-
-fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
-    match store.read().unwrap().campaign().get(&nid(n)).unwrap() {
-        Node::Leaf(l) => l.clone(),
-        Node::Directory(_) => panic!("not a leaf"),
     }
 }
 
@@ -895,10 +888,6 @@ mod order_keys {
 // ---------------------------------------------------------------------------------------------
 // The other primitives
 
-fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
-    store.read().unwrap().rev(&nid(n)).unwrap().clone()
-}
-
 fn ids_of(store: &mut CachedCampaign) -> BTreeSet<NodeId> {
     store
         .read()
@@ -926,13 +915,6 @@ fn relocate_op(
         parent_id: parent.map(nid),
         name: name_to.map(name),
         position,
-    }
-}
-
-fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
-    DeleteOp {
-        id: nid(n),
-        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
     }
 }
 
@@ -2417,14 +2399,6 @@ fn recorded(run: impl FnOnce(&mut CachedCampaign)) -> Recorded {
     (pre_dir, pre, post, log)
 }
 
-fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) -> PathBuf {
-    let work = into.join("demo");
-    let _ = std::fs::remove_dir_all(&work);
-    copy_tree(&pre_dir.join("demo"), &work);
-    rdm_engine::fs::replay_prefix(log, k, &work).unwrap();
-    work
-}
-
 #[test]
 fn recover_redoes_an_interrupted_operation() {
     let (pre_dir, pre, post, log) = recorded(|s| {
@@ -2454,7 +2428,8 @@ fn recover_redoes_an_interrupted_operation() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent + 1, &work);
     std::fs::create_dir_all(work.join(".rdm/tmp")).unwrap();
     std::fs::write(work.join(".rdm/tmp/stray"), b"half").unwrap();
     assert_eq!(files_of(&work), pre, "a reader sees the state before");
@@ -2555,7 +2530,8 @@ fn recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent + 1, &work);
     // The other actor: a create of the same id with other content, written by the codec.
     let mut other = leaf_of_node(&created);
     other.goal = "the other writer's goal".into();
@@ -2848,7 +2824,8 @@ fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
         .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
         .unwrap();
     let work_dir = tempfile::tempdir().unwrap();
-    let work = at_prefix(pre_dir.path(), &log, intent_at + 1, work_dir.path());
+    let work = work_dir.path().join("demo");
+    at_prefix(&pre_dir.path().join("demo"), &log, intent_at + 1, &work);
     let mut store = CachedCampaign::open(&work, &name("demo"), Options::default()).unwrap();
     assert!(store.last_recovered().is_none(), "no recovery has run yet");
     // An unrelated write: a comment on a node the interrupted operation does not touch.

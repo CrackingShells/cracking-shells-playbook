@@ -106,7 +106,7 @@ const HOLD_SHORT: Duration = Duration::from_millis(150);
 
 /// Open `target` the way a foreign program that denies deletion does (no `FILE_SHARE_DELETE`
 /// on Windows; on Unix any open file will do), hold it for the time in `RDM_HOLD_MS`, release.
-fn holder_child(dir: &Path) {
+fn hold_open_child(dir: &Path) {
     let target = dir.join("node.json");
     let hold = env_u64("RDM_HOLD_MS", 0);
     let mut opts = std::fs::OpenOptions::new();
@@ -130,7 +130,7 @@ fn replace_while_target_open() {
     // replace succeeds only through the retry.
     if let Some((role, dir)) = child_role() {
         assert_eq!(role, "holder");
-        return holder_child(&dir);
+        return hold_open_child(&dir);
     }
     let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("node.json");
@@ -160,7 +160,7 @@ fn replace_while_target_open() {
 fn replace_fails_cleanly_when_the_target_stays_open() {
     if let Some((role, dir)) = child_role() {
         assert_eq!(role, "holder");
-        return holder_child(&dir);
+        return hold_open_child(&dir);
     }
     let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("node.json");

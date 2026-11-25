@@ -16,8 +16,7 @@ use rdm_engine::fs::{Durability, Effect, Fs, RecordingFs, replay_prefix};
 use rdm_engine::store::Options;
 use rdm_schema::campaign::node_file;
 use rdm_schema::error::Rule;
-use rdm_schema::ids::*;
-use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, DeleteOp, Op, Receipt, RelocateOp, ReplaceOp};
+use rdm_schema::ops::{BatchOp, CommentOp, CreateOp, Op, Receipt, RelocateOp, ReplaceOp};
 use rdm_schema::stored::*;
 use serde_json::Value;
 
@@ -38,38 +37,36 @@ fn seed() -> u64 {
 ///   s1 (13)     p (14)    x (15)  y (16)
 ///   s2 (17)     q (18)
 /// ```
-fn base() -> Vec<Node> {
-    let n = nid;
+fn spare_and_deep() -> Vec<Node> {
     vec![
-        dir_node(n(1), "demo", None, ""),
-        dir_node(n(2), "core", Some(n(1)), "V"),
-        leaf_node(n(3), "alpha", n(2), "V"),
-        leaf_node(n(4), "beta", n(2), "k"),
-        dir_node(n(5), "spare", Some(n(1)), "k"),
-        leaf_node(n(6), "child", n(5), "V"),
-        dir_node(n(7), "deep", Some(n(1)), "s"),
-        dir_node(n(8), "d1", Some(n(7)), "V"),
-        dir_node(n(9), "d2", Some(n(8)), "V"),
-        leaf_node(n(10), "g", n(9), "V"),
-        leaf_node(n(11), "h", n(9), "k"),
-        leaf_node(n(12), "i", n(8), "k"),
-        dir_node(n(13), "s1", Some(n(1)), "t"),
-        dir_node(n(14), "p", Some(n(13)), "V"),
-        dir_node(n(15), "x", Some(n(14)), "V"),
-        leaf_node(n(16), "y", n(15), "V"),
-        dir_node(n(17), "s2", Some(n(1)), "u"),
-        dir_node(n(18), "q", Some(n(17)), "V"),
+        dir_n(1, "demo", None, ""),
+        dir_n(2, "core", Some(1), "V"),
+        leaf_n(3, "alpha", 2, "V"),
+        leaf_n(4, "beta", 2, "k"),
+        dir_n(5, "spare", Some(1), "k"),
+        leaf_n(6, "child", 5, "V"),
+        dir_n(7, "deep", Some(1), "s"),
+        dir_n(8, "d1", Some(7), "V"),
+        dir_n(9, "d2", Some(8), "V"),
+        leaf_n(10, "g", 9, "V"),
+        leaf_n(11, "h", 9, "k"),
+        leaf_n(12, "i", 8, "k"),
+        dir_n(13, "s1", Some(1), "t"),
+        dir_n(14, "p", Some(13), "V"),
+        dir_n(15, "x", Some(14), "V"),
+        leaf_n(16, "y", 15, "V"),
+        dir_n(17, "s2", Some(1), "u"),
+        dir_n(18, "q", Some(17), "V"),
     ]
 }
 
 /// What a merge of two branches leaves: `cy1` under `cy2` on one, `cy2` under `cy1` on the
 /// other, with a leaf below.
 fn cycle() -> Vec<Node> {
-    let n = nid;
     vec![
-        dir_node(n(20), "cy1", Some(n(21)), "w"),
-        dir_node(n(21), "cy2", Some(n(20)), "x"),
-        leaf_node(n(22), "below", n(20), "V"),
+        dir_n(20, "cy1", Some(21), "w"),
+        dir_n(21, "cy2", Some(20), "x"),
+        leaf_n(22, "below", 20, "V"),
     ]
 }
 
@@ -81,17 +78,6 @@ fn node_of(store: &mut CachedCampaign, n: u32) -> Node {
         .get(&nid(n))
         .unwrap()
         .clone()
-}
-
-fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
-    store.read().unwrap().rev(&nid(n)).unwrap().clone()
-}
-
-fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
-    DeleteOp {
-        id: nid(n),
-        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
-    }
 }
 
 fn move_op(
@@ -293,16 +279,6 @@ fn copy_options(fs: Option<Arc<dyn Fs + Send + Sync>>) -> Options {
 fn open(root: &Path) -> CachedCampaign {
     CachedCampaign::open(root, &name("demo"), copy_options(None))
         .unwrap_or_else(|e| panic!("the campaign must load: {e:?}"))
-}
-
-fn diagnostic_keys(store: &mut CachedCampaign) -> BTreeSet<(String, Rule)> {
-    store
-        .read()
-        .unwrap()
-        .diagnostics()
-        .iter()
-        .map(|d| (d.file.clone(), d.rule))
-        .collect()
 }
 
 fn diagnostics(root: &Path) -> BTreeSet<(String, Rule)> {
@@ -528,19 +504,13 @@ fn recover_and_judge(label: &str, o: &Oracle, work: &Path, mut store: CachedCamp
     after
 }
 
-fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) {
-    let _ = std::fs::remove_dir_all(into);
-    copy_tree(pre_dir, into);
-    replay_prefix(log, k, into).unwrap();
-}
-
 fn is_sync(e: &Effect) -> bool {
     matches!(e, Effect::SyncFile { .. } | Effect::SyncDir { .. })
 }
 
 /// The operation, run in full over a recording file system.
 fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
-    let mut nodes = base();
+    let mut nodes = spare_and_deep();
     nodes.extend(row.extra.clone());
     let disk = Disk::with(&nodes);
     let pre_dir = tempfile::tempdir().unwrap();
@@ -566,7 +536,7 @@ fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
 /// The states before and after come from running the operation fully and not at all, each on
 /// its own copy: never from replaying the log.
 fn oracle(row: &Row) -> (Oracle, Files) {
-    let mut nodes = base();
+    let mut nodes = spare_and_deep();
     nodes.extend(row.extra.clone());
     let disk = Disk::with(&nodes);
     let pre = files_of(&disk.root);
