@@ -8,6 +8,10 @@ repository.workspace = true
 description = "The rdm store engine: reads a campaign directory, validates it and writes it through ordered, crash-safe writes"
 publish = false
 
+[features]
+# The recording file system and its replay, which the crash tests drive the store with.
+test-support = []
+
 [dependencies]
 rdm-schema = { path = "../rdm-schema" }
 fs4 = { version = "=1.1.0", default-features = false, features = ["sync"] }
@@ -20,5 +24,7 @@ getrandom = "0.4.3"
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 
 [dev-dependencies]
+# The integration tests need the recording file system, which the product build leaves out.
+rdm-engine = { path = ".", features = ["test-support"] }
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 tempfile = "3"

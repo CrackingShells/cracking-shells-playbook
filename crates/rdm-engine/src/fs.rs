@@ -3,6 +3,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+#[cfg(any(test, feature = "test-support"))]
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -65,7 +66,9 @@ pub trait Fs {
 }
 
 /// One logged effect. Paths are relative to the root the `RecordingFs` was built with, so a
-/// prefix of the log applies to a copy of that directory (see [`Effect::apply`]).
+/// prefix of the log applies to a copy of that directory (see [`Effect::apply`]). Test support:
+/// built for tests and under the `test-support` feature only.
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Effect {
     CreateDir {
@@ -98,6 +101,7 @@ pub enum Effect {
     },
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl Effect {
     /// Apply this effect to a copy of the recorded directory rooted at `dir`. Syncs do nothing:
     /// the copy models the file system as a process kill leaves it, where every completed
@@ -117,6 +121,7 @@ impl Effect {
 }
 
 /// Apply the first `count` effects of `log` (clamped) to a copy rooted at `dir`.
+#[cfg(any(test, feature = "test-support"))]
 pub fn replay_prefix(log: &[Effect], count: usize, dir: &Path) -> io::Result<()> {
     for effect in log.iter().take(count) {
         effect.apply(dir)?;
@@ -287,7 +292,9 @@ impl Fs for RealFs {
 }
 
 /// A file system that performs every effect on an inner one and logs it, in order, once it
-/// has succeeded. Paths must lie under `root` and are logged relative to it.
+/// has succeeded. Paths must lie under `root` and are logged relative to it. Test support: built
+/// for tests and under the `test-support` feature only.
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug)]
 pub struct RecordingFs<F = RealFs> {
     inner: F,
@@ -295,12 +302,14 @@ pub struct RecordingFs<F = RealFs> {
     log: Mutex<Vec<Effect>>,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl RecordingFs<RealFs> {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self::over(RealFs, root)
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl<F: Fs> RecordingFs<F> {
     pub fn over(inner: F, root: impl Into<PathBuf>) -> Self {
         RecordingFs {
@@ -338,6 +347,7 @@ impl<F: Fs> RecordingFs<F> {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl<F: Fs> Fs for RecordingFs<F> {
     fn create_dir_all(&self, path: &Path) -> io::Result<()> {
         let path_rel = self.rel(path)?;

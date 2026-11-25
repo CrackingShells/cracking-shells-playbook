@@ -950,6 +950,7 @@ dependencies = [
  "fs4",
  "getrandom 0.4.3",
  "proptest",
+ "rdm-engine",
  "rdm-schema",
  "rustix",
  "serde",
