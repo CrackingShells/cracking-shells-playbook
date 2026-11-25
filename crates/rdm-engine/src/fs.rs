@@ -430,13 +430,32 @@ impl<F: Fs> Fs for RecordingFs<F> {
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// A temporary name unique across processes (pid) and within one (counter).
+/// A temporary name unique across processes (pid) and within one (counter): the one shape of
+/// every file under `.rdm/tmp/`.
 fn temp_name() -> String {
     format!(
         "{}-{}.tmp",
         std::process::id(),
         TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     )
+}
+
+/// Writes `bytes` to a new file with a fresh [`temp_name`] under `tmp_dir`, creating `tmp_dir` if
+/// missing, and returns its path. A name that is taken (`AlreadyExists`) is drawn again; any other
+/// failure removes what the write left and is returned. The file is neither synced nor published.
+pub(crate) fn stage(fs: &dyn Fs, tmp_dir: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
+    fs.create_dir_all(tmp_dir)?;
+    loop {
+        let candidate = tmp_dir.join(temp_name());
+        match fs.write_new(&candidate, bytes) {
+            Ok(()) => return Ok(candidate),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(err) => {
+                let _ = fs.remove_file(&candidate);
+                return Err(err);
+            }
+        }
+    }
 }
 
 /// Replace `target` with `bytes`, whole or not at all.
@@ -453,18 +472,7 @@ pub fn atomic_replace(
     bytes: &[u8],
     tier: Durability,
 ) -> io::Result<()> {
-    fs.create_dir_all(tmp_dir)?;
-    let tmp = loop {
-        let candidate = tmp_dir.join(temp_name());
-        match fs.write_new(&candidate, bytes) {
-            Ok(()) => break candidate,
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => {
-                let _ = fs.remove_file(&candidate);
-                return Err(err);
-            }
-        }
-    };
+    let tmp = stage(fs, tmp_dir, bytes)?;
     let published = (|| {
         fs.sync_file(&tmp, tier)?;
         fs.rename(&tmp, target)

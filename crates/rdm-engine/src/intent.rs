@@ -26,6 +26,18 @@ pub enum IntentEffect {
     Del { path: String },
 }
 
+impl IntentEffect {
+    /// The campaign-relative, `/`-separated path the effect touches.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        match self {
+            IntentEffect::Put { path, .. }
+            | IntentEffect::Create { path, .. }
+            | IntentEffect::Del { path } => path,
+        }
+    }
+}
+
 /// An intent record: its format version and the effects in the order they are applied.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Intent {

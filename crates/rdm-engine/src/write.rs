@@ -70,6 +70,16 @@ fn stamp(node: &mut Node) {
     }
 }
 
+/// What an existing target of a `Create` effect means to [`Store::apply_effect`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExistingCreate {
+    /// A live write: the file is somebody else's, so the create is a `duplicate_id` collision.
+    Collision,
+    /// A recovery: the interrupted run may have written the file already. A put or a create whose
+    /// destination holds these bytes is skipped, and a create over other bytes stops recovery.
+    Resume,
+}
+
 /// What a recovery did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Recovered {
@@ -217,7 +227,7 @@ impl Store {
                 }
                 Pending::Record { ulid, intent } => {
                     for effect in &intent.effects {
-                        self.redo(effect)?;
+                        self.apply_effect(effect, ExistingCreate::Resume)?;
                     }
                     intent::complete(fs, &self.root, &ulid, tier)
                         .map_err(|e| io_error(&file, &e))?;
@@ -228,38 +238,54 @@ impl Store {
         Ok(report)
     }
 
-    /// Applies one recorded effect again: a put or a create whose destination already holds
-    /// these bytes is skipped; a create over other bytes stops recovery.
-    fn redo(&self, effect: &IntentEffect) -> Result<(), StoreError> {
+    /// Applies one effect of a plan, live or recovered. A put replaces. A delete skips a file that
+    /// is gone. A create over an existing file is what `existing` says.
+    fn apply_effect(
+        &self,
+        effect: &IntentEffect,
+        existing: ExistingCreate,
+    ) -> Result<(), StoreError> {
         let (fs, tier, tmp) = (self.fs(), self.options.durability, self.tmp_dir());
+        let path = effect.path();
+        let dest = self.root.join(path);
+        let io_err = |e: io::Error| io_error(path, &e);
+        let holds = |bytes: &str| fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes());
         match effect {
-            IntentEffect::Put { path, bytes } => {
-                let dest = self.root.join(path);
-                if fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes()) {
+            IntentEffect::Put { bytes, .. } => {
+                if existing == ExistingCreate::Resume && holds(bytes) {
                     return Ok(());
                 }
-                publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier)
-                    .map_err(|e| io_error(path, &e))
+                publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(io_err)
             }
-            IntentEffect::Create { path, bytes } => {
-                let dest = self.root.join(path);
-                match fs.read(&dest) {
-                    Ok(b) if b == bytes.as_bytes() => Ok(()),
-                    Ok(_) => Err(StoreError::Invalid {
-                        file: path.clone(),
-                        rule: Rule::DuplicateId,
-                        detail: "recovery found other bytes where it must create a file".to_owned(),
-                    }),
-                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier)
-                            .map_err(|e| io_error(path, &e))
+            IntentEffect::Create { bytes, .. } => {
+                if existing == ExistingCreate::Resume {
+                    match fs.read(&dest) {
+                        Ok(b) if b == bytes.as_bytes() => return Ok(()),
+                        Ok(_) => {
+                            return Err(StoreError::Invalid {
+                                file: path.to_owned(),
+                                rule: Rule::DuplicateId,
+                                detail: "recovery found other bytes where it must create a file"
+                                    .to_owned(),
+                            });
+                        }
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(io_err(e)),
                     }
-                    Err(e) => Err(io_error(path, &e)),
                 }
+                publish::create(fs, &dest, &tmp, bytes.as_bytes(), tier).map_err(|e| {
+                    if e.kind() == io::ErrorKind::AlreadyExists {
+                        StoreError::Invalid {
+                            file: path.to_owned(),
+                            rule: Rule::DuplicateId,
+                            detail: "the file already exists".to_owned(),
+                        }
+                    } else {
+                        io_err(e)
+                    }
+                })
             }
-            IntentEffect::Del { path } => {
-                publish::del(fs, &self.root.join(path), tier).map_err(|e| io_error(path, &e))
-            }
+            IntentEffect::Del { .. } => publish::del(fs, &dest, tier).map_err(io_err),
         }
     }
 
@@ -375,12 +401,7 @@ impl Store {
             // Whatever was written is on disk: drop the entries of every path the plan touched,
             // not guessed, and read them again.
             for effect in &plan.effects {
-                let path = match effect {
-                    IntentEffect::Put { path, .. }
-                    | IntentEffect::Create { path, .. }
-                    | IntentEffect::Del { path } => path,
-                };
-                self.entries.forget(path);
+                self.entries.forget(effect.path());
             }
             let _ = self.refresh();
             return Err(e);
@@ -868,42 +889,13 @@ impl Store {
             .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
         }
         for effect in &plan.effects {
-            self.redo_fresh(effect)?;
+            self.apply_effect(effect, ExistingCreate::Collision)?;
         }
         if let Some(ulid) = &intent_ulid {
             intent::complete(fs, &self.root, ulid, tier)
                 .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
         }
         Ok(())
-    }
-
-    /// Applies one effect of a live write. A create over an existing file is a collision.
-    fn redo_fresh(&self, effect: &IntentEffect) -> Result<(), StoreError> {
-        let (fs, tier, tmp) = (self.fs(), self.options.durability, self.tmp_dir());
-        match effect {
-            IntentEffect::Put { path, bytes } => {
-                publish::put(fs, &self.root.join(path), &tmp, bytes.as_bytes(), tier)
-                    .map_err(|e| io_error(path, &e))
-            }
-            IntentEffect::Create { path, bytes } => {
-                publish::create(fs, &self.root.join(path), &tmp, bytes.as_bytes(), tier).map_err(
-                    |e| {
-                        if e.kind() == io::ErrorKind::AlreadyExists {
-                            StoreError::Invalid {
-                                file: path.clone(),
-                                rule: Rule::DuplicateId,
-                                detail: "the file already exists".to_owned(),
-                            }
-                        } else {
-                            io_error(path, &e)
-                        }
-                    },
-                )
-            }
-            IntentEffect::Del { path } => {
-                publish::del(fs, &self.root.join(path), tier).map_err(|e| io_error(path, &e))
-            }
-        }
     }
 
     /// Step 6: the cache is updated from what was written, never before it is on disk. The entries
@@ -1582,10 +1574,7 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
 /// `nodes/`, `_amendments/` or `_comments/`.
 fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     use std::path::{Component, Path};
-    let (IntentEffect::Put { path, .. }
-    | IntentEffect::Create { path, .. }
-    | IntentEffect::Del { path }) = effect;
-    let mut parts = Path::new(path).components();
+    let mut parts = Path::new(effect.path()).components();
     let under = matches!(
         parts.next(),
         Some(Component::Normal(d)) if ["nodes", "_amendments", "_comments"].iter().any(|k| d == *k)
