@@ -144,6 +144,168 @@ the table gains one row per kind that gets an id).
 - **A function of the value and of the current types.** The decoder upgrades an older file through the version chain before the encoder runs, so one old file read by two binaries with different layers can have two `rev`s. A consumer compares `rev`s it got from one server, and the `rev` of an unmodified file is stable for a given binary.
 - **Opaque to consumers** (`read-model.md`): they send it back as `expected_rev` and never parse it.
 
+## Reads
+
+Readers take no lock and write nothing (I11).
+
+1. List `nodes/` and read every matching file whole (the cache turns this into a revalidation, see Cache).
+2. Decode each file through the version chain. A file newer than the binary fails the read with `NewerFormat { found, supported }` before anything else in it is parsed.
+
+**Technique:** publish by rename (Maildir delivery, Sources). Every file a writer publishes is written
+completely under another name first and then renamed into place, so a reader opening a path gets the
+old file or the new one, never a torn one. Guarded by `reader_sees_old_or_new_never_partial`.
+
+What a reader is **not** given is a snapshot across files. During a multi-file operation it can read
+some files before and some after. The write order below makes every such mixture a valid campaign
+(no node names a missing parent, no later step is needed to make the files parse), and that is all it
+promises: the guard is "every prefix loads" (`every_write_prefix_loads_and_recovers_to_pre_or_post`),
+not isolation. A reader never recovers a crashed operation; recovery belongs to the next writer.
+`rev` and `tree_rev` come from the files actually read, so a mixture yields a `tree_rev` that no
+committed state has. A write that presents it is judged under the lock against the files as they are
+then (Write algorithm), so such a read cannot cause a lost update.
+
+A file an external program is rewriting in place (an editor that truncates, then writes) can be read
+half-written. That is a decode failure of that one file, reported for it and not cached, and the next
+read tries again. The store's own writes never do this.
+
+## Lock
+
+**Technique:** one advisory whole-file lock per campaign on `.rdm/lock`, taken with the `fs4` crate
+(Probe answers), held for the write window only: from before recovery to after the cache update.
+The kernel releases it when the process dies, so no stale lock exists. Readers never touch it.
+
+- **Acquire.** `try_lock`, repeated with a back-off that starts at 5 ms and doubles to 50 ms, until a timeout of 5 seconds. A write takes milliseconds, so five seconds is three orders of magnitude of contention. At the timeout the operation fails with `Locked { holder }` and has changed nothing. The timeout and back-off are store options; the numbers here are the defaults.
+- **In-process.** A second open of the lock file in the same process is also refused (probed on macOS), so two threads or two server tasks of one process are serialised by the same mechanism.
+- **Holder record.** After acquiring the lock the writer replaces `.rdm/holder.json` with `{pid, host, started}` (process id, host name, UTC instant of the acquisition). It is removed before the lock is released. It is advisory only: it fills `Locked { holder }` so the caller can say who is writing, and nothing ever decides by it. It can lag by one writer (a waiter may read the previous holder's record in the instant before the new one is written), name a dead process after a kill (the next holder overwrites it), and a process id means nothing across hosts.
+- **Why a separate file.** On Windows an exclusive `LockFileEx` region denies other processes read as well as write access to it, and `fs4` locks the whole file there (its source passes the maximum length). A holder record inside the lock file would be unreadable by exactly the process that needs it. Hence the lock file stays empty and is never read or written. Verified from the Microsoft documentation of `LockFileEx`; `second_writer_gets_locked_with_holder` runs on Windows in CI.
+- **A missing, truncated or garbage holder record** never blocks or fails the lock: it is only read to fill the error, and a record that does not parse is reported as an unknown holder. Guarded by `garbage_holder_record_does_not_break_locking`.
+- **A killed holder.** The lock is free as soon as the kernel has released it, which `lock_survives_holder_kill` shows on all three systems. On Windows the documentation says the release after a process ends "depends upon available system resources", so a waiter must expect a short delay, which the five-second timeout covers.
+- **Not covered.** A campaign on a network file system (NFS, SMB), where advisory locks are unreliable, is out of scope. Worktrees are separate copies of the files, so their locks are independent (R01 said the same); git reconciles them.
+
+Guarded by `second_writer_gets_locked_with_holder` and `lock_survives_holder_kill`.
+
+## Write order
+
+### The write algorithm
+
+Every primitive runs these steps; the table below gives step 5 per primitive.
+
+1. Take the lock (Lock).
+2. Recover: if `.rdm/intent/` or `.rdm/tmp/` holds anything, run Intent and recovery first.
+3. Read the files the operation touches **from disk**, not from the cache, and check the preconditions: `expected_rev` against the file's `rev`, and for a structural operation the structure (sibling `name` unique, no cycle, the parent exists) and `expected_tree_rev` if given. On a mismatch release the lock and return `Stale { current }` (current state included); nothing has been written. This is what makes a stale write harmless whatever any cache or earlier read held. Guarded by `stale_replace_changes_nothing`.
+4. Compute every after-image, mint ids and the amendment's ULID, build the amendment.
+5. Apply (table).
+6. Update the cache from the written values (Cache), and remove `holder.json`.
+7. Release the lock, then return. A write is acknowledged only by returning `Ok`, after step 5 is complete under the durability tier in force.
+
+The retry key `op_id` and the replay of a retried operation are decided in `contracts.md`; this document only says where the check would sit: step 3, under the lock.
+
+### The three rules
+
+**Technique:** Soft Updates ordering rules (McKusick and Ganger, Sources), applied to files instead
+of disk blocks. In this store the only pointers are `parent_id` (child to parent), a `node_id`, `item_id`
+or `Reference.node_id` held by a comment, an amendment or another node, and an id inside a `Mark`.
+
+| Rule | Applied as |
+|:--|:--|
+| 1. Never point to a structure before it is initialised | Created nodes are written before anything that names them: the parents of a batch before their children, and every node before the amendment that lists it and before a node that was edited to point at it |
+| 2. Never re-use a resource before nullifying every earlier pointer to it | Ids are never reused (Ids), so no pointer can come to name a different thing. Before a node is removed, the nodes that pointed at it as their parent are removed first (deepest first) or re-pointed first (edits come before deletes), so no intermediate state has an orphan |
+| 3. Never reset the last pointer to a live resource before the new pointer is set | Replacing a file is one rename, so the name never points at nothing. A removed subtree is first copied into the amendment's `snapshot`, which is written and durable before the first unlink: the snapshot is the new pointer to the data |
+
+The apply order that follows from the rules, for any operation: **(a) creates, parents first; (b)
+replaces; (c) the amendment; (d) deletes, deepest first.** The amendment sits after the replaces so
+that an amendment never claims an edit that has not happened; the only exception the rules force is
+a delete, whose before-image must precede the unlink.
+
+### Effects
+
+Notation. `I`: publish the intent record `.rdm/intent/<ulid>.json` (written under `.rdm/tmp/`,
+synced, renamed into place). `put X`: write the new bytes under `.rdm/tmp/`, sync them, rename over
+`X`. `create X`: the same, but publish with `link()` and then unlink the temporary name, so it fails
+if `X` exists instead of replacing it. `del X`: unlink. `N`, `A`, `C`: a node, an amendment, a comment.
+After the last effect of an operation with an intent: sync every touched directory, remove `I`, sync
+`.rdm/intent/`. `pre` and `post` are the states before and after the operation.
+
+| Primitive | Ordered file effects | A reader sees after each prefix | Recovery from each prefix |
+|:--|:--|:--|:--|
+| **Replace**, no amendment (a status move, progress, a criterion mark; one node) | `put N` | Before the rename: `pre`. After it: `post` | Nothing to recover: stray temp file removed |
+| **Replace**, content edit | `I`, `put N`, `create A` | After `I`: `pre`. After `put N`: new `N`, no amendment yet. After `create A`: `post` | Any prefix after `I`: redo what is missing, giving `post`. Before `I` completes: `pre` |
+| **Create** a node | `I`, `create N`, `create A` | After `I`: `pre`. After `create N`: the node exists without its amendment. After `create A`: `post` | As above |
+| **Move or rename** | `I`, `put N` (new `parent_id`, `name`, `order_key`), `create A` | After `put N`: the node at its new place, no amendment yet. No other node file changes | As above |
+| **Delete a subtree** of `k` nodes | `I`, `create A` (with the `snapshot`), `del N_k` to `del N_1` (deepest first, the subtree's root last) | After `create A`: the amendment, every node still present. After `j` deletes: a smaller subtree, a valid campaign (no orphan) | As above: redo the remaining deletes. A `del` of a missing file is skipped |
+| **Comment** | `create C` | Before the link: `pre`. After it: `post` | Nothing to recover |
+| **Batch** (any mix of the above) | `I`, creates (parents first), puts, `create A` (one amendment, all its changes), deletes (deepest first) | After each effect, the prefix of that order | As above |
+| **Batch with no amendment** (a directory pause or cancel: several leaves, one `op_id`) | `I`, puts | After `j` puts: `j` of the leaves moved | As above: redo the rest |
+
+Notes on the table:
+
+- A comment never changes a node file, so it changes no `rev`; creating its file needs no intent.
+- A move writes one node file and one amendment. `move_writes_one_file_and_keeps_ids` counts files in `nodes/`: no other node file is written and no id changes.
+- Every operation that writes two or more files publishes the intent first. A prefix without an intent would be valid for readers, but nothing would complete it: an edit with no amendment, or an amendment for an edit never made. The intent is what turns "every prefix loads" into "every prefix recovers to `pre` or `post`".
+- Before `I` is renamed into place the operation has done nothing a reader can see (only temporary files in `.rdm/tmp/`). The rename of `I` is the commit point of a multi-file operation; the rename of the node file is that of a single-file one.
+- Guarded by `every_write_prefix_loads_and_recovers_to_pre_or_post`, which cuts each operation after every one of these effects, including the effects inside `I`, and by `killed_workers_lose_no_acknowledged_write`.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|:--|:--|
+| R01's staged journal: stage files, write a journal of steps, mark it committed, apply | The same idea with two phases. The intent here is one record and one rename, with whole-file after-images, so the commit point is one atomic step and recovery has no "uncommitted" case to discard |
+| Copy the campaign, edit the copy, swap the directory | Costs a write of the whole campaign per edit, renames a directory (the Windows hazard the flat layout removed), and breaks every reader that holds a path |
+| A database (SQLite in WAL mode) | Tracked data stays text (ruling): a binary file neither merges per node nor shows in a pull request |
+| An append-only operation log as the source of truth | Same ruling, and it makes every reader replay |
+
+## Intent and recovery
+
+**Technique:** a redo-only record written before the data (write-ahead logging, ARIES, Sources), in
+the form of whole-file after-images, so redo is idempotent by construction. ARIES has no such
+"intent" record; this is this design's own application of the log-before-data and repeat-history
+ideas, simplified to one record per operation and no undo, because a stale or failed operation has
+written nothing before its intent.
+
+**The intent record** (untracked, `.rdm/intent/<ulid>.json`): the format version of the record itself
+(an unknown newer one is refused with `NewerFormat`), and the ordered list of effects of step 5:
+for each, its action (`put`, `create` or `del`), its path relative to the campaign, and for `put` and
+`create` the full new bytes as text. The record is complete before it is published, so a reader of
+`.rdm/intent/` never sees a partial one. It holds the amendment's bytes too: **the amendment cannot
+serve as the intent**, which the leaf proposed, because a stored `Change` carries no after-image of an
+added node and only a field-level `old` and `new` for an edit, and because an old amendment
+and a crashed one look alike (a delete's amendment, replayed after a later restore, would delete
+the restored node again). See the findings in the leaf report.
+
+**Recovery** runs under the lock on every acquisition, before the operation's own work. It costs
+two directory listings when there is nothing to do.
+
+1. Remove everything in `.rdm/tmp/`: stray temporary files of killed writers.
+2. For each record in `.rdm/intent/`, oldest ULID first, redo its effects in order:
+   - `put`: if the destination already holds exactly these bytes, skip it; otherwise write it as a put.
+   - `create`: if the destination holds exactly these bytes, skip it. If it holds other bytes the file was made by something else (a checkout, a merge) after the crash: stop, leave the record, and fail with `Invalid` naming the file. A create never overwrites.
+   - `del`: unlink; a file already gone is skipped.
+3. Sync the touched directories, remove the record, sync `.rdm/intent/`.
+4. A record that does not decode (a power-loss artefact under the weak durability tier) is removed and reported; the ordering rules above mean the files it was meant to complete form a valid prefix anyway.
+
+Recovery is itself restartable: every step is idempotent, so a kill during recovery is repaired by
+the next recovery. Not tested by a named guard (see Invariants and guards).
+
+**Why whole-file puts rather than patches.** A `put` of a given file is idempotent whatever the file
+holds, so redo needs no log sequence number and no comparison of versions (ARIES needs the page LSN
+for that). The price is size: an intent holds each file it writes once more, in untracked, deleted-at-commit storage. A
+160-node import is about 0.5 to 1 MB for a moment.
+
+## Durability
+
+Three tiers, chosen when the store is opened. The default is `Fsync`.
+
+| Tier | What each publish does | A process kill (`SIGKILL`, a crash, a panic) | An operating-system crash or power loss |
+|:--|:--|:--|:--|
+| `Process` | No sync. The rename and the intent still give the ordering | Every acknowledged write survives: the data is in the kernel's cache, which a kill does not discard | The last seconds can be lost, and the disk may have written files out of order, so even the prefixes are not promised |
+| `Fsync` (default) | Sync every temporary file before it is published; after the renames, sync each touched directory; the intent, its directory, and the removal of the intent likewise | Same | Writes whose sync returned survive on Linux and Windows file systems that honour it. On macOS this tier is plain `fsync(2)`, whose manual describes `F_FULLFSYNC` as the call that asks the drive to flush its cache, so the last writes can still be lost in a power cut, but the intent plus the ordering rules (each prefix valid, the intent redone) still bound the damage to "pre or post" as long as the drive keeps its own writes in order |
+| `Full` | As `Fsync`, with `F_FULLFSYNC` on macOS (the drive flushes its cache). Equal to `Fsync` elsewhere | Same | Survives on macOS as it does elsewhere. About 65 times the cost of a plain publish (probe: 5 ms to 10 ms per file and directory against 0.16 ms) |
+
+- **The standard library's `sync_all` is the `Full` tier on macOS**: measured 4.9 ms median, the same as `F_FULLFSYNC`, because std issues `F_FULLFSYNC` there. The `Fsync` tier therefore calls `fsync(2)` itself (through `rustix`, already in the tree through `fs4`) on macOS, and `sync_all` everywhere else.
+- **Directory sync** is not possible on Windows through the standard library and is skipped there: the rename is then left to the file system's own metadata journal (an assumption of this design, not a sourced claim). This is the weakest point of the Windows tier and is stated, not tested.
+- **Why `Fsync` as the default for a git-tracked store.** What a power cut can cost is the last acknowledged writes, not the history: committed work is in git, and uncommitted work in a worktree has the same exposure as every source file beside it. A plain `fsync` costs a measured 0.16 ms per file and directory, so an edit (an intent, a node, an amendment and three directories) costs about a millisecond; `F_FULLFSYNC` would cost about 30 ms per edit and 1.6 seconds for a 160-node import, which an agent doing many small edits would feel. `Full` stays available for a user who wants it.
+- **What a process kill guarantees is the contract the tests hold** (`killed_workers_lose_no_acknowledged_write`). Power loss is not tested: it needs a file system that injects reordering, which this campaign does not build (README, "Deliberately not tested"). The argument above is the evidence, and it rests on the Soft Updates ordering and the ALICE observation that rename ordering and directory durability vary between file systems, which is why `Fsync` syncs both.
+
 ## Probe answers
 
 Four probes were assigned to this leaf. Probe code lived in a scratch directory and is deleted;
@@ -181,4 +343,5 @@ support is dropped or marked as this design's own wherever it would have appeare
 | Racily clean entries | [git, racy-git](https://git-scm.com/docs/racy-git) | An entry whose mtime is not older than the index's own timestamp may have changed within one timestamp tick and must be compared by content; git ignores the nanosecond fields by default; coarse file systems stay problematic | Git also zeroes the cached size so a later stat check fails. This design has no index file to timestamp, so it keeps a per-entry flag and re-reads flagged entries (see Cache): an adaptation, not git's mechanism |
 | Atomic replace on Windows | [`MoveFileExW`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw), [`ReplaceFileW`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew), [`std::fs::rename`](https://doc.rust-lang.org/std/fs/fn.rename.html), [`OpenOptionsExt::share_mode`](https://doc.rust-lang.org/std/os/windows/fs/trait.OpenOptionsExt.html) | See the probe answer above | Neither Microsoft page promises atomicity or names the error for a held-open target. Atomic replace on NTFS is therefore an observed property this design relies on and tests (`killed_workers_lose_no_acknowledged_write`, `replace_while_target_open`), not a documented guarantee |
 | Fractional indexing | [Figma, "Realtime editing of ordered sequences"](https://www.figma.com/blog/realtime-editing-of-ordered-sequences/), [rocicorp/fractional-indexing](https://github.com/rocicorp/fractional-indexing) (Greenspan's design; the article was unreachable, the README states it is based on it) | A key between two keys is a string midpoint; keys compare with plain lexicographic order over an ascending digit alphabet (base 62 by default in rocicorp, base 95 in Figma's post); Figma lists growth of the key length as a known drawback and not a practical concern; `generateNKeysBetween` is advised for bulk inserts | Neither source names a rebalancing step, and jitter appears only as advice to reduce concurrent collisions. The rebalance threshold and the choice of tie-break instead of jitter are this design's own |
+| Lock range on Windows | [`LockFileEx`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex) | An exclusive lock denies other processes read and write access to the region; the operating system releases the locks of a process that ends, but how long that takes depends on available resources | Not a statement about `fs4`: that the crate locks the whole file on Windows was read in its source (`LockFileEx` with the maximum length) |
 | Advisory locks | [`fs4` 1.1.0](https://docs.rs/fs4/1.1.0/), [`fd-lock` 4.0.4](https://docs.rs/fd-lock/4.0.4/) | Crate behaviour as probed above | Not a literature source. The kernel's release of a `flock` on process death is shown by the probe on macOS only |
