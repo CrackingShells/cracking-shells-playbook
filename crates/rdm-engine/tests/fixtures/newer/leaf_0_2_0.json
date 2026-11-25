@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.2.0",
+  "id": "n_7k3q9x2m",
+  "kind": "leaf",
+  "name": "m1_core_foundation",
+  "parent_id": "n_3d9f6h1v",
+  "order": 12,
+  "title": "M1 Core foundation",
+  "status": {
+    "code": "ongoing",
+    "since": "2026-11-16T11:00:00Z"
+  },
+  "goal": "A newer layer changed the type of several known fields.",
+  "steps": {
+    "s_0f4tzn": {
+      "title": "Plan the milestone",
+      "done": false
+    }
+  }
+}

@@ -9,7 +9,7 @@
 //! whitespace, line ends, key order or escapes, and keeps what it does not know (I12).
 
 use rdm_schema::campaign::{Decoded, Diagnostic};
-use rdm_schema::error::{Rule, StoreError};
+use rdm_schema::error::{Behaviour, NotInVersion, Rule, StoreError};
 use rdm_schema::ids::{MALFORMED_ID_TAG, NAME_FORMAT_TAG};
 use rdm_schema::stored::{
     Actor, Amendment, Change, Check, Comment, Commit, Criterion, Directory, Extra, History, Leaf,
@@ -19,16 +19,34 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::version::{FormatLayer, layer_of};
+
 /// A stored record the codec reads and writes: a node, a comment or an amendment.
 pub trait Record: Serialize + Sized {
     /// Reads the record from a JSON value of the current format, as the current layer does.
+    /// A layer of the chain calls it; a caller reads through [`decode`].
     ///
     /// # Errors
     /// `Invalid` naming `file` and the rule the value breaks.
     fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError>;
+
+    /// Asks `layer` to read the record: the behaviour of that layer for this kind of file.
+    fn decode_by(
+        layer: &dyn FormatLayer,
+        file: &str,
+        raw: Value,
+    ) -> Behaviour<Result<Decoded<Self>, StoreError>>;
 }
 
 impl Record for Node {
+    fn decode_by(
+        layer: &dyn FormatLayer,
+        file: &str,
+        raw: Value,
+    ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
+        layer.decode_node(file, raw)
+    }
+
     fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
         match raw.get("kind").and_then(Value::as_str) {
             Some("leaf") => {
@@ -46,12 +64,28 @@ impl Record for Node {
 }
 
 impl Record for Comment {
+    fn decode_by(
+        layer: &dyn FormatLayer,
+        file: &str,
+        raw: Value,
+    ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
+        layer.decode_comment(file, raw)
+    }
+
     fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
         typed::<Self>(file, raw).map(|c| scanned(file, c, scan_comment, |c| c))
     }
 }
 
 impl Record for Amendment {
+    fn decode_by(
+        layer: &dyn FormatLayer,
+        file: &str,
+        raw: Value,
+    ) -> Behaviour<Result<Decoded<Self>, StoreError>> {
+        layer.decode_amendment(file, raw)
+    }
+
     fn decode_current(file: &str, raw: Value) -> Result<Decoded<Self>, StoreError> {
         typed::<Self>(file, raw).map(|a| scanned(file, a, scan_amendment, |a| a))
     }
@@ -69,16 +103,32 @@ pub fn encode<T: Record>(value: &T) -> String {
 /// Reads a record from the bytes of the file `file` (its path relative to the campaign root, which
 /// every error and diagnostic names).
 ///
+/// The text is parsed once, into a value; the stamp is read from the value and picks the layer
+/// of the chain (`crate::version`) that reads it, so nothing of a newer file is interpreted.
+///
 /// # Errors
 /// `Invalid` with the rule `parse` when the bytes are not JSON or not an object of the record,
-/// `kind`, `malformed_id` or `name_format` when that field is the fault.
+/// `schema_version` or `unknown_format` for the stamp, `kind`, `malformed_id` or `name_format`
+/// when that field is the fault, `not_in_version` when the layer lacks the behaviour;
+/// `NewerFormat` when the file is newer than the binary.
 pub fn decode<T: Record>(file: &str, bytes: &[u8]) -> Result<Decoded<T>, StoreError> {
     let raw: Value =
         serde_json::from_slice(bytes).map_err(|e| invalid(file, Rule::Parse, &e.to_string()))?;
     if !raw.is_object() {
         return Err(invalid(file, Rule::Parse, "the file is not a JSON object"));
     }
-    T::decode_current(file, raw)
+    let layer = layer_of(file, &raw)?;
+    match T::decode_by(layer, file, raw) {
+        Ok(decoded) => decoded,
+        Err(NotInVersion { behaviour, .. }) => {
+            let (major, minor) = layer.line();
+            Err(invalid(
+                file,
+                Rule::NotInVersion,
+                &format!("`{behaviour}` is not in format {major}.{minor}"),
+            ))
+        }
+    }
 }
 
 fn invalid(file: &str, rule: Rule, detail: &str) -> StoreError {

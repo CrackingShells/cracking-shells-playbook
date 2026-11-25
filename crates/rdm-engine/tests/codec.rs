@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use rdm_engine::codec::{Record, decode, encode};
+use rdm_schema::Version;
 use rdm_schema::campaign::Diagnostic;
 use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::*;
@@ -803,6 +804,70 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The format version is read first
+
+/// Each row is a hand-written canonical file of the shape a newer layer would write, with a body
+/// that does not parse as the current type, and the version it carries.
+type NewerRow = (&'static str, &'static str, Kind, Version);
+const NEWER: &[NewerRow] = &[
+    (
+        "a higher X, known fields change type",
+        "leaf_0_2_0.json",
+        Kind::Node,
+        (0, 2, 0),
+    ),
+    (
+        "a higher Y, a known field changes type",
+        "leaf_0_1_1.json",
+        Kind::Node,
+        (0, 1, 1),
+    ),
+    (
+        "a higher Y of a comment",
+        "comment_0_1_1.json",
+        Kind::Comment,
+        (0, 1, 1),
+    ),
+    (
+        "a higher X of an amendment",
+        "amendment_0_2_0.json",
+        Kind::Amendment,
+        (0, 2, 0),
+    ),
+];
+
+#[test]
+fn newer_file_refused_before_parsing() {
+    for (row, name, kind, found) in NEWER {
+        let text = read("newer", name);
+        let file = format!("from-{name}");
+        let broken = match kind {
+            Kind::Node => serde_json::from_str::<Leaf>(&text).is_err(),
+            Kind::Comment => serde_json::from_str::<Comment>(&text).is_err(),
+            Kind::Amendment => serde_json::from_str::<Amendment>(&text).is_err(),
+        };
+        assert!(
+            broken,
+            "{row}: the fixture parses as the current type, so it proves nothing"
+        );
+        match reencode(*kind, &file, text.as_bytes()) {
+            Err(StoreError::NewerFormat {
+                found: got,
+                supported,
+                file: named,
+            }) => {
+                assert_eq!(
+                    (got, supported, named),
+                    (*found, rdm_schema::FORMAT_VERSION, file),
+                    "{row}"
+                );
+            }
+            other => panic!("{row}: want NewerFormat {{ found: {found:?} }}, got {other:?}"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // A refused file names the rule it breaks and itself
 
 /// Sets (or, with `None`, removes) the value at `pointer` of a canonical fixture, as a hand edit
@@ -963,6 +1028,56 @@ fn refused_files_name_their_rule_and_file() {
                 serde_json::to_string_pretty(&v).unwrap(),
                 Rule::MalformedId,
                 "/snapshot key".to_owned(),
+            )
+        },
+        // The stamp is read first: missing, not a string, not `N.N.N`, or older than the first layer.
+        bad(
+            Kind::Node,
+            "leaf.json",
+            "/schema_version",
+            None,
+            Rule::SchemaVersion,
+        ),
+        bad(
+            Kind::Node,
+            "leaf.json",
+            "/schema_version",
+            Some(json!(1)),
+            Rule::SchemaVersion,
+        ),
+        bad(
+            Kind::Comment,
+            "comment.json",
+            "/schema_version",
+            Some(json!("0.1")),
+            Rule::SchemaVersion,
+        ),
+        bad(
+            Kind::Amendment,
+            "amendment.json",
+            "/schema_version",
+            Some(json!("0.01.0")),
+            Rule::SchemaVersion,
+        ),
+        bad(
+            Kind::Node,
+            "leaf.json",
+            "/schema_version",
+            Some(json!("0.0.9")),
+            Rule::UnknownFormat,
+        ),
+        // Nothing else of the file is looked at before the stamp: a bad stamp over a bad id.
+        {
+            let mut v: Value =
+                serde_json::from_str(&edited("leaf.json", "/id", Some(json!("n_7k3q9x2i"))))
+                    .unwrap();
+            v["schema_version"] = json!("x");
+            (
+                Kind::Node,
+                "leaf.json",
+                serde_json::to_string_pretty(&v).unwrap(),
+                Rule::SchemaVersion,
+                "stamp before id".to_owned(),
             )
         },
         // A name that is not a path segment.

@@ -7,3 +7,4 @@ pub mod codec;
 pub mod fs;
 pub mod intent;
 pub mod lock;
+pub mod version;
