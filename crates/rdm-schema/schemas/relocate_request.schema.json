@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Request",
+  "description": "A request: a header and one operation.",
+  "type": "object",
+  "properties": {
+    "header": {
+      "$ref": "#/$defs/Header"
+    },
+    "op": {
+      "$ref": "#/$defs/RelocateOp"
+    }
+  },
+  "required": [
+    "header",
+    "op"
+  ],
+  "$defs": {
+    "Header": {
+      "description": "What every request carries.",
+      "type": "object",
+      "properties": {
+        "op_id": {
+          "description": "The retry key: a retried write with a known `op_id` returns the first outcome.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "description": "Stamped on the amendment or comment the operation writes.",
+          "$ref": "#/$defs/Actor"
+        },
+        "note": {
+          "description": "The amendment's words (`The amendment rule`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EditNote"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actor"
+      ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "EditNote": {
+      "description": "The note of an amendment: why a content or structure edit was made.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "Non-blank. When `correction` is true, it is the reason.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The report that justified the edit.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correction": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "description",
+        "correction"
+      ]
+    },
+    "RelocateOp": {
+      "description": "Renames or moves one node: changes `name`, `parent_id` and `order`. A field left `None` is\nkept; a new `parent_id` with no `position` means `Last`. At least one is given.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "expected_rev": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rev"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Position"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "Rev": {
+      "description": "The revision of one node: a hash of its canonical encoding (`store.md`, §Revisions).\nConsumers compare for equality and never parse.",
+      "type": "string"
+    },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "Position": {
+      "description": "Where a node goes among its siblings. The store resolves it to an `OrderKey`.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "first",
+            "last"
+          ]
+        },
+        {
+          "description": "Just before this sibling.",
+          "type": "object",
+          "properties": {
+            "before": {
+              "$ref": "#/$defs/NodeId"
+            }
+          },
+          "required": [
+            "before"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Just after this sibling.",
+          "type": "object",
+          "properties": {
+            "after": {
+              "$ref": "#/$defs/NodeId"
+            }
+          },
+          "required": [
+            "after"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

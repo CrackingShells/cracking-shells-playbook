@@ -25,13 +25,13 @@ fn amendments_example_round_trips() {
 fn directory_detail_round_trips() {
     let v = json!({
       "read_model_version": "0.1.0", "format_version": "0.1.0", "projection": "node",
-      "campaign": {"id": "c", "path": "p", "title": "T"}, "tree_rev": "t",
-      "node": { "kind": "directory", "id": "d", "path": "core", "parent": "", "rev": "r", "title": "Core",
+      "campaign": {"id": "n_8x4k2r7c", "path": "p", "title": "T"}, "tree_rev": "2943c80472b1cd8a",
+      "node": { "kind": "directory", "id": "n_3d9f6h1v", "path": "core", "parent": "", "rev": "720b6a14886f16d4", "title": "Core",
         "finished": false, "correction_count": 2, "comments": [], "amendments": [], "is_campaign": false, "status": "planned",
         "counts": {"planned":1,"ongoing":0,"paused":0,"cancelled":0,"done":0},
         "context": ["c"], "goal": "g", "preconditions": [], "success_gates": [], "references": [],
         "gotchas": [], "notes": [], "marks": [],
-        "children": [{"id":"n","path":"core/m1","kind":"leaf","title":"M1","status":"planned"}] },
+        "children": [{"id":"n_7k3q9x2m","path":"core/m1","kind":"leaf","title":"M1","status":"planned"}] },
       "holders": {}
     });
     round_trip::<NodeView>(&v);

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Request",
+  "description": "A request: a header and one operation.",
+  "type": "object",
+  "properties": {
+    "header": {
+      "$ref": "#/$defs/Header"
+    },
+    "op": {
+      "$ref": "#/$defs/CommentOp"
+    }
+  },
+  "required": [
+    "header",
+    "op"
+  ],
+  "$defs": {
+    "Header": {
+      "description": "What every request carries.",
+      "type": "object",
+      "properties": {
+        "op_id": {
+          "description": "The retry key: a retried write with a known `op_id` returns the first outcome.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "description": "Stamped on the amendment or comment the operation writes.",
+          "$ref": "#/$defs/Actor"
+        },
+        "note": {
+          "description": "The amendment's words (`The amendment rule`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EditNote"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actor"
+      ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "EditNote": {
+      "description": "The note of an amendment: why a content or structure edit was made.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "Non-blank. When `correction` is true, it is the reason.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The report that justified the edit.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correction": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "description",
+        "correction"
+      ]
+    },
+    "CommentOp": {
+      "description": "Writes one comment file. It has no revision: it is append-only and never conflicts.",
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "node_id",
+        "text"
+      ]
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    }
+  }
+}

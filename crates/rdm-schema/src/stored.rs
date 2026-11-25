@@ -4,6 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
+use crate::error::{Rule, StoreError};
+use crate::ids::{AmendmentId, CommentId, CriterionId, ItemId, Name, NodeId, OpId, OrderKey, StepId};
+
 /// A multi-line prose field, stored as one line per element.
 pub type Lines = Vec<String>;
 /// A UTC instant, RFC 3339.
@@ -72,8 +75,16 @@ pub enum ChangeOp {
 pub struct Directory {
     #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
-    pub id: String,
+    pub id: NodeId,
     pub kind: DirectoryKind,
+    /// The path segment; for the campaign root, the campaign slug.
+    pub name: Name,
+    /// The directory this node is in. Absent exactly for the campaign root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<NodeId>,
+    /// Position among siblings. Absent exactly for the campaign root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<OrderKey>,
     pub title: String,
     pub context: Lines,
     pub references: Vec<Reference>,
@@ -92,8 +103,14 @@ pub struct Directory {
 pub struct Leaf {
     #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
-    pub id: String,
+    pub id: NodeId,
     pub kind: LeafKind,
+    /// The path segment, unique among the children of one parent.
+    pub name: Name,
+    /// The directory this leaf is in.
+    pub parent_id: NodeId,
+    /// Position among siblings, opaque.
+    pub order: OrderKey,
     pub title: String,
     pub status: Status,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -108,6 +125,82 @@ pub struct Leaf {
     pub marks: Vec<Mark>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// A node of the campaign: a directory (or the campaign root) or a leaf.
+///
+/// Not a serde-tagged enum: `Directory.kind` already holds `campaign` or `directory`, so the
+/// deserialiser reads `kind` and picks the type.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Node {
+    Directory(Directory),
+    Leaf(Leaf),
+}
+
+impl Node {
+    /// The node's identity, immutable (I7).
+    #[must_use]
+    pub fn id(&self) -> &NodeId {
+        match self {
+            Self::Directory(d) => &d.id,
+            Self::Leaf(l) => &l.id,
+        }
+    }
+
+    /// The node's path segment; for the campaign root, the campaign slug.
+    #[must_use]
+    pub fn name(&self) -> &Name {
+        match self {
+            Self::Directory(d) => &d.name,
+            Self::Leaf(l) => &l.name,
+        }
+    }
+
+    /// The directory the node is in; `None` for the campaign root.
+    #[must_use]
+    pub fn parent_id(&self) -> Option<&NodeId> {
+        match self {
+            Self::Directory(d) => d.parent_id.as_ref(),
+            Self::Leaf(l) => Some(&l.parent_id),
+        }
+    }
+
+    /// The node's position among its siblings; `None` for the campaign root.
+    #[must_use]
+    pub fn order(&self) -> Option<&OrderKey> {
+        match self {
+            Self::Directory(d) => d.order.as_ref(),
+            Self::Leaf(l) => Some(&l.order),
+        }
+    }
+}
+
+impl Node {
+    /// Reads a node from JSON by its `kind`: `leaf` is a [`Leaf`], `campaign` and `directory`
+    /// are a [`Directory`].
+    ///
+    /// # Errors
+    /// `Invalid` with the rule `kind` when `kind` is missing or another value, and with the rule
+    /// `parse` when the value is not an object of the type its `kind` names. The file is
+    /// `<request>`: the codec, which knows the file, names it.
+    pub fn decode(raw: Value) -> Result<Node, StoreError> {
+        let invalid = |rule, detail: String| StoreError::Invalid { file: "<request>".to_owned(), rule, detail };
+        match raw.get("kind").and_then(Value::as_str) {
+            Some("leaf") => serde_json::from_value(raw).map(Self::Leaf).map_err(|e| invalid(Rule::Parse, e.to_string())),
+            Some("campaign" | "directory") => {
+                serde_json::from_value(raw).map(Self::Directory).map_err(|e| invalid(Rule::Parse, e.to_string()))
+            }
+            _ => Err(invalid(Rule::Kind, "`kind` is not `leaf`, `directory` or `campaign`".to_owned())),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Node {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        Self::decode(Value::deserialize(d)?).map_err(D::Error::custom)
+    }
 }
 
 /// `Leaf.progress`.
@@ -125,7 +218,7 @@ pub struct Progress {
 /// An element of `Leaf.steps`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Step {
-    pub id: String,
+    pub id: StepId,
     pub title: String,
     pub goal: String,
     pub implementation_logic: Lines,
@@ -147,8 +240,6 @@ pub struct Step {
 /// An element of `Step.checks`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Check {
-    /// Stable id.
-    pub id: String,
     pub text: String,
     pub expected: Expected,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -161,7 +252,7 @@ pub struct Check {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Criterion {
     /// Stable id, minted at creation, never a position (`Stable identity`).
-    pub id: String,
+    pub id: CriterionId,
     pub text: String,
     pub met: bool,
     #[serde(flatten)]
@@ -171,8 +262,6 @@ pub struct Criterion {
 /// An element of `references`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Reference {
-    /// Stable id.
-    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub title: String,
@@ -180,9 +269,10 @@ pub struct Reference {
     pub target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
-    /// The campaign node the reference names, when it names one. Followed over `target`.
+    /// The campaign node the reference names, when it names one. `target` is then absent: it is
+    /// derived on read from the path of that node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node_id: Option<String>,
+    pub node_id: Option<NodeId>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -212,7 +302,7 @@ pub struct History {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#override: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub op_id: Option<String>,
+    pub op_id: Option<OpId>,
     /// `true` for a reversal out of `done`; `reason` is then required and not blank.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correction: Option<bool>,
@@ -226,7 +316,7 @@ pub struct Mark {
     pub ts: Ts,
     pub actor: Actor,
     /// The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.
-    pub criterion_id: String,
+    pub criterion_id: CriterionId,
     /// The new value of `met`.
     pub met: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -256,13 +346,13 @@ pub struct Actor {
 pub struct Comment {
     #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
-    pub id: String,
-    pub node_id: String,
+    pub id: CommentId,
+    pub node_id: NodeId,
     pub ts: Ts,
     pub actor: Actor,
     pub text: Lines,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub op_id: Option<String>,
+    pub op_id: Option<OpId>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -272,7 +362,7 @@ pub struct Comment {
 pub struct Amendment {
     #[schemars(regex(pattern = r"^[0-9]+\.[0-9]+\.[0-9]+$"))]
     pub schema_version: String,
-    pub id: String,
+    pub id: AmendmentId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legacy_id: Option<String>,
     pub ts: Ts,
@@ -281,13 +371,16 @@ pub struct Amendment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub op_id: Option<String>,
+    pub op_id: Option<OpId>,
     /// `true` for an edit of a finished node or of a step recorded done; `description` is its reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correction: Option<bool>,
     pub changes: Vec<Change>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snapshot: Option<Value>,
+    /// The removed subtree of a delete, as stored JSON keyed by `NodeId`. The keys are links; the
+    /// values are historical copies.
+    #[serde(default, deserialize_with = "snapshot_keys", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "snapshot_schema")]
+    pub snapshot: Option<Map<String, Value>>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -295,15 +388,12 @@ pub struct Amendment {
 /// An element of `Amendment.changes`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Change {
-    pub node_id: String,
+    pub node_id: NodeId,
     pub op: ChangeOp,
+    /// The id of the sub-item (a criterion or a step) the change names; `field` is then a pointer
+    /// inside it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path_before: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path_after: Option<String>,
-    /// The id of the sub-item the change names; `field` is then a pointer inside it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub item_id: Option<String>,
+    pub item_id: Option<ItemId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
     #[serde(default, deserialize_with = "some_value", skip_serializing_if = "Option::is_none")]
@@ -317,4 +407,20 @@ pub struct Change {
 /// Keeps a JSON `null` as `Some(Value::Null)`, so "absent" and "null" stay distinct.
 fn some_value<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
     Value::deserialize(d).map(Some)
+}
+
+/// A `snapshot` is an object whose keys are node ids: a key that is not a `NodeId` is refused.
+fn snapshot_keys<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Map<String, Value>>, D::Error> {
+    let map = Option::<Map<String, Value>>::deserialize(d)?;
+    if let Some(m) = &map {
+        for key in m.keys() {
+            NodeId::parse(key).map_err(|e| serde::de::Error::custom(format!("snapshot key {key:?}: {e}")))?;
+        }
+    }
+    Ok(map)
+}
+
+fn snapshot_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    let key = generator.subschema_for::<NodeId>();
+    schemars::json_schema!({ "type": ["object", "null"], "propertyNames": key })
 }

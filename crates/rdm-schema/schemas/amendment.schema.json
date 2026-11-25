@@ -9,7 +9,7 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/AmendmentId"
     },
     "legacy_id": {
       "type": [
@@ -33,9 +33,13 @@
       ]
     },
     "op_id": {
-      "type": [
-        "string",
-        "null"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpId"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "correction": {
@@ -51,7 +55,16 @@
         "$ref": "#/$defs/Change"
       }
     },
-    "snapshot": true
+    "snapshot": {
+      "description": "The removed subtree of a delete, as stored JSON keyed by `NodeId`. The keys are links; the\nvalues are historical copies.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "propertyNames": {
+        "$ref": "#/$defs/NodeId"
+      }
+    }
   },
   "required": [
     "schema_version",
@@ -63,6 +76,10 @@
   ],
   "additionalProperties": true,
   "$defs": {
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
     "Actor": {
       "description": "Who made a move, a comment or an amendment.",
       "type": "object",
@@ -91,33 +108,29 @@
         "import"
       ]
     },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
     "Change": {
       "description": "An element of `Amendment.changes`.",
       "type": "object",
       "properties": {
         "node_id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "op": {
           "$ref": "#/$defs/ChangeOp"
         },
-        "path_before": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "path_after": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "item_id": {
-          "description": "The id of the sub-item the change names; `field` is then a pointer inside it.",
-          "type": [
-            "string",
-            "null"
+          "description": "The id of the sub-item (a criterion or a step) the change names; `field` is then a pointer\ninside it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "field": {
@@ -135,6 +148,10 @@
       ],
       "additionalProperties": true
     },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
     "ChangeOp": {
       "description": "`Change.op`.",
       "type": "string",
@@ -145,6 +162,10 @@
         "rename",
         "move"
       ]
+    },
+    "ItemId": {
+      "type": "string",
+      "pattern": "^(c_[0123456789abcdefghjkmnpqrstvwxyz]{6}|s_[0123456789abcdefghjkmnpqrstvwxyz]{6})$"
     }
   }
 }

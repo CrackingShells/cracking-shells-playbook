@@ -9,10 +9,36 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/NodeId"
     },
     "kind": {
       "$ref": "#/$defs/DirectoryKind"
+    },
+    "name": {
+      "description": "The path segment; for the campaign root, the campaign slug.",
+      "$ref": "#/$defs/Name"
+    },
+    "parent_id": {
+      "description": "The directory this node is in. Absent exactly for the campaign root.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NodeId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "order": {
+      "description": "Position among siblings. Absent exactly for the campaign root.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OrderKey"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "title": {
       "type": "string"
@@ -67,6 +93,7 @@
     "schema_version",
     "id",
     "kind",
+    "name",
     "title",
     "context",
     "references",
@@ -79,6 +106,10 @@
   ],
   "additionalProperties": true,
   "$defs": {
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
     "DirectoryKind": {
       "description": "`Directory.kind`.",
       "type": "string",
@@ -87,14 +118,18 @@
         "directory"
       ]
     },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "OrderKey": {
+      "description": "The position of a node among its siblings. Opaque: its format and how a key is made\nbetween two others are `store.md`'s (§Order key). Compared as given, never parsed.",
+      "type": "string"
+    },
     "Reference": {
       "description": "An element of `references`.",
       "type": "object",
       "properties": {
-        "id": {
-          "description": "Stable id.",
-          "type": "string"
-        },
         "label": {
           "type": [
             "string",
@@ -117,15 +152,18 @@
           ]
         },
         "node_id": {
-          "description": "The campaign node the reference names, when it names one. Followed over `target`.",
-          "type": [
-            "string",
-            "null"
+          "description": "The campaign node the reference names, when it names one. `target` is then absent: it is\nderived on read from the path of that node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeId"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
       "required": [
-        "id",
         "title"
       ],
       "additionalProperties": true
@@ -136,7 +174,7 @@
       "properties": {
         "id": {
           "description": "Stable id, minted at creation, never a position (`Stable identity`).",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "text": {
           "type": "string"
@@ -152,6 +190,10 @@
       ],
       "additionalProperties": true
     },
+    "CriterionId": {
+      "type": "string",
+      "pattern": "^c_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
     "Mark": {
       "description": "An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.",
       "type": "object",
@@ -164,7 +206,7 @@
         },
         "criterion_id": {
           "description": "The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "met": {
           "description": "The new value of `met`.",

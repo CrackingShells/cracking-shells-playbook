@@ -19,7 +19,7 @@
       "$ref": "#/$defs/CampaignRef"
     },
     "tree_rev": {
-      "type": "string"
+      "$ref": "#/$defs/TreeRev"
     },
     "ready": {
       "type": "array",
@@ -35,8 +35,11 @@
     },
     "holders": {
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/Holder"
+      "additionalProperties": false,
+      "patternProperties": {
+        "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$": {
+          "$ref": "#/$defs/Holder"
+        }
       }
     }
   },
@@ -67,7 +70,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -83,12 +86,20 @@
       ],
       "additionalProperties": true
     },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    },
     "ReadyLeaf": {
       "description": "A `planned` leaf that nothing holds back.",
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -126,7 +137,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/NodeId"
         },
         "path": {
           "type": "string"
@@ -145,7 +156,7 @@
         "held_by": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/NodeId"
           }
         }
       },

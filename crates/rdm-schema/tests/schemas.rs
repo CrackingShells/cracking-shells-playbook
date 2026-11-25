@@ -1,3 +1,6 @@
+use rdm_schema::ops::{
+    BatchOp, CommentOp, Commented, CreateOp, DeleteOp, Deleted, OpResult, Receipt, RelocateOp, ReplaceOp, Request, Written,
+};
 use rdm_schema::read::{AmendmentsView, NodeView, OutlineView, ReadyView};
 use rdm_schema::stored::{Amendment, Comment, Directory, Leaf};
 use schemars::{JsonSchema, schema_for};
@@ -9,8 +12,10 @@ fn generated<T: JsonSchema>() -> String {
     s
 }
 
-const NAMES: [&str; 8] = [
+const NAMES: [&str; 18] = [
     "directory", "leaf", "comment", "amendment", "outline_view", "node_view", "ready_view", "amendments_view",
+    "create_request", "replace_request", "relocate_request", "delete_request", "comment_request", "batch_request",
+    "written_receipt", "deleted_receipt", "commented_receipt", "batch_receipt",
 ];
 
 /// A file in `schemas/` that no type generates is drift too. Bless removes it.
@@ -68,6 +73,16 @@ fn committed_schemas_match_the_types() {
     check_or_bless("node_view", &generated::<NodeView>(), &mut failures);
     check_or_bless("ready_view", &generated::<ReadyView>(), &mut failures);
     check_or_bless("amendments_view", &generated::<AmendmentsView>(), &mut failures);
+    check_or_bless("create_request", &generated::<Request<CreateOp>>(), &mut failures);
+    check_or_bless("replace_request", &generated::<Request<ReplaceOp>>(), &mut failures);
+    check_or_bless("relocate_request", &generated::<Request<RelocateOp>>(), &mut failures);
+    check_or_bless("delete_request", &generated::<Request<DeleteOp>>(), &mut failures);
+    check_or_bless("comment_request", &generated::<Request<CommentOp>>(), &mut failures);
+    check_or_bless("batch_request", &generated::<Request<BatchOp>>(), &mut failures);
+    check_or_bless("written_receipt", &generated::<Receipt<Written>>(), &mut failures);
+    check_or_bless("deleted_receipt", &generated::<Receipt<Deleted>>(), &mut failures);
+    check_or_bless("commented_receipt", &generated::<Receipt<Commented>>(), &mut failures);
+    check_or_bless("batch_receipt", &generated::<Receipt<Vec<OpResult>>>(), &mut failures);
     orphans(&mut failures);
     assert!(failures.is_empty(), "schema drift:\n{}", failures.join("\n"));
 }

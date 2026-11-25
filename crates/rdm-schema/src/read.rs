@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::ids::{AmendmentId, NodeId, OpId, Rev, TreeRev};
 use crate::stored::{
     Mark, Actor, Change, Comment, Criterion, Extra, History, Lines, Progress, Reference, Status, Step, Ts,
 };
@@ -37,7 +38,7 @@ pub enum NodeKind {
 /// Identity of the campaign in an envelope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CampaignRef {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub title: String,
     #[serde(flatten)]
@@ -54,7 +55,7 @@ pub struct Envelope {
     pub format_version: String,
     pub projection: Projection,
     pub campaign: CampaignRef,
-    pub tree_rev: String,
+    pub tree_rev: TreeRev,
 }
 
 /// Leaves counted by status.
@@ -95,7 +96,7 @@ pub struct Holder {
 pub struct WaveView {
     pub level: u32,
     pub level_source: LevelSource,
-    pub leaf_ids: Vec<String>,
+    pub leaf_ids: Vec<NodeId>,
     pub counts: StatusCounts,
     #[serde(flatten)]
     pub extra: Extra,
@@ -104,7 +105,7 @@ pub struct WaveView {
 /// A directory in the outline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct OutlineDirectory {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub title: String,
     pub is_campaign: bool,
@@ -114,7 +115,7 @@ pub struct OutlineDirectory {
     pub counts: StatusCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub amendment_count: Option<u32>,
-    pub rev: String,
+    pub rev: Rev,
     pub children: Vec<OutlineNode>,
     #[serde(flatten)]
     pub extra: Extra,
@@ -123,7 +124,7 @@ pub struct OutlineDirectory {
 /// A leaf in the outline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct OutlineLeaf {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub title: String,
     pub status: Status,
@@ -135,7 +136,7 @@ pub struct OutlineLeaf {
     pub steps: StepCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub added_by: Option<String>,
-    pub rev: String,
+    pub rev: Rev,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -170,7 +171,7 @@ pub struct StepView {
 /// A child in a directory's detail.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChildRef {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub kind: NodeKind,
     pub title: String,
@@ -182,10 +183,10 @@ pub struct ChildRef {
 /// Detail of a leaf.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LeafDetail {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub parent: String,
-    pub rev: String,
+    pub rev: Rev,
     pub title: String,
     pub status: Status,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -195,7 +196,7 @@ pub struct LeafDetail {
     pub level: u32,
     pub level_source: LevelSource,
     pub ready: bool,
-    pub held_by: Vec<String>,
+    pub held_by: Vec<NodeId>,
     pub finished: bool,
     pub correction_count: u32,
     pub goal: String,
@@ -220,10 +221,10 @@ pub struct LeafDetail {
 /// Detail of a directory or the campaign root.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DirectoryDetail {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub parent: String,
-    pub rev: String,
+    pub rev: Rev,
     pub title: String,
     pub finished: bool,
     pub correction_count: u32,
@@ -261,7 +262,7 @@ pub struct NodeView {
     #[serde(flatten)]
     pub envelope: Envelope,
     pub node: NodeDetail,
-    pub holders: BTreeMap<String, Holder>,
+    pub holders: BTreeMap<NodeId, Holder>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -269,7 +270,7 @@ pub struct NodeView {
 /// A `planned` leaf that nothing holds back.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ReadyLeaf {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub title: String,
     pub level: u32,
@@ -281,12 +282,12 @@ pub struct ReadyLeaf {
 /// A `planned` leaf held back by unfinished leaves.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StalledLeaf {
-    pub id: String,
+    pub id: NodeId,
     pub path: String,
     pub title: String,
     pub level: u32,
     pub level_source: LevelSource,
-    pub held_by: Vec<String>,
+    pub held_by: Vec<NodeId>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -298,7 +299,7 @@ pub struct ReadyView {
     pub envelope: Envelope,
     pub ready: Vec<ReadyLeaf>,
     pub stalled: Vec<StalledLeaf>,
-    pub holders: BTreeMap<String, Holder>,
+    pub holders: BTreeMap<NodeId, Holder>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -317,7 +318,7 @@ pub struct ChangeView {
 /// One amendment of the log.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AmendmentEntry {
-    pub id: String,
+    pub id: AmendmentId,
     pub display_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legacy_id: Option<String>,
@@ -327,7 +328,7 @@ pub struct AmendmentEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub op_id: Option<String>,
+    pub op_id: Option<OpId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correction: Option<bool>,
     pub has_snapshot: bool,

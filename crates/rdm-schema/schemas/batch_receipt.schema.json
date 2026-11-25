@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Receipt",
+  "description": "What a primitive returns: its result and where the campaign stands after it.",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/OpResult"
+      }
+    },
+    "amendment": {
+      "description": "The one amendment the operation wrote, if any.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AmendmentId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tree_rev": {
+      "description": "After the write.",
+      "$ref": "#/$defs/TreeRev"
+    },
+    "replayed": {
+      "description": "`true`: nothing was written and the first outcome is returned.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "result",
+    "tree_rev",
+    "replayed"
+  ],
+  "$defs": {
+    "OpResult": {
+      "description": "The result of one op of a batch.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "written": {
+              "$ref": "#/$defs/Written"
+            }
+          },
+          "required": [
+            "written"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deleted": {
+              "$ref": "#/$defs/Deleted"
+            }
+          },
+          "required": [
+            "deleted"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "commented": {
+              "$ref": "#/$defs/Commented"
+            }
+          },
+          "required": [
+            "commented"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Written": {
+      "description": "The result of a create, a replace or a relocate.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "rev": {
+          "$ref": "#/$defs/Rev"
+        }
+      },
+      "required": [
+        "id",
+        "rev"
+      ]
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "Rev": {
+      "description": "The revision of one node: a hash of its canonical encoding (`store.md`, §Revisions).\nConsumers compare for equality and never parse.",
+      "type": "string"
+    },
+    "Deleted": {
+      "description": "The result of a delete.",
+      "type": "object",
+      "properties": {
+        "removed": {
+          "description": "The removed nodes, in pre-order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeId"
+          }
+        },
+        "referrers": {
+          "description": "The records outside the subtree that point into it, `Report` links only.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Referrer"
+          }
+        }
+      },
+      "required": [
+        "removed",
+        "referrers"
+      ]
+    },
+    "Referrer": {
+      "description": "One record that points at a node, as the reverse index and the delete report give it.",
+      "type": "object",
+      "properties": {
+        "link": {
+          "description": "The index of the row of [`LINKS`] this referrer follows.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "from": {
+          "$ref": "#/$defs/RecordRef"
+        },
+        "at": {
+          "description": "The concrete JSON pointer of the field in `from`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "link",
+        "from",
+        "at"
+      ]
+    },
+    "RecordRef": {
+      "description": "A record that holds a link.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "node": {
+              "$ref": "#/$defs/NodeId"
+            }
+          },
+          "required": [
+            "node"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "comment": {
+              "$ref": "#/$defs/CommentId"
+            }
+          },
+          "required": [
+            "comment"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "amendment": {
+              "$ref": "#/$defs/AmendmentId"
+            }
+          },
+          "required": [
+            "amendment"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "Commented": {
+      "description": "The result of a comment.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/CommentId"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    }
+  }
+}

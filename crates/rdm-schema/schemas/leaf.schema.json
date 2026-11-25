@@ -9,10 +9,22 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/NodeId"
     },
     "kind": {
       "$ref": "#/$defs/LeafKind"
+    },
+    "name": {
+      "description": "The path segment, unique among the children of one parent.",
+      "$ref": "#/$defs/Name"
+    },
+    "parent_id": {
+      "description": "The directory this leaf is in.",
+      "$ref": "#/$defs/NodeId"
+    },
+    "order": {
+      "description": "Position among siblings, opaque.",
+      "$ref": "#/$defs/OrderKey"
     },
     "title": {
       "type": "string"
@@ -73,6 +85,9 @@
     "schema_version",
     "id",
     "kind",
+    "name",
+    "parent_id",
+    "order",
     "title",
     "status",
     "goal",
@@ -86,12 +101,24 @@
   ],
   "additionalProperties": true,
   "$defs": {
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
     "LeafKind": {
       "description": "`Leaf.kind`, the one value `leaf`.",
       "type": "string",
       "enum": [
         "leaf"
       ]
+    },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "OrderKey": {
+      "description": "The position of a node among its siblings. Opaque: its format and how a key is made\nbetween two others are `store.md`'s (§Order key). Compared as given, never parsed.",
+      "type": "string"
     },
     "Status": {
       "description": "The five statuses of a leaf (`statuses.md`).",
@@ -110,7 +137,7 @@
       "properties": {
         "id": {
           "description": "Stable id, minted at creation, never a position (`Stable identity`).",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "text": {
           "type": "string"
@@ -126,14 +153,14 @@
       ],
       "additionalProperties": true
     },
+    "CriterionId": {
+      "type": "string",
+      "pattern": "^c_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
     "Reference": {
       "description": "An element of `references`.",
       "type": "object",
       "properties": {
-        "id": {
-          "description": "Stable id.",
-          "type": "string"
-        },
         "label": {
           "type": [
             "string",
@@ -156,15 +183,18 @@
           ]
         },
         "node_id": {
-          "description": "The campaign node the reference names, when it names one. Followed over `target`.",
-          "type": [
-            "string",
-            "null"
+          "description": "The campaign node the reference names, when it names one. `target` is then absent: it is\nderived on read from the path of that node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeId"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
       "required": [
-        "id",
         "title"
       ],
       "additionalProperties": true
@@ -174,7 +204,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "$ref": "#/$defs/StepId"
         },
         "title": {
           "type": "string"
@@ -247,14 +277,14 @@
       ],
       "additionalProperties": true
     },
+    "StepId": {
+      "type": "string",
+      "pattern": "^s_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
     "Check": {
       "description": "An element of `Step.checks`.",
       "type": "object",
       "properties": {
-        "id": {
-          "description": "Stable id.",
-          "type": "string"
-        },
         "text": {
           "type": "string"
         },
@@ -269,7 +299,6 @@
         }
       },
       "required": [
-        "id",
         "text",
         "expected"
       ],
@@ -369,9 +398,13 @@
           ]
         },
         "op_id": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "correction": {
@@ -418,6 +451,10 @@
         "import"
       ]
     },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
     "Mark": {
       "description": "An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.",
       "type": "object",
@@ -430,7 +467,7 @@
         },
         "criterion_id": {
           "description": "The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.",
-          "type": "string"
+          "$ref": "#/$defs/CriterionId"
         },
         "met": {
           "description": "The new value of `met`.",
