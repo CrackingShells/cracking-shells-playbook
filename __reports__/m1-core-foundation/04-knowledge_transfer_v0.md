@@ -6,10 +6,10 @@ M1 froze the contracts in `rdm-schema` and built the store in `rdm-engine`, on `
 - ordered writes with a redo-only intent record and recovery under the lock;
 - a revalidated hot cache behind one public handle, `CachedCampaign`.
 
-Every gate in the campaign README holds but one: the soak does not finish on Windows within 45 minutes. The
-three-OS matrix, MSRV 1.88 and lint are green, and the soak is green on Linux and macOS (CI evidence in
-`02-adversarial_review_v0.md`). Eliott ruled on 2026-11-26 that M1 merges with that limit recorded, and that the
-read path is redesigned in its own PR (`__reports__/rdm_read_path_efficiency/`). The milestone is not yet on
+Every gate in the campaign README holds. The three-OS matrix, MSRV 1.88, lint and the soak are green at 825ea5d
+(CI evidence in `02-adversarial_review_v0.md`). The Windows soak passed only after a test-helper fix, in 33 minutes
+against a 45-minute cap; the cost behind that margin is the store's read path, which Eliott ruled on 2026-11-26 is
+redesigned in its own PR (`__reports__/rdm_read_path_efficiency/`). The milestone is not yet on
 `main`: landing it is Step 2 of the M1 leaf, and `FORMAT_VERSION` stays `0.1.0` until then (ruling R5).
 
 ## What worked
@@ -31,7 +31,7 @@ read path is redesigned in its own PR (`__reports__/rdm_read_path_efficiency/`).
 | A temp worktree built into the shared target dir | rdm-schema tests ran with stale `CARGO_MANIFEST_DIR` paths | A worktree at another path gets its own target, or `cargo clean -p <crate>` afterwards |
 | Windows only seen at push time | three red rounds: backslash snapshot keys, jq CRLF output, autocrlf on committed schemas | `--no-fail-fast` on CI; `.gitattributes` `eol=lf` on every committed JSON that a test compares byte for byte |
 | Helpers forked per test file | each cross-cutting fix had to be made 3-4 times | One `tests/common` from the start of M2 |
-| Eliott's warning that reading JSON files would be expensive was answered by argument, and the cache probe judged 15 ms per read at 1 600 nodes against one tool call, on a machine at load 20-108 | the soak could not finish on Windows; the read path needs its own redesign PR | A performance claim is a measurement: throughput (MB/s, files/s, reads/s) and a per-stage profile, at 10x the expected size and with history, on an idle machine and the three CI runners, judged against a fleet of agents |
+| Eliott's warning that reading JSON files would be expensive was answered by argument, and the cache probe judged 15 ms per read at 1 600 nodes against one tool call, on a machine at load 20-108 | the soak could not finish on Windows until a test-helper fix, and still takes 33 of its 45 minutes there; the read path needs its own redesign PR | A performance claim is a measurement: throughput (MB/s, files/s, reads/s) and a per-stage profile, at 10x the expected size and with history, on an idle machine and the three CI runners, judged against a fleet of agents |
 
 ## Carried forward
 

@@ -62,13 +62,14 @@ T8, T9; the four nits of the fix-round verifier.
   Windows cancelled at the job's 45-minute cap with `reverse_index_equals_brute_force_scan` still running. The
   kill harness passed on Windows at full count (100 s).
   https://github.com/CrackingShells/cracking-shells-playbook/actions/runs/45621003595
-- **Known limit, not met:** the soak gate on Windows. A test helper read the store once per candidate node (fixed in
-  a73b07b, 37 % faster), and the store itself stats every file of the campaign, history included, on every read.
-  Eliott ruled on 2026-11-26 that M1 merges with this recorded as a limit of the implementation and that the read
-  path is redesigned in its own PR, measured first: `__reports__/rdm_read_path_efficiency/`.
-- Soak run at 825ea5d, after the helper fix: ubuntu (17 min 57 s), macOS (17 min 56 s), MSRV 1.88 and lint
-  green; the Windows job was still running when M1 merged, and its result goes to
-  `__reports__/rdm_read_path_efficiency/`. https://github.com/CrackingShells/cracking-shells-playbook/actions/runs/45648611166
+- Cause of the Windows cancel: a test helper read the store once per candidate node (fixed in a73b07b, 37 %
+  faster), on a store that stats every file of the campaign, history included, on every read.
+- Soak run at 825ea5d, after the helper fix, every job green. Job durations, build included: ubuntu 18 min 37 s,
+  macOS 17 min 56 s, Windows 33 min 6 s, MSRV 1.88 10 min 27 s.
+  https://github.com/CrackingShells/cracking-shells-playbook/actions/runs/45648611166
+- **Thin margin:** Windows finishes 12 minutes under its cap, and the cost behind it is the store's read path, not
+  the test. Eliott ruled on 2026-11-26 that the read path is redesigned in its own PR, measured first:
+  `__reports__/rdm_read_path_efficiency/`.
 - CRLF probe: a Windows checkout with `core.autocrlf=true` did rewrite committed JSON (the schema drift guard went red
   on Windows at d9331cd). `.gitattributes` now pins `eol=lf` on the test fixtures and the committed schemas, and the
   CI step `git ls-files --eol` prints the fixtures' line ends on every run.

@@ -20,7 +20,7 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 ## Success Gates
 - ✅ Eliott has reviewed `__design__/rdm/store.md` and `__design__/rdm/contracts.md`, and R01 matches them in the same merge
 - ✅ `cargo test --workspace --locked` and `cargo +1.88 check --workspace --locked` pass on `feat/m1-core-foundation`
-- ✅ The three-OS CI matrix (macOS, Linux, Windows) and the MSRV job are green on `feat/m1-core-foundation`, soak included (**not met for the Windows soak**, cancelled at the 45-minute cap; Eliott ruled on 2026-11-26 that M1 merges with this recorded as a limit, and the read path is redesigned in its own PR: `__reports__/rdm_read_path_efficiency/`)
+- ✅ The three-OS CI matrix (macOS, Linux, Windows) and the MSRV job are green on `feat/m1-core-foundation`, soak included (met at 825ea5d after the test-helper fix a73b07b, Windows in 33 min 6 s of its 45-minute cap; the read path behind that margin is redesigned in its own PR (Eliott, 2026-11-26): `__reports__/rdm_read_path_efficiency/`)
 - ✅ `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes: no confirm is left
 - ✅ Every leaf's guards were seen red before green, each with its named bug, as recorded in the leaf reports and checked by `settle/build/codec/store/harden/verify/adversarial_review.md` (I7 and I12 have no recorded mutation; Eliott ruled the mutation checks sufficient, 2026-11-25)
 - ✅ The rescoped gates of the M1 leaf hold: contracts, version refusal, I3, I4, I7, I10, I12, declared links

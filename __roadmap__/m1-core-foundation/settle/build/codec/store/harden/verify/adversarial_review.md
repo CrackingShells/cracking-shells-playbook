@@ -9,7 +9,7 @@
 - ✅ [static] The report checks every leaf's gates as written against what was built, and names any rule an implementer relaxed (two sustainability and two full-review lenses; see the report's table)
 - ✅ [static] The report checks that every fixture comes from a real producer, and that the seams hold: `rev` in the store and in the cache, `RecordingFs` and `RealFs` effects, the error type across crates
 - ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes
-- ✅ [static] The CI run on `feat/m1-core-foundation` is green on macOS, Linux and Windows, soak and MSRV included, and its URL is in the report (**not met for the Windows soak**: recorded in the report as a known limit, Eliott 2026-11-26)
+- ✅ [static] The CI run on `feat/m1-core-foundation` is green on macOS, Linux and Windows, soak and MSRV included, and its URL is in the report (met at 825ea5d after the test-helper fix a73b07b, Windows in 33 min 6 s of its 45-minute cap; the read path behind that margin is redesigned in its own PR (Eliott, 2026-11-26): `__reports__/rdm_read_path_efficiency/`)
 **References**: [M0b knowledge transfer](../../../../../../../../__reports__/m0b-domain-model-spec/) — verifiers challenge relaxed rules; [campaign README](../../../../../../../../__roadmap__/m1-core-foundation/README.md) — the test design and the mutations each guard names
 
 ## Step 1: Attack
