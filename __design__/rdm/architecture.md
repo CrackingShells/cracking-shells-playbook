@@ -6,7 +6,13 @@ once code meets real hosts; points marked *suggestion* are left to the milestone
 rest stand unless implementation proves them wrong, and then this document changes together with
 the code. Decisions were taken with the maintainer on 2026-11-11. Amended on 2026-11-16 (A1 of the
 meta-roadmap): the domain model and the stored types move to a fourth crate, `rdm-schema`, owned by a
-spec-first milestone M0b.
+spec-first milestone M0b. M0b settled it on 2026-11-16: status meanings in
+[statuses.md](statuses.md), the stored schema in [stored-schema.md](stored-schema.md) with its
+[traceability.md](traceability.md), and the read model in [read-model.md](read-model.md). Where
+this document and those four differ, they win. Amended on 2026-11-25 (A2 of the meta-roadmap, M1):
+the store is flat and id-addressed, specified in [store.md](store.md), and the contracts M1 freezes
+(ids, campaign model, `MOVES`, operations, errors, links, version chain) are in
+[contracts.md](contracts.md). Where this document and those two differ, they win.
 
 ## Executive Summary
 
@@ -15,7 +21,7 @@ spec-first milestone M0b.
   part of what a roadmap needs: no leaf editing, no batch, no amendment or progress writer, no
   graph walk. Re-planning a long roadmap is therefore hand-editing a grammar. The markdown itself
   serves a human review that no longer happens.
-- **Proposed change.** One Rust library, `rdm-core`, owns the roadmap model, its JSON store and
+- **Proposed change.** One Rust library, `rdm-engine`, owns the roadmap model, its JSON store and
   every graph operation. Two thin consumers sit on it: `rdm-mcp`, a stdio MCP server for agents,
   and `rdm-cli` (binary `rdm`) for humans. JSON is the stored format; markdown is an export. The
   server carries a graph view for MCP Apps hosts. The stored types and the read model live in a fourth crate, `rdm-schema`, versioned on its own. All four crates are published to crates.io.
@@ -64,33 +70,33 @@ graph TD
     CLI[rdm-cli: binary rdm, for humans]
     UI[graph view: Svelte page served as a ui:// resource]
   end
-  subgraph Core [rdm-core]
+  subgraph Core [rdm-engine]
     OPS[ops: CRUD, structural edits, batch, impact]
     ORD[order: waves, ready set, status FSM]
     VAL[validate]
     IO[interchange: markdown export, legacy import]
-    ST[store: canonical JSON, lock, journal, revisions]
+    ST[store: canonical JSON, lock, intent record, revisions, cache]
   end
   MCP --> OPS
   CLI --> OPS
-  UI -->|app-only tool| MCP
+  UI -->|result _meta; app-only tool where the host has serverTools| MCP
   OPS --> ORD
   OPS --> VAL
   OPS --> ST
   IO --> ST
-  ST --> FS[__roadmap__/campaign/*.json]
+  ST --> FS[__roadmap__/campaign/nodes/*.json]
 ```
 
 | Decision | Value |
 |:--|:--|
 | Graph model | Depth is ordering: siblings parallel, deeper level later. No explicit edges. |
-| Stored format | JSON, one file per node, under `__roadmap__/<campaign>/`. Markdown is export only. |
+| Stored format | JSON, one file per node, flat under `__roadmap__/<campaign>/nodes/`, named by id. Markdown is export only. |
 | Transport | stdio only. Concurrency safety comes from the filesystem. |
 | Mutations | Full CRUD, single or batch. Content and structure edits carry a mandatory amendment description and are logged. Status and progress go to a per-leaf history, with no description. |
-| Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly (3.9.0 at design time, MSRV 1.88). |
-| UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. |
+| Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly: `=3.10.0` with features `server`, `macros`, `transport-io` (3.9.0 at design time, MSRV 1.88). rmcp has no typed Apps API: the tool `_meta.ui`, the capability `io.modelcontextprotocol/ui` and the MIME type `text/html;profile=mcp-app` are built by hand. All three hosts tested speak 2026-07-28. |
+| UI | MCP Apps (`io.modelcontextprotocol/ui`, spec 2026-01-26). Svelte 5, one inlined HTML file embedded in the server binary. Read-only in the first version. M0 proved the host split: Claude Code Desktop has no `serverTools`, so its inline page is fed once from the tool result `_meta`; VS Code Copilot offers tool calls, resource reads and a localhost stream; the Claude Code CLI renders no Apps. `structuredContent` stays a minimal summary valid against `outputSchema`, because Claude Code puts it in the model context. |
 | Home | A Cargo workspace in this repository under `crates/`, outside `skills/`. |
-| Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-core` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
+| Crates | `rdm-schema` (stored types, read-model types, JSON Schemas, format version), `rdm-engine` (library), `rdm-mcp` (server), `rdm-cli` (binary `rdm`). |
 
 **The consumer rule.** `rdm-mcp` and `rdm-cli` hold no roadmap logic. Each maps its inputs to one
 core call and renders the result. A behaviour that exists in one consumer and not in the core is a
@@ -100,53 +106,71 @@ defect.
 
 ```
 __roadmap__/<campaign>/
-  _dir.json                 campaign root
+  nodes/<id>.json           one file per node (root, directories, leaves), named by its id
   _amendments/<ulid>.json   one file per amendment, append-only
-  <leaf>.json               leaf node
-  <dir>/_dir.json           directory node
-  <dir>/<leaf>.json
-  .rdm/                     untracked scratch: lock, journal/, staging/
+  _comments/<ulid>.json     one file per comment, append-only
+  .rdm/                     untracked: lock, holder.json, tmp/, intent/, cache/
 ```
 
-- **Names are paths.** A node's name is its path segment (`^[a-z][a-z0-9_-]*$`) and is not stored
-  in the file, so it cannot disagree with the filesystem. `_dir.json` cannot collide with a node.
-- **Identity is separate.** Every node carries an immutable `id`. Tools accept a path or an id and
-  return both. References between nodes hold ids, so they survive a rename or a move.
+- **Flat and id-addressed** (Eliott, 2026-11-25). A node file holds its `name`
+  (`^[a-z][a-z0-9_-]*$`), its `parent_id` and an `order` key among its siblings. Paths, depth and
+  children are derived from the `parent_id` chain on load and never stored, so depth is still the
+  only ordering (I1). A rename or a move rewrites one file, and no directory is ever renamed.
+- **The root** is the parentless node of kind `campaign` whose `name` is the campaign slug; `open`
+  is given that slug. It has no `parent_id` and no `order`.
+- **Ids.** A node id is `n_` and 8 characters of lower-case Crockford base32; criteria are `c_` and
+  steps `s_`, with 6. Callers mint them from a seeded or system RNG and the store refuses a
+  collision. Comments and amendments keep ULIDs, which order them. Checks and references have no
+  id. References between nodes hold ids, so they survive a rename or a move. Details in
+  [store.md](store.md) §Ids and [contracts.md](contracts.md) §Id inventory.
+- **Sibling order** is a fractional key in base 62: an insert writes one file, and a rare rebalance
+  rewrites one parent's children. It is a position, not a dependency.
+- **Merge damage is reported, not refused.** A file that cannot be read alone (unparsable, a
+  malformed id, a name that differs from its id, a newer format) fails `open`. Damage across files
+  that a git merge leaves (an orphan, a cycle, a name collision, a second root) is loaded and
+  reported, the nodes that do not trace back to the root are unvalidated, and writes that build on
+  them are refused except repairs.
 - **Stored:** node prose, leaf status, steps, progress, per-leaf status history.
 - **Derived on every read, never stored:** directory status, the node table, the mermaid graph,
   the progress table, waves, the ready set. Derived data cannot go stale, and a status change
   never writes to an ancestor.
-- **One file per leaf and per amendment** keeps task branches in separate worktrees from touching
+- **One file per node and per amendment** keeps task branches in separate worktrees from touching
   the same file, so merges do not conflict.
 - **Canonical form:** fixed field order, two-space indent, LF, trailing newline. Multi-line prose is
   stored as an array of lines, which git merges far better than one escaped string; the API
   accepts and returns plain strings.
-- **Forward compatibility:** every file carries `schema_version`; unknown fields round-trip; a
-  reader refuses a newer major version with an upgrade message. JSON Schemas are generated from
-  the Rust types and committed; CI fails when they drift.
+- **Forward compatibility:** every file carries `schema_version` (`"0.X.Y"`, `"0.1.0"` until M1
+  merges to `main`). The version is read first, and a file newer than the binary, whether X or Y is
+  higher, is refused with `NewerFormat` before anything else is parsed (Eliott, 2026-11-25). Older
+  files read through a chain of format layers, each overriding only what its version changed.
+  Unknown fields round-trip in place, and each one is reported as a warning. JSON Schemas are
+  generated from the Rust types and committed; CI fails when they drift.
 
-Schema sketch (field names *provisional*, owned by M0b, which holds them as types in `rdm-schema`):
+The stored types are settled in [stored-schema.md](stored-schema.md) and held by the
+`rdm-schema` crate, whose JSON Schemas are generated and checked for drift. In outline:
 
 ```
-_dir.json   { schema_version, id, kind: campaign|directory, title, context, goal,
-              references[], preconditions[], success_gates[], gotchas[] }
-
-<leaf>.json { schema_version, id, kind: leaf, title, status, blocked_reason?,
-              goal, preconditions[], success_gates[], references[],
-              steps[1..5], progress{branch?, notes}, history[] }
-
-step        { id, goal, implementation_logic, deliverables[], checks[{command, expected}],
-              commit{type, scope, summary}, references[], requires[], done, commit_sha? }
-
-history     { ts, from, to, actor, note?, override? }
-
-amendment   { schema_version, id, ts, actor, description, source?, op_id?,
-              changes[{node_id, op, path_before?, path_after?, field?, old?, new?}],
-              snapshot? }
+directory   { schema_version, id, kind: campaign|directory, name, parent_id?, order?, title, context,
+              goal, references[], preconditions[Criterion], success_gates[Criterion], gotchas, notes, marks[] }
+leaf        { schema_version, id, kind: leaf, name, parent_id, order, title, status, status_reason?, goal,
+              preconditions[Criterion], success_gates[Criterion], references[], steps[1..5],
+              progress{branch?, commits?, notes}, history[], marks[] }
+step        { id, title, goal, implementation_logic, deliverables, references[],
+              checks[{text, expected, command?}], commit{type, scope?, breaking, summary},
+              requires?, done, commit_sha?, done_at? }
+Criterion   { id, text, met }  (enforced: see I8)
+Reference   { label?, title, target?, note?, node_id? }   (target relative to the root, absent when node_id is set)
+history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id?, correction? }
+mark        { ts, actor, criterion_id, met, evidence?, reason?, correction? }   (trace of every criterion mark)
+comment     { schema_version, id, node_id, ts, actor, text }
+amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?, correction?,
+              changes[{node_id, op, item_id?, field?, old?, new?}], snapshot? }   (paths derive from node_id)
 ```
 
-The sketch omits facts the legacy grammars carry (per-criterion state, step title, the breaking mark of a
-commit, a reference shape, a step timestamp, a readable amendment id). M0b decides whether each is stored.
+Every legacy grammar production is stored, derived or dropped with a reason in
+[traceability.md](traceability.md). The read model that every consumer receives (MCP outputs,
+CLI `--json`, the view) is four projections in [read-model.md](read-model.md); each leaf there
+reports its `level` together with `level_source: depth`.
 
 The amendment log of a node is the set of amendment files whose `changes` name its id. A delete
 stores the removed subtree in `snapshot`, so it can be restored.
@@ -161,11 +185,11 @@ sequenceDiagram
   participant A as process A
   participant L as campaign lock
   participant F as files
-  A->>F: read (returns rev, tree_rev)
-  A->>L: acquire
+  A->>F: read, no lock (returns rev, tree_rev)
+  A->>L: acquire, then recover any intent left behind
   A->>F: re-read, compare with expected rev
   alt revision matches
-    A->>F: stage, journal, apply, remove journal
+    A->>F: write intent (multi-file only), apply in order, remove intent
     A->>L: release
   else stale
     A->>L: release
@@ -173,53 +197,84 @@ sequenceDiagram
   end
 ```
 
-- **Lock:** one operating-system advisory lock per campaign (`.rdm/lock`), held only for the write
-  window. The kernel releases it when a process dies, so there is no stale lock. A waiter retries
-  for a few seconds, then returns a `LOCKED` error naming the holder.
-- **Atomic single-file write:** temporary file in the same directory, fsync, rename.
-- **Multi-file transaction:** stage the new contents, write a journal of idempotent steps, mark it
-  committed, apply, remove it. The amendment file is part of the transaction. On the next lock
-  acquisition a committed journal is rolled forward and an uncommitted one discarded.
-- **Optimistic revisions:** a read returns a content hash per node (`rev`) and per campaign
-  (`tree_rev`). A field edit presents `expected_rev`; a structural batch presents
-  `expected_tree_rev`; a status move presents the status it expects to leave. A mismatch returns an
-  error result with the current state. Nothing is merged automatically.
-- **Retries:** a write may carry an `op_id`; replaying it returns the first result.
+The algorithm and its sources are in [store.md](store.md); in outline:
+
+- **Readers take no lock.** Every file is replaced whole, so a reader sees the old or the new
+  version, never a part.
+- **Lock:** one operating-system advisory lock per campaign (`.rdm/lock`, the `fs4` crate), held
+  only for the write window. The kernel releases it when a process dies, so there is no stale lock.
+  A waiter retries for 5 s, then gets `Locked`, naming the holder from the advisory
+  `.rdm/holder.json`.
+- **Atomic single-file write** (Maildir): temporary file in `.rdm/tmp/`, fsync, rename; `link()`
+  for a file that must not exist yet. On Windows the rename retries on sharing violations.
+- **Ordered writes** (the three Soft Updates rules): a new node before anything that points at it,
+  the amendment before the deletes it records, children deleted before their parent.
+- **Intent record** for a multi-file operation: a redo-only record in `.rdm/intent/` holding the
+  whole-file after-images. Its rename is the commit point; the next writer redoes it after taking
+  the lock, and an unfinished one is dropped. The amendment is not the intent.
+- **Durability:** plain `fsync` by default, so an acknowledged write survives a killed process;
+  a full flush on macOS is opt-in.
+- **Optimistic revisions:** a read returns a hash per node (`rev`, over the decoded value, so
+  formatting never changes it), per subtree and per campaign (`tree_rev`, over the nodes only). A
+  field edit presents `expected_rev`, a delete `expected_subtree_rev`, a structural batch
+  `expected_tree_rev`. A mismatch returns `Stale` with the current state. Nothing is merged
+  automatically.
+- **Retries:** a write may carry an `op_id`; the store keeps an index of the ids its records carry
+  and, under the lock, returns the first result instead of writing again.
+- **Hot cache:** a long-lived server keeps the decoded campaign, checks every file's identity,
+  mtime and size on each read (git's racily-clean rule for edits within one tick) and writes
+  through. It is never the source of truth.
 - **Worktrees are separate copies.** A lock in one worktree does not coordinate with another.
   Status written on a task branch reaches the coordinator when that branch merges. The coordinator
-  records `inprogress` in its own tree when it dispatches a leaf.
+  records `ongoing` in its own tree when it dispatches a leaf.
 
 ## Graph operations
 
 - **Load and validate** a whole campaign, returning diagnostics with a stable code, a severity, a
   path and a JSON pointer.
-- **Order.** The wave of a leaf is its depth. A leaf is ready when it is not done and every leaf of
-  smaller depth is done. Leaves before sibling directories follows from depth. Wave semantics are
-  global: a leaf also waits for shallower leaves in unrelated branches.
+- **Order.** The wave of a leaf is its depth, shown as `level`. A leaf is ready when it is
+  `planned` and every leaf that holds it back is `done` or `cancelled`. The rule is scoped
+  (Eliott, 2026-11-16): an unfinished leaf holds back only the deeper leaves under its own
+  parent, never a leaf in an unrelated branch. Waves are a display of depth, not a readiness
+  fact. Details and examples in [statuses.md](statuses.md) §Ready set.
 - **Status FSM.**
 
 ```mermaid
 stateDiagram-v2
   [*] --> planned
-  planned --> inprogress
-  inprogress --> done
-  planned --> blocked
-  inprogress --> blocked
-  blocked --> inprogress
-  done --> amendment: content edit
-  amendment --> inprogress
-  amendment --> done: re-verified
+  planned --> ongoing
+  planned --> paused
+  planned --> cancelled
+  ongoing --> paused
+  ongoing --> cancelled
+  ongoing --> done
+  paused --> planned
+  paused --> ongoing
+  paused --> cancelled
+  cancelled --> planned: undo, to the pre-cancel status
+  cancelled --> ongoing: undo
+  cancelled --> paused: undo
+  cancelled --> done: undo of a cancel made from done
+  done --> ongoing: reversal, with a reason
+  done --> paused: reversal, with a reason
+  done --> cancelled: reversal, with a reason
 ```
 
-  `done` requires every step recorded done with its commit. Starting a leaf outside the ready set
-  is refused unless an override with a reason is given, and the override is recorded. A directory's
-  status is derived from its descendants.
+  The full table of moves, who may make them and their reasons is in [statuses.md](statuses.md).
+  `done` is the normal end state, not a lock: a reversal out of it needs a reason. Entering `paused` or `cancelled` needs a reason, and undoing
+  a cancel restores the status before it. Pausing or cancelling a directory applies to every
+  unfinished leaf under it as one operation, and a directory cancel is undone through its
+  `op_id`. `done` requires every step recorded done with its commit. Starting a leaf outside the
+  ready set is refused unless an override with a reason is given, and the override is recorded.
+  A directory's status is derived from its leaves. **Finished nodes:** a `done` or `cancelled` node
+  accepts every edit, with a non-blank reason; each is flagged as a correction and counted. Every content edit to a `planned`, `ongoing` or `paused` node carries an
+  amendment description.
 - **Primitives:** add, remove (subtree), set field, rename, move to another parent.
 - **Composites,** each expanding to primitives: wrap siblings in a new level, unwrap a level, split
   a leaf, merge leaves, promote a leaf to a directory, reorder steps, "run X after Y" (expressed as
   depth edits, with candidate plans ranked by nodes moved).
-- **Impact analysis** on every structural edit: wave changes per node, done work reopened, progress
-  destroyed, in-progress leaves moved. A destructive effect needs an explicit acknowledgement.
+- **Impact analysis** on every structural edit: wave changes per node, leaves made ready by a cancel,
+  progress destroyed, ongoing leaves moved. A destructive effect needs an explicit acknowledgement.
 - **Batch:** an ordered list of operations, validated one by one and as a whole, applied
   atomically, with a dry-run. Later operations may refer to nodes created earlier in the batch.
 
@@ -261,7 +316,7 @@ receives the same data as text and structured content.
 | Flow | Sequence |
 |:--|:--|
 | Author a campaign | `init` with a nested tree, then `validate`. |
-| Execute | `next` → `transition` to `inprogress` → work → `transition` recording each step's commit → `transition` to `done`. |
+| Execute | `next` → `transition` to `ongoing` → work → `transition` recording each step's commit → `transition` to `done`. |
 | Edit a field | `get` (revision) → `update` with the new value and the amendment description. |
 | Re-plan | `apply` with dry-run → read the impact report → `apply` with acknowledgements. |
 | Read as a human | `rdm export <node>` or `roadmap_export`. |
@@ -273,28 +328,31 @@ receives the same data as text and structured content.
 |:--|:--|
 | I1 | Depth is the only ordering. No stored field expresses a dependency between siblings. |
 | I2 | A consumer holds no roadmap logic; the CLI and the MCP tools give the same result on the same input. |
-| I3 | No write leaves a campaign in a state `validate` rejects, including after a crash at any point. |
+| I3 | A write cut at any point leaves a campaign that loads, and recovery takes it to the state before or after the write. No write adds a defect that `open` reports. |
 | I4 | A write based on a stale revision is refused and changes nothing. |
-| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status and progress never do. |
+| I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A content edit of a finished node needs a reason and is a correction. |
 | I6 | Derived data is never stored. |
-| I7 | A node's `id` never changes; a rename or move changes only its path. |
-| I8 | A leaf is `done` only when every step is done with its commit recorded. |
-| I9 | Deleting or reopening done work, or moving work in progress, needs an explicit acknowledgement. |
-| I10 | The server keeps no state between calls; every call names its campaign. |
+| I7 | A node's `id` never changes; a rename or move rewrites that node's file only, and its descendants' paths change because they are derived. |
+| I8 | The move to `done` is allowed only when every step is done with its commit recorded and every success gate is `met`; the move to `ongoing` needs every pre-condition `met`, an override of the ready set included. Both are checked at the move, and every change of a criterion mark leaves a `mark` record. A directory is `done` only when its leaves are finished and its own gates are met. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). A legacy `done` node with an unmet criterion is imported as it is, and `validate` reports it as an error to reconcile. |
+| I9 | Deleting finished work, or moving ongoing work, needs an explicit acknowledgement. Reopening done work needs a reason and is counted as a correction. |
+| I10 | A cached read returns what a cold read would at that moment; every call names its campaign. |
 | I11 | No tool requires user interaction, and no read tool writes. |
-| I12 | A reader never drops a field it does not know. |
+| I12 | A reader never drops a field it does not know, and reports each one as a warning. |
 
 ## Launch and distribution (*provisional*, owned by M7)
 
 - **Publication:** the four crates on crates.io, released by CI after a merge to `main`
-  (`release-plz`; `rdm-schema` on its own version line, the other three on one product version), beside the existing skill releases. In one workflow run:
+  (`rdm-schema` on its own `0.X.Y` version line, the other three on one product version; a breaking format or
+  read-model change forces an `rdm-schema` X bump and a compatible one at least a Y bump, as in [read-model.md](read-model.md) §Versions). Bumps come from commit types and scopes through the existing multi-semantic-release setup (`@semantic-release/commit-analyzer`, `release-config.js`): a `!` or BREAKING commit gives X, `feat` or `fix` gives Y, and the crate stays `0.x`. M7 wires the crates into that job, with a rule that keeps a breaking change at `0.x`. It runs beside the existing skill releases. In one workflow run:
   crates (schema, core, then server and CLI), then prebuilt binaries and checksums on the GitHub release, then the plugin pinned to
   that version. The plugin never names an unpublished server.
 - **Launch:** the plugin runs `rdm-mcp serve --require-version X.Y.Z`. A binary of another version
   fetches the matching prebuilt one from the release, checks its sha256, caches it per version and
   runs it. A consumer installs once; later plugin updates bring their own server. When the download
   fails, an installed binary of the same major version runs with a warning; otherwise the server
-  exits with the exact install command.
+  exits with the exact install command. (A2, 2026-11-25: M1 only refuses a newer file with
+  `NewerFormat`; M7 may start an installed binary that supports it, and never downloads one without
+  the user's consent. This paragraph is M7's to rewrite.)
 
 ## Alternatives Considered
 
@@ -302,12 +360,12 @@ receives the same data as text and structured content.
 |:--|:--|:--|:--|
 | Graph model | Explicit edges / hybrid / **depth** | depth | The tree over-sequences; "run X after Y" is a structural edit, with its impact reported |
 | Transport | HTTP daemon / stdio + HTTP / **stdio** | stdio | Concurrency is the store's job; no host that needs a URL is served |
-| File layout | One file per campaign / per directory / **per node** | per node | More files; no hot file, clean merges |
+| File layout | One file per campaign / per directory / per node in a tree / **per node, flat and id-addressed** | flat per node | Paths are derived on load, and a merge can leave damage across files, which `open` reports; a rename or move writes one file |
 | Amendments | In each node / one log file / **one file per amendment** | per amendment | A node's log is a query, not a field |
 | Revisions | Counter / **content hash** | hash | No base to merge from, so a conflict is refused, never merged |
 | Lock | Lock file as existence / per file / **one OS lock per campaign** | per campaign | Writers on one campaign are serialised, for milliseconds |
 | Amendment scope | Every write / **content and structure** | content and structure | Status history is kept apart from the amendment log |
-| Mutation policy | Additive only / **full CRUD with guards on done work** | full CRUD | History lives in amendments, not in undeletable nodes |
+| Mutation policy | Additive only / **full CRUD, finished nodes edited with a reason** | full CRUD | History lives in amendments, not in undeletable nodes |
 | Consumers | MCP only / **MCP and CLI over one core** | both | A second surface to keep thin |
 | UI | None / server-rendered image / **Svelte page as an MCP App** | Svelte | A Node build in CI and a committed artefact |
 | Registry | PyPI wheels / npm / **crates.io** | crates.io | No pinned-run launcher, hence the self-provisioning launch |
@@ -317,21 +375,24 @@ receives the same data as text and structured content.
 
 | Risk | Mitigation |
 |:--|:--|
-| A host does not speak 2026-07-28 | M0 tests the real hosts first; the transport stays isolated in `rdm-mcp` |
-| rmcp API churn, untyped Apps support, a wrong extension id in its documentation | Exact pin; M0 fixes the calls; one module owns the Apps metadata |
-| Lost or torn writes under concurrency | Lock, journal, revisions; a multi-process test with kill injection on three operating systems |
-| Directory renames fail on Windows while a handle is open | Retry with backoff; a Windows test job |
+| A host does not speak 2026-07-28 | Settled by M0: Desktop, VS Code and the CLI all connect to a server that refuses other versions. The transport stays isolated in `rdm-mcp` |
+| A host cannot take page-to-server calls, resource reads or a stream (Claude Code Desktop) | Feed the inline page once from the result `_meta`; use polling or streaming only where the host advertises `serverTools` or the stream domain; a standalone viewer for large or live views (M6 decides) |
+| rmcp API churn, untyped Apps support, a wrong extension id in its documentation | Exact pin `=3.10.0`; M0 fixed the calls; one module owns the Apps metadata |
+| Lost or torn writes under concurrency | Lock, ordered writes, intent record, revisions; every write prefix tested to load and recover; a multi-process test with kill injection on three operating systems |
+| A file rename fails on Windows while another program holds the target open | Retry on sharing violations with backoff; the `replace_while_target_open` guard on a Windows runner |
+| A git merge leaves a cycle, an orphan or a name collision without a conflict | `open` reports each defect with its file and rule; writes on the damaged part are refused except repairs |
 | A consumer grows logic | I2 as a test: the same input through both consumers |
-| The graph view grows past a small bundle | Size budget in CI; a hand-written bridge if the Apps client library is heavy |
+| The graph view grows past a small bundle | M0 measured 279 to 286 KB, about 234 KB of it ext-apps with zod. Size budget in CI; a hand-written bridge if the Apps client library is heavy |
+| A binary is overwritten in place on macOS | The kernel kills it with SIGKILL. Install to a new inode (`rm` then `cp`) |
 | A restructure silently reorders work | Impact analysis and acknowledgements (I9) |
 | The launch cannot reach the release | Same-major fallback; a loud failure with the install command |
-| The allow-rule string for a hyphenated plugin name is guessed wrong | Read from a real session in M0, never hard-coded from a guess |
+| The allow-rule string for a hyphenated plugin name is guessed wrong | Read in M0 from a real session: `mcp__<server>__<tool>` for a project server, `mcp__plugin_<plugin>_<server>__<tool>` for a plugin, with hyphens kept. A same-named project server wins over the plugin |
 | Legacy roadmaps import wrongly | The eight campaigns of this repository as golden fixtures, one of them invalid by design |
 
 ## Deliberately open
 
-Decided by the milestone that owns it: field names, status meanings, the read model and the format version (M0b); the id minting and the journal format (M1); the
-exact operation set and its error codes (M2); whether a cross-worktree claim hint is worth having
+Decided by the milestone that owns it: the exact graph operation set above the store primitives
+and its error codes (M2); whether a cross-worktree claim hint is worth having
 (M2); markdown layout of the export and what the importer does with invalid input (M3); tool names,
 count and output budgets (M4); CLI verbs and output style (M5); layout and refresh of the view
 (M6); the launch, the release order and binary targets (M7); what the skill says and which

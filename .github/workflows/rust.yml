@@ -1,0 +1,73 @@
+name: Rust workspace
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
+  push:
+    branches: [main, "feat/**"]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+    inputs:
+      soak:
+        description: "Run the kill harness and proptest at high counts"
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Left unset on ordinary runs so the suite uses its short defaults.
+      - name: Soak counts
+        if: ${{ inputs.soak }}
+        shell: bash
+        run: |
+          echo "RDM_SOAK_ITERS=1000" >> "$GITHUB_ENV"
+          echo "PROPTEST_CASES=10000" >> "$GITHUB_ENV"
+      - name: Fixture line endings (CRLF probe)
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: git ls-files --eol ':(glob)crates/**/tests/fixtures/**/*.json'
+      - run: cargo test --workspace --locked --no-fail-fast
+
+  lint:
+    name: lint (fmt, clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - name: Soak counts
+        if: ${{ inputs.soak }}
+        run: |
+          echo "RDM_SOAK_ITERS=1000" >> "$GITHUB_ENV"
+          echo "PROPTEST_CASES=10000" >> "$GITHUB_ENV"
+      - run: cargo test --workspace --locked --no-fail-fast

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReadyView",
+  "description": "The ready set with what stalls the rest.",
+  "type": "object",
+  "properties": {
+    "read_model_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "format_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "tree_rev": {
+      "$ref": "#/$defs/TreeRev"
+    },
+    "ready": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReadyLeaf"
+      }
+    },
+    "stalled": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/StalledLeaf"
+      }
+    },
+    "holders": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$": {
+          "$ref": "#/$defs/Holder"
+        }
+      }
+    }
+  },
+  "required": [
+    "read_model_version",
+    "format_version",
+    "projection",
+    "campaign",
+    "tree_rev",
+    "ready",
+    "stalled",
+    "holders"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    },
+    "CampaignRef": {
+      "description": "Identity of the campaign in an envelope.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    },
+    "ReadyLeaf": {
+      "description": "A `planned` leaf that nothing holds back.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title",
+        "level",
+        "level_source"
+      ],
+      "additionalProperties": true
+    },
+    "LevelSource": {
+      "description": "The rule that produced a `level`. One value today.",
+      "type": "string",
+      "enum": [
+        "depth"
+      ]
+    },
+    "StalledLeaf": {
+      "description": "A `planned` leaf held back by unfinished leaves.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "level_source": {
+          "$ref": "#/$defs/LevelSource"
+        },
+        "held_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeId"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title",
+        "level",
+        "level_source",
+        "held_by"
+      ],
+      "additionalProperties": true
+    },
+    "Holder": {
+      "description": "A leaf that holds another back.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "title",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "Status": {
+      "description": "The five statuses of a leaf (`statuses.md`).",
+      "type": "string",
+      "enum": [
+        "planned",
+        "ongoing",
+        "paused",
+        "cancelled",
+        "done"
+      ]
+    }
+  }
+}

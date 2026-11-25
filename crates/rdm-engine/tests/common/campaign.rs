@@ -1,0 +1,435 @@
+//! Campaigns for the crash guards: node builders, a seeded generator and clock for the store's
+//! own ULIDs, and whole-directory snapshots. Node files are written with the codec, the real
+//! producer of node files; everything after that is written by the store itself.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::{Seek, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{Duration, SystemTime};
+
+use rdm_engine::cache::CachedCampaign;
+use rdm_engine::codec::encode;
+use rdm_engine::fs::{Effect, Fs, replay_prefix};
+use rdm_engine::ids::IdRng;
+use rdm_engine::store::{Options, Store};
+use rdm_schema::campaign::node_file;
+use rdm_schema::error::Rule;
+use rdm_schema::ids::*;
+use rdm_schema::ops::{DeleteOp, EditNote, Header, Request};
+use rdm_schema::stored::*;
+use rdm_schema::{FORMAT_VERSION, version_string};
+use std::sync::Arc;
+
+/// A deterministic id body of `len` characters for `n`.
+pub fn body(mut n: u32, len: usize) -> String {
+    let a = ID_ALPHABET.as_bytes();
+    let mut s = vec![b'0'; len];
+    for i in (0..len).rev() {
+        s[i] = a[(n % 32) as usize];
+        n /= 32;
+    }
+    String::from_utf8(s).unwrap()
+}
+
+pub fn nid(n: u32) -> NodeId {
+    NodeId::parse(&format!("n_{}", body(n, 8))).unwrap()
+}
+
+pub fn name(s: &str) -> Name {
+    Name::parse(s).unwrap()
+}
+
+/// `node_file` for the node numbered `n`.
+pub fn file(n: u32) -> String {
+    node_file(&nid(n))
+}
+
+pub fn cid(n: u32) -> CriterionId {
+    CriterionId::parse(&format!("c_{}", body(n, 6))).unwrap()
+}
+
+/// A criterion no builder makes, named by `n`.
+pub fn extra_criterion(n: u32) -> Criterion {
+    Criterion {
+        id: cid(n),
+        text: format!("criterion {n}"),
+        met: false,
+        extra: Default::default(),
+    }
+}
+
+/// The ids of the criteria and the step of a node are derived from its own id, so they are
+/// unique wherever the node id is.
+fn item(prefix: &str, lead: char, id: &NodeId) -> String {
+    let b = id.as_str();
+    format!("{prefix}{lead}{}", &b[b.len() - 5..])
+}
+
+fn criterion(lead: char, id: &NodeId) -> Criterion {
+    Criterion {
+        id: CriterionId::parse(&item("c_", lead, id)).unwrap(),
+        text: "criterion".into(),
+        met: false,
+        extra: Default::default(),
+    }
+}
+
+/// A directory (`parent` given) or the campaign root (`parent` none).
+pub fn dir_node(id: NodeId, nm: &str, parent: Option<NodeId>, order: &str) -> Node {
+    Node::Directory(Directory {
+        schema_version: version_string(FORMAT_VERSION),
+        kind: if parent.is_some() {
+            DirectoryKind::Directory
+        } else {
+            DirectoryKind::Campaign
+        },
+        name: name(nm),
+        order: parent.as_ref().map(|_| OrderKey::new(order)),
+        parent_id: parent,
+        title: format!("Directory {nm}"),
+        context: vec!["context".into()],
+        references: vec![],
+        goal: "a goal".into(),
+        preconditions: vec![criterion('p', &id)],
+        success_gates: vec![criterion('q', &id)],
+        gotchas: vec![],
+        notes: vec![],
+        marks: vec![],
+        extra: Default::default(),
+        id,
+    })
+}
+
+pub fn leaf_node(id: NodeId, nm: &str, parent: NodeId, order: &str) -> Node {
+    Node::Leaf(Leaf {
+        schema_version: version_string(FORMAT_VERSION),
+        kind: LeafKind::Leaf,
+        name: name(nm),
+        parent_id: parent,
+        order: OrderKey::new(order),
+        title: format!("Leaf {nm}"),
+        status: Status::Planned,
+        status_reason: None,
+        goal: "a goal".into(),
+        preconditions: vec![criterion('p', &id)],
+        success_gates: vec![criterion('q', &id)],
+        references: vec![Reference {
+            label: None,
+            title: "design".into(),
+            target: Some("__design__/x.md".into()),
+            note: None,
+            node_id: None,
+            extra: Default::default(),
+        }],
+        steps: vec![Step {
+            id: StepId::parse(&item("s_", 'r', &id)).unwrap(),
+            title: "step".into(),
+            goal: "a goal".into(),
+            implementation_logic: vec!["do it".into()],
+            deliverables: vec!["a file".into()],
+            references: vec![],
+            checks: vec![Check {
+                text: "check".into(),
+                expected: Expected::Pass,
+                command: None,
+                extra: Default::default(),
+            }],
+            commit: Commit {
+                r#type: "feat".into(),
+                scope: None,
+                breaking: false,
+                summary: "do".into(),
+                extra: Default::default(),
+            },
+            requires: None,
+            done: false,
+            commit_sha: None,
+            done_at: None,
+            extra: Default::default(),
+        }],
+        progress: Progress {
+            branch: None,
+            commits: None,
+            notes: vec![],
+            extra: Default::default(),
+        },
+        history: vec![],
+        marks: vec![],
+        extra: Default::default(),
+        id,
+    })
+}
+
+/// `dir_node` with numbered nodes.
+pub fn dir_n(n: u32, nm: &str, parent: Option<u32>, order: &str) -> Node {
+    dir_node(nid(n), nm, parent.map(nid), order)
+}
+
+/// `leaf_node` with numbered nodes.
+pub fn leaf_n(n: u32, nm: &str, parent: u32, order: &str) -> Node {
+    leaf_node(nid(n), nm, nid(parent), order)
+}
+
+/// The sound campaign most rows start from:
+///
+/// ```text
+/// demo (1)
+///   core (2)         alpha (3), beta (4)
+///   spare (5)
+/// ```
+pub fn base() -> Vec<Node> {
+    vec![
+        dir_n(1, "demo", None, ""),
+        dir_n(2, "core", Some(1), "V"),
+        leaf_n(3, "alpha", 2, "V"),
+        leaf_n(4, "beta", 2, "k"),
+        dir_n(5, "spare", Some(1), "k"),
+    ]
+}
+
+/// The `rev` of node `n`, as the cache gives it now.
+pub fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
+    store.read().unwrap().rev(&nid(n)).unwrap().clone()
+}
+
+/// A delete of node `n` with the subtree revision the cache gives now.
+pub fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
+    DeleteOp {
+        id: nid(n),
+        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
+    }
+}
+
+/// The leaf `n` of a store that is already read.
+pub fn leaf_in(store: &Store, n: u32) -> Leaf {
+    match store.campaign().get(&nid(n)).unwrap() {
+        Node::Leaf(l) => l.clone(),
+        Node::Directory(_) => panic!("not a leaf"),
+    }
+}
+
+/// The leaf `n`, as the cache gives it now.
+pub fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
+    leaf_in(store.read().unwrap(), n)
+}
+
+/// The (file, rule) of every diagnostic the cache reports now.
+pub fn diagnostic_keys(store: &mut CachedCampaign) -> BTreeSet<(String, Rule)> {
+    store
+        .read()
+        .unwrap()
+        .diagnostics()
+        .iter()
+        .map(|d| (d.file.clone(), d.rule))
+        .collect()
+}
+
+/// The directory `pre_dir` with the first `k` effects of `log` applied, at `into`.
+pub fn at_prefix(pre_dir: &Path, log: &[Effect], k: usize, into: &Path) {
+    let _ = std::fs::remove_dir_all(into);
+    copy_tree(pre_dir, into);
+    replay_prefix(log, k, into).unwrap();
+}
+
+/// Writes `nodes` as the campaign `demo` under a fresh temporary directory.
+pub struct Disk {
+    pub _tmp: tempfile::TempDir,
+    pub root: PathBuf,
+}
+
+impl Disk {
+    /// An empty campaign directory.
+    pub fn new() -> Self {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("demo");
+        std::fs::create_dir_all(root.join("nodes")).unwrap();
+        Self { _tmp: tmp, root }
+    }
+
+    pub fn with(nodes: &[Node]) -> Self {
+        let disk = Self::new();
+        disk.write_all(nodes);
+        disk
+    }
+
+    pub fn write(&self, node: &Node) {
+        std::fs::write(self.root.join(node_file(node.id())), encode(node)).unwrap();
+    }
+
+    pub fn write_all(&self, nodes: &[Node]) {
+        nodes.iter().for_each(|n| self.write(n));
+    }
+
+    pub fn path(&self, rel: &str) -> PathBuf {
+        self.root.join(rel)
+    }
+}
+
+/// Runs git in `dir`, which must succeed.
+pub fn git(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+pub fn actor() -> Actor {
+    Actor {
+        kind: ActorKind::Agent,
+        name: Some("tester".into()),
+        extra: Default::default(),
+    }
+}
+
+pub fn header(note: Option<&str>, op_id: Option<&str>) -> Header {
+    Header {
+        op_id: op_id.map(|o| OpId::parse(o).unwrap()),
+        actor: actor(),
+        note: note.map(|d| EditNote {
+            description: d.into(),
+            source: None,
+            correction: false,
+        }),
+    }
+}
+
+pub fn req<T>(note: Option<&str>, op_id: Option<&str>, op: T) -> Request<T> {
+    Request {
+        header: header(note, op_id),
+        op,
+    }
+}
+
+/// A SplitMix64 stream: the seeded generator the store draws its ULIDs from.
+pub struct SeededRng(pub u64);
+
+impl SeededRng {
+    pub fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+}
+
+impl IdRng for SeededRng {
+    fn fill(&mut self, buf: &mut [u8]) {
+        for chunk in buf.chunks_mut(8) {
+            let word = self.next_u64().to_le_bytes();
+            chunk.copy_from_slice(&word[..chunk.len()]);
+        }
+    }
+}
+
+/// Store options with a seeded generator and a fixed clock: two runs of one operation write the
+/// same bytes. `fs` replaces the real file system when given.
+pub fn seeded_options(seed: u64, fs: Option<Arc<dyn Fs + Send + Sync>>) -> Options {
+    let mut options = Options {
+        rng: Box::new(SeededRng(seed)),
+        clock: Box::new(|| SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)),
+        ..Options::default()
+    };
+    if let Some(fs) = fs {
+        options.fs = fs;
+    }
+    options
+}
+
+pub fn copy_tree(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for e in std::fs::read_dir(src).unwrap() {
+        let e = e.unwrap();
+        let to = dst.join(e.file_name());
+        if e.path().is_dir() {
+            copy_tree(&e.path(), &to);
+        } else {
+            std::fs::copy(e.path(), &to).unwrap();
+        }
+    }
+}
+
+/// Every file of a campaign directory except the scratch area, by relative path.
+pub type Files = BTreeMap<String, Vec<u8>>;
+
+pub fn files_of(root: &Path) -> Files {
+    fn walk(dir: &Path, base: &Path, out: &mut Files) {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            let rel = p
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == ".rdm" || rel == ".git" {
+                continue;
+            }
+            if p.is_dir() {
+                walk(&p, base, out);
+            } else {
+                out.insert(rel, std::fs::read(&p).unwrap());
+            }
+        }
+    }
+    let mut out = Files::new();
+    walk(root, root, &mut out);
+    out
+}
+
+/// Nothing is left in `.rdm/tmp` or `.rdm/intent`.
+pub fn scratch_is_empty(root: &Path) -> bool {
+    ["intent", "tmp"].iter().all(|d| {
+        std::fs::read_dir(root.join(".rdm").join(d))
+            .map(|e| e.count() == 0)
+            .unwrap_or(true)
+    })
+}
+
+/// A file that an editor rewrote in place: the same descriptor is not reopened with truncation,
+/// the bytes are overwritten from offset 0, and the modification time is the one the file had,
+/// which is what a coarse timestamp (FAT's two seconds, HFS+'s one) gives two writes in one tick,
+/// and what `touch -r` gives at any age.
+pub fn rewrite_in_place(path: &Path, from: &str, to: &str) {
+    let before = std::fs::metadata(path).unwrap();
+    let text = std::fs::read_to_string(path).unwrap();
+    assert!(text.contains(from));
+    let bytes = text.replace(from, to).into_bytes();
+    let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.rewind().unwrap();
+    file.write_all(&bytes).unwrap();
+    file.set_modified(before.modified().unwrap()).unwrap();
+}
+
+/// Backdates every record file past the racy window, as time does: afterwards a cache that reads
+/// them holds clean entries, and only the signature can tell it that one changed.
+pub fn age(root: &Path) {
+    for dir in ["nodes", "_comments", "_amendments"] {
+        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
+            continue;
+        };
+        for e in entries {
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(e.unwrap().path())
+                .unwrap();
+            file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+                .unwrap();
+        }
+    }
+}

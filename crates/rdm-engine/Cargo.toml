@@ -1,0 +1,30 @@
+[package]
+name = "rdm-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The rdm store engine: reads a campaign directory, validates it and writes it through ordered, crash-safe writes"
+publish = false
+
+[features]
+# The recording file system and its replay, which the crash tests drive the store with.
+test-support = []
+
+[dependencies]
+rdm-schema = { path = "../rdm-schema" }
+fs4 = { version = "=1.1.0", default-features = false, features = ["sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.11.1"
+getrandom = "0.4.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+
+[dev-dependencies]
+# The integration tests need the recording file system, which the product build leaves out.
+rdm-engine = { path = ".", features = ["test-support"] }
+proptest = { version = "1.12", default-features = false, features = ["std"] }
+tempfile = "3"

@@ -1,6 +1,6 @@
 # M3 Interchange
 
-**Goal**: `rdm-core` exports any node to markdown for a human reader and imports a legacy markdown roadmap into the JSON store.
+**Goal**: `rdm-engine` exports any node to markdown for a human reader and imports a legacy markdown roadmap into the JSON store.
 **Pre-conditions**:
 - [ ] `../m2_graph_engine.md` is `done`
 - [ ] Reminder `skills-rdm-M3` read
@@ -26,9 +26,9 @@ Adversarial verification is required for the importer (a silent loss of content 
 **Goal**: The milestone campaign is executed and lands on `main`.
 **Implementation Logic**:
 Execute the campaign on `feat/m3-interchange`, then land it on `main` through the lane the `writing-release` skill assigns, as one merge commit. Git management follows the `writing-history` skill. The Success Gates above must pass on `main` after the merge. If a design decision changed, `__design__/rdm/architecture.md` changes in the same merge.
-**Deliverables**: `crates/rdm-core` modules for export and import; fixtures of the existing campaigns; golden tests
-**Consistency Checks**: `cargo test -p rdm-core` (expected: PASS)
-**Commit**: `feat(rdm-core): land export and import`
+**Deliverables**: `crates/rdm-engine` modules for export and import; fixtures of the existing campaigns; golden tests
+**Consistency Checks**: `cargo test -p rdm-engine` (expected: PASS)
+**Commit**: `feat(rdm-engine): land export and import`
 
 ## Step 3: Close out
 

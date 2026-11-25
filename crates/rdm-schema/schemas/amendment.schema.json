@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Amendment",
+  "description": "`_amendments/<ulid>.json`.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "$ref": "#/$defs/AmendmentId"
+    },
+    "legacy_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "description": {
+      "type": "string"
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "op_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "correction": {
+      "description": "`true` for an edit of a finished node or of a step recorded done; `description` is its reason.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Change"
+      }
+    },
+    "snapshot": {
+      "description": "The removed subtree of a delete, as stored JSON keyed by `NodeId`. The keys are links; the\nvalues are historical copies.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "propertyNames": {
+        "$ref": "#/$defs/NodeId"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "ts",
+    "actor",
+    "description",
+    "changes"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
+    "Change": {
+      "description": "An element of `Amendment.changes`.",
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "op": {
+          "$ref": "#/$defs/ChangeOp"
+        },
+        "item_id": {
+          "description": "The id of the sub-item (a criterion or a step) the change names; `field` is then a pointer\ninside it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "field": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "old": true,
+        "new": true
+      },
+      "required": [
+        "node_id",
+        "op"
+      ],
+      "additionalProperties": true
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "ChangeOp": {
+      "description": "`Change.op`.",
+      "type": "string",
+      "enum": [
+        "add",
+        "remove",
+        "set",
+        "rename",
+        "move"
+      ]
+    },
+    "ItemId": {
+      "type": "string",
+      "pattern": "^(c_[0123456789abcdefghjkmnpqrstvwxyz]{6}|s_[0123456789abcdefghjkmnpqrstvwxyz]{6})$"
+    }
+  }
+}

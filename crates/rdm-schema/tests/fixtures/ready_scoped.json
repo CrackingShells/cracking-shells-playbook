@@ -1,0 +1,40 @@
+{
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
+  "projection": "ready",
+  "campaign": {
+    "id": "n_4t6w9a2e",
+    "path": "__roadmap__/hypothetical",
+    "title": "Two branches"
+  },
+  "tree_rev": "a30218f8515f440d",
+  "ready": [
+    {
+      "id": "n_0m5r8c3h",
+      "path": "docs/guide/g1_guide",
+      "title": "G1 Guide",
+      "level": 2,
+      "level_source": "depth"
+    }
+  ],
+  "stalled": [
+    {
+      "id": "n_9n3s7y5a",
+      "path": "core/engine/m2_engine",
+      "title": "M2 Engine",
+      "level": 2,
+      "level_source": "depth",
+      "held_by": [
+        "n_7k3q9x2m"
+      ]
+    }
+  ],
+  "holders": {
+    "n_7k3q9x2m": {
+      "path": "core/m1_core",
+      "title": "M1 Core",
+      "status": "paused",
+      "status_reason": "waiting for the schema review"
+    }
+  }
+}

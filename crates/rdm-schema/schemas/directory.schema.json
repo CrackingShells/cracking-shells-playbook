@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Directory",
+  "description": "`_dir.json`: the campaign root and every directory node.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "$ref": "#/$defs/NodeId"
+    },
+    "kind": {
+      "$ref": "#/$defs/DirectoryKind"
+    },
+    "name": {
+      "description": "The path segment; for the campaign root, the campaign slug.",
+      "$ref": "#/$defs/Name"
+    },
+    "parent_id": {
+      "description": "The directory this node is in. Absent exactly for the campaign root.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NodeId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "order": {
+      "description": "Position among siblings. Absent exactly for the campaign root.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OrderKey"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Reference"
+      }
+    },
+    "goal": {
+      "type": "string"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "success_gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Criterion"
+      }
+    },
+    "gotchas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Mark"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "name",
+    "title",
+    "context",
+    "references",
+    "goal",
+    "preconditions",
+    "success_gates",
+    "gotchas",
+    "notes",
+    "marks"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "DirectoryKind": {
+      "description": "`Directory.kind`.",
+      "type": "string",
+      "enum": [
+        "campaign",
+        "directory"
+      ]
+    },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "OrderKey": {
+      "description": "The position of a node among its siblings. Opaque: its format and how a key is made\nbetween two others are `store.md`'s (§Order key). Compared as given, never parsed.",
+      "type": "string"
+    },
+    "Reference": {
+      "description": "An element of `references`.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node_id": {
+          "description": "The campaign node the reference names, when it names one. `target` is then absent: it is\nderived on read from the path of that node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "Criterion": {
+      "description": "An element of `preconditions` or `success_gates`.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Stable id, minted at creation, never a position (`Stable identity`).",
+          "$ref": "#/$defs/CriterionId"
+        },
+        "text": {
+          "type": "string"
+        },
+        "met": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "met"
+      ],
+      "additionalProperties": true
+    },
+    "CriterionId": {
+      "type": "string",
+      "pattern": "^c_[0123456789abcdefghjkmnpqrstvwxyz]{6}$"
+    },
+    "Mark": {
+      "description": "An element of `Leaf.marks` or `Directory.marks`: one change of one criterion's `met`.",
+      "type": "object",
+      "properties": {
+        "ts": {
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "criterion_id": {
+          "description": "The `id` of the criterion, in `preconditions` or `success_gates`. Never a position.",
+          "$ref": "#/$defs/CriterionId"
+        },
+        "met": {
+          "description": "The new value of `met`.",
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the mark was made. Required and not blank when `correction` is `true`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correction": {
+          "description": "`true` when the mark was made on a finished node.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ts",
+        "actor",
+        "criterion_id",
+        "met"
+      ],
+      "additionalProperties": true
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    }
+  }
+}

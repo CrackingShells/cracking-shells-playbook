@@ -1,0 +1,14 @@
+[package]
+name = "rdm-schema"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Stored types, read-model types and version constants of the rdm roadmap format"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+schemars = "1"

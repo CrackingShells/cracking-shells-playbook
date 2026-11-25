@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Receipt",
+  "description": "What a primitive returns: its result and where the campaign stands after it.",
+  "type": "object",
+  "properties": {
+    "result": {
+      "$ref": "#/$defs/Deleted"
+    },
+    "amendment": {
+      "description": "The one amendment the operation wrote, if any.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AmendmentId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tree_rev": {
+      "description": "After the write.",
+      "$ref": "#/$defs/TreeRev"
+    },
+    "replayed": {
+      "description": "`true`: nothing was written and the first outcome is returned.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "result",
+    "tree_rev",
+    "replayed"
+  ],
+  "$defs": {
+    "Deleted": {
+      "description": "The result of a delete.",
+      "type": "object",
+      "properties": {
+        "removed": {
+          "description": "The removed nodes, in pre-order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeId"
+          }
+        },
+        "referrers": {
+          "description": "The records outside the subtree that point into it, `Report` links only.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Referrer"
+          }
+        }
+      },
+      "required": [
+        "removed",
+        "referrers"
+      ]
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "Referrer": {
+      "description": "One record that points at a node, as the reverse index and the delete report give it.",
+      "type": "object",
+      "properties": {
+        "link": {
+          "description": "The index of the row of [`LINKS`] this referrer follows.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "from": {
+          "$ref": "#/$defs/RecordRef"
+        },
+        "at": {
+          "description": "The concrete JSON pointer of the field in `from`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "link",
+        "from",
+        "at"
+      ]
+    },
+    "RecordRef": {
+      "description": "A record that holds a link.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "node": {
+              "$ref": "#/$defs/NodeId"
+            }
+          },
+          "required": [
+            "node"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "comment": {
+              "$ref": "#/$defs/CommentId"
+            }
+          },
+          "required": [
+            "comment"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "amendment": {
+              "$ref": "#/$defs/AmendmentId"
+            }
+          },
+          "required": [
+            "amendment"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    }
+  }
+}

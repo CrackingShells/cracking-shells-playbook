@@ -1,24 +1,26 @@
 # M1 Core foundation
 
-**Goal**: `rdm-core` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.
+**Goal**: `rdm-schema` holds the contracts every layer consumes (stored types, campaign model, move table as data, store operation types, declared links, version chain), and `rdm-engine` stores a campaign as flat, id-addressed JSON files that N processes read without coordination and write without losing or tearing a write, served hot from memory by a long-lived process.
 **Pre-conditions**:
-- [ ] `../m0_feasibility_spike.md` is `done` with a go
-- [ ] `../m0b_domain_model_spec.md` is `done`
-- [ ] Reminder `skills-rdm-M1` read
+- [x] `../m0_feasibility_spike.md` is `done` with a go
+- [x] `../m0b_domain_model_spec.md` is `done`
+- [x] Reminder `skills-rdm-M1` read
 **Success Gates**:
-- ⬜ `rdm-core` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message
-- ⬜ Canonical serialisation round-trips byte for byte, and unknown fields survive a read and a write (I12)
-- ⬜ A multi-process test with kill injection at every journal stage passes on macOS, Linux and Windows: no lost update, no state that fails to load (I3)
-- ⬜ A write presenting a stale revision is refused and changes nothing (I4)
-- ⬜ A node's `id` is unchanged by a rename or a move (I7)
-**References**: [R01 §Data Model, §Concurrency, §Contracts & Invariants](../../../__design__/rdm/architecture.md) — the file layout, the schema sketch, the lock, the journal and the revisions
+- ✅ `__design__/rdm/store.md` and `__design__/rdm/contracts.md` are reviewed by Eliott, and R01 matches them in the same merge
+- ✅ `rdm-engine` holds no stored or contract type of its own and depends on `rdm-schema`; `MOVES` matches the move table of `statuses.md` and the declared links cover every id field
+- ✅ Every older format version reads through the version chain; a newer one is refused with `NewerFormat` before anything else is parsed
+- ✅ Canonical files round-trip byte for byte, valid non-canonical input re-encodes canonically, and unknown fields survive (I12)
+- ✅ Every write prefix of every store operation loads and recovers to the state before or after it, and a multi-process kill test on macOS, Linux and Windows loses no acknowledged write (I3)
+- ✅ A write presenting a stale revision is refused and changes nothing (I4); a rename or move writes one file and changes no `id` (I7); the reverse link index always equals a full scan
+- ✅ A cached read equals a cold read at that moment for every kind of external change (I10)
+**References**: [R01 §Data Model, §Concurrency, §Contracts & Invariants](../../../__design__/rdm/architecture.md) — superseded where amendment A2 says so; [A2 gap analysis](../../../__reports__/m1-core-foundation/00-gap_analysis_v0.md) — the rulings of 2026-11-25 this leaf implements
 
 ## Step 1: Plan the milestone
 
 **Goal**: The campaign `__roadmap__/m1-core-foundation/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding: the id minting, to the format M0b fixes; canonical JSON (field order, line arrays for prose) over the `rdm-schema` types; how the store reads the format version; the lock crate (std's file lock needs a newer toolchain than the MSRV); the journal format and its recovery rule; the revision hash; how the multi-process test injects failures and how it runs on three operating systems; the error type consumers will map.
-Adversarial verification is required for the store, lock and journal (silent data loss). The schemas were settled in M0b.
+In plan mode, author the campaign with `managing-roadmaps` from the A2 gap analysis: two design leaves first (`store.md`: flat layout, id format and minting, ordered writes and their recovery, lock, revisions, cache revalidation; `contracts.md`: id inventory, campaign model, move table as data, operation and error types, declared links, version chain), reviewed by Eliott before any code; then the contracts, the filesystem primitives and the CI matrix; the codec and version layer; the store; the crash test and the hot cache. Each leaf's gates are the guards of the campaign's test design.
+Adversarial verification is required for the store, the lock, the intent record and the cache (silent data loss). Tool input and output stay with M4.
 **Deliverables**: `__roadmap__/m1-core-foundation/README.md` and its leaves
 **Consistency Checks**: `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/` (expected: PASS)
 **Commit**: `chore(roadmap): plan the m1-core-foundation milestone`
@@ -28,9 +30,9 @@ Adversarial verification is required for the store, lock and journal (silent dat
 **Goal**: The milestone campaign is executed and lands on `main`.
 **Implementation Logic**:
 Execute the campaign on `feat/m1-core-foundation`, then land it on `main` through the lane the `writing-release` skill assigns, as one merge commit. Git management follows the `writing-history` skill. The Success Gates above must pass on `main` after the merge. If a design decision changed, `__design__/rdm/architecture.md` changes in the same merge.
-**Deliverables**: `crates/rdm-core` modules for the store (lock, atomic writes, journal, revisions) over the `rdm-schema` types; the multi-process test
-**Consistency Checks**: `cargo test -p rdm-core` (expected: PASS)
-**Commit**: `feat(rdm-core): land the core foundation`
+**Deliverables**: the contract types in `crates/rdm-schema`; `crates/rdm-engine` modules for the filesystem primitives, codec and version chain, store and cache; the crash and multi-process tests; the three-OS CI matrix
+**Consistency Checks**: `cargo test --workspace --locked` (expected: PASS)
+**Commit**: `feat(rdm-engine): land the core foundation`
 
 ## Step 3: Close out
 

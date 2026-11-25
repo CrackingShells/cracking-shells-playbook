@@ -1,0 +1,34 @@
+{
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
+  "projection": "amendments",
+  "campaign": {
+    "id": "n_8x4k2r7c",
+    "path": "__roadmap__/roadmap-mcp-rework",
+    "title": "rdm rework — meta-roadmap"
+  },
+  "tree_rev": "2943c80472b1cd8a",
+  "total": 1,
+  "amendments": [
+    {
+      "id": "01JD3K5M7P9R1T3W5Y7A9C1E3G",
+      "display_id": "A1",
+      "legacy_id": "A1",
+      "ts": "2026-11-16T00:00:00Z",
+      "actor": {
+        "kind": "import"
+      },
+      "description": "No milestone owned the domain model; also edits the planned leaves m0, m1, m2, m4, m6, m7 and this README, and Eliott chose to keep the label M0b",
+      "source": "__reports__/rdm_domain_model_review/01-gap_analysis_v0.md",
+      "has_snapshot": false,
+      "changes": [
+        {
+          "node_id": "n_6e1g4j9p",
+          "op": "add",
+          "node_path": "m0b_domain_model_spec",
+          "node_title": "M0b Domain model spec"
+        }
+      ]
+    }
+  ]
+}

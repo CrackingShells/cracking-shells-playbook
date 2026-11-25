@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AmendmentsView",
+  "description": "The amendment log.",
+  "type": "object",
+  "properties": {
+    "read_model_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "format_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "campaign": {
+      "$ref": "#/$defs/CampaignRef"
+    },
+    "tree_rev": {
+      "$ref": "#/$defs/TreeRev"
+    },
+    "total": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "amendments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AmendmentEntry"
+      }
+    }
+  },
+  "required": [
+    "read_model_version",
+    "format_version",
+    "projection",
+    "campaign",
+    "tree_rev",
+    "total",
+    "amendments"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "Projection": {
+      "description": "Which projection a payload is.",
+      "type": "string",
+      "enum": [
+        "outline",
+        "node",
+        "ready",
+        "amendments"
+      ]
+    },
+    "CampaignRef": {
+      "description": "Identity of the campaign in an envelope.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "TreeRev": {
+      "description": "The revision of the campaign (`store.md`, §Revisions). Consumers compare for equality and\nnever parse.",
+      "type": "string"
+    },
+    "AmendmentEntry": {
+      "description": "One amendment of the log.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/AmendmentId"
+        },
+        "display_id": {
+          "type": "string"
+        },
+        "legacy_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correction": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "has_snapshot": {
+          "type": "boolean"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChangeView"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "display_id",
+        "ts",
+        "actor",
+        "description",
+        "has_snapshot",
+        "changes"
+      ],
+      "additionalProperties": true
+    },
+    "AmendmentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    },
+    "ChangeView": {
+      "description": "A stored change plus the node's current path and title.",
+      "type": "object",
+      "properties": {
+        "node_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "op": {
+          "$ref": "#/$defs/ChangeOp"
+        },
+        "item_id": {
+          "description": "The id of the sub-item (a criterion or a step) the change names; `field` is then a pointer\ninside it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "field": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "old": true,
+        "new": true
+      },
+      "required": [
+        "node_id",
+        "op"
+      ],
+      "additionalProperties": true
+    },
+    "ChangeOp": {
+      "description": "`Change.op`.",
+      "type": "string",
+      "enum": [
+        "add",
+        "remove",
+        "set",
+        "rename",
+        "move"
+      ]
+    },
+    "ItemId": {
+      "type": "string",
+      "pattern": "^(c_[0123456789abcdefghjkmnpqrstvwxyz]{6}|s_[0123456789abcdefghjkmnpqrstvwxyz]{6})$"
+    }
+  }
+}

@@ -10,13 +10,13 @@
 - ⬜ An author, execute, amend cycle on a campaign runs from an agent session with no shell call
 - ⬜ Every tool handler maps to one core call (I2), and every call names its campaign (I10)
 - ⬜ Tool results stay within a stated size budget on the largest existing campaign
-**References**: [R01 §Tool surface (suggestion), §Contracts & Invariants](../../../../../../__design__/rdm/architecture.md) — the suggested tools and the constraints that are fixed
+**References**: [R01 §Tool surface (suggestion), §Contracts & Invariants](../../../../../../__design__/rdm/architecture.md) — the suggested tools and the constraints that are fixed; [M0 spike knowledge transfer](../../../../../../__reports__/m0-feasibility-spike/01-knowledge_transfer_v0.md) — the throwaway `crates/rdm-mcp` was deleted at M1; the `rmcp` 3.10 stdio wiring can be read back with `git show 58a4a30:crates/rdm-mcp/…`; [M1 knowledge transfer](../../../../../../__reports__/m1-core-foundation/04-knowledge_transfer_v0.md) — the items M1 carried to M4 (§Carried forward)
 
 ## Step 1: Plan the milestone
 
 **Goal**: The campaign `__roadmap__/m4-mcp-server/` exists and Eliott has approved it.
 **Implementation Logic**:
-In plan mode, author the campaign with `managing-roadmaps`, deciding: the final tool list, names and order (R01's table is a suggestion: keep it small, and keep one tool for every re-branching and move and one for status including `done`); input schemas and the envelope around the read-model types; the error mapping from core errors to tool errors; output size budgets and pagination; which tools are safe to allow-list for unattended runs; how conformance is run in CI; what the server answers a host that lacks MCP Apps.
+In plan mode, author the campaign with `managing-roadmaps`, deciding: the final tool list, names and order (R01's table is a suggestion: keep it small, and keep one tool for every re-branching and move and one for status including `done`); input schemas, which wrap the store operation request types M1 froze in `rdm-schema` (amendment A2), and the envelope around the read-model types; the error mapping from M1's error type to tool errors; output size budgets and pagination; which tools are safe to allow-list for unattended runs; how conformance is run in CI; what the server answers a host that lacks MCP Apps.
 Adversarial verification is required for the error mapping and the stale-revision path only; the rest is checked by conformance.
 **Deliverables**: `__roadmap__/m4-mcp-server/README.md` and its leaves
 **Consistency Checks**: `bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m4-mcp-server/` (expected: PASS)

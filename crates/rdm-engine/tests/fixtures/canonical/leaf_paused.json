@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.1.0",
+  "id": "n_2c5h8k4p",
+  "kind": "leaf",
+  "name": "codec",
+  "parent_id": "n_3d9f6h1v",
+  "order": "k",
+  "title": "Codec and versions",
+  "status": "paused",
+  "status_reason": "waiting for the schema freeze",
+  "goal": "The codec writes one canonical text.",
+  "preconditions": [
+    {
+      "id": "c_2n6r0b",
+      "text": "The schema leaf is done",
+      "met": true
+    }
+  ],
+  "success_gates": [
+    {
+      "id": "c_8m2xqv",
+      "text": "A canonical file round-trips byte for byte",
+      "met": false
+    }
+  ],
+  "references": [],
+  "steps": [
+    {
+      "id": "s_0f4tzn",
+      "title": "Canonical encoding",
+      "goal": "One value has exactly one text.",
+      "implementation_logic": [
+        "Write the fixtures first.",
+        "",
+        "  - indented line, then a blank one above"
+      ],
+      "deliverables": [
+        "`crates/rdm-engine/src/codec.rs`",
+        "`crates/rdm-engine/tests/codec.rs`"
+      ],
+      "references": [
+        {
+          "title": "The version chain",
+          "target": "__design__/rdm/contracts.md",
+          "note": "Reading order"
+        }
+      ],
+      "checks": [
+        {
+          "text": "`cargo test -p rdm-engine --test codec` (expected: PASS)",
+          "expected": "PASS",
+          "command": "cargo test -p rdm-engine --test codec"
+        },
+        {
+          "text": "a prose check",
+          "expected": "FAIL"
+        }
+      ],
+      "commit": {
+        "type": "feat",
+        "breaking": true,
+        "summary": "add the canonical node encoding: two parts"
+      },
+      "requires": [
+        "the schema leaf"
+      ],
+      "done": true,
+      "commit_sha": "b6af8f3",
+      "done_at": "2026-11-25T14:00:00Z"
+    }
+  ],
+  "progress": {
+    "commits": 3,
+    "notes": []
+  },
+  "history": [
+    {
+      "ts": "2026-11-25T12:00:00Z",
+      "from": "ongoing",
+      "to": "paused",
+      "actor": {
+        "kind": "agent",
+        "name": "implementer"
+      },
+      "reason": "waiting for the schema freeze",
+      "override": false,
+      "op_id": "op-9",
+      "correction": false
+    }
+  ],
+  "marks": []
+}

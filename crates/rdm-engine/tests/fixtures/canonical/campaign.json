@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1.0",
+  "id": "n_8x4k2r7c",
+  "kind": "campaign",
+  "name": "m1_core_foundation",
+  "title": "M1 Core foundation",
+  "context": [
+    "The campaign root: the one node with no parent and no order."
+  ],
+  "references": [
+    {
+      "title": "The store layout",
+      "target": "__design__/rdm/store.md"
+    }
+  ],
+  "goal": "The store holds a roadmap as JSON files.",
+  "preconditions": [
+    {
+      "id": "c_4d7k1h",
+      "text": "The schema is frozen",
+      "met": true
+    }
+  ],
+  "success_gates": [
+    {
+      "id": "c_6v0e3r",
+      "text": "The codec round-trips",
+      "met": false
+    }
+  ],
+  "gotchas": [],
+  "notes": [],
+  "marks": [
+    {
+      "ts": "2026-11-25T09:00:00Z",
+      "actor": {
+        "kind": "import"
+      },
+      "criterion_id": "c_4d7k1h",
+      "met": true
+    }
+  ]
+}

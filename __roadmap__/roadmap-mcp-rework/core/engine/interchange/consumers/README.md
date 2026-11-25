@@ -1,7 +1,7 @@
 # Consumers
 
 ## Context
-Depth 4. Runs after the core is complete. M4 (MCP server, for agents) and M5 (CLI, for humans) are independent thin layers over `rdm-core` and run in parallel.
+Depth 4. Runs after the core is complete. M4 (MCP server, for agents) and M5 (CLI, for humans) are independent thin layers over `rdm-engine` and run in parallel.
 
 ## Goal
 Agents and humans reach every core operation, through MCP tools and through `rdm`, with the same results.

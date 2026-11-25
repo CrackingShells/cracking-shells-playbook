@@ -1,0 +1,113 @@
+{
+  "read_model_version": "0.1.0",
+  "format_version": "0.1.0",
+  "projection": "node",
+  "campaign": {
+    "id": "n_8x4k2r7c",
+    "path": "__roadmap__/roadmap-mcp-rework",
+    "title": "rdm rework — meta-roadmap"
+  },
+  "tree_rev": "2943c80472b1cd8a",
+  "node": {
+    "id": "n_7k3q9x2m",
+    "path": "core/m1_core_foundation",
+    "parent": "core",
+    "kind": "leaf",
+    "rev": "720b6a14886f16d4",
+    "title": "M1 Core foundation",
+    "status": "planned",
+    "level": 1,
+    "level_source": "depth",
+    "ready": false,
+    "held_by": [
+      "n_2b5t8w0z",
+      "n_6e1g4j9p"
+    ],
+    "finished": false,
+    "correction_count": 0,
+    "goal": "`rdm-engine` stores a roadmap as JSON, one file per node, and N processes can read and write one campaign without losing or tearing a write.",
+    "preconditions": [
+      {
+        "id": "c_2n6r0b",
+        "text": "`../m0_feasibility_spike.md` is `done` with a go",
+        "met": false
+      },
+      {
+        "id": "c_5g8j2c",
+        "text": "`../m0b_domain_model_spec.md` is `done`",
+        "met": false
+      },
+      {
+        "id": "c_9t3w5z",
+        "text": "Reminder `skills-rdm-M1` read",
+        "met": false
+      }
+    ],
+    "success_gates": [
+      {
+        "id": "c_8m2xqv",
+        "text": "`rdm-engine` depends on `rdm-schema` for every stored type and holds none of its own; a file with a newer format major is refused with an upgrade message",
+        "met": false
+      }
+    ],
+    "references": [
+      {
+        "label": "R01",
+        "title": "§Data Model, §Concurrency, §Contracts & Invariants",
+        "target": "../../__design__/rdm/architecture.md",
+        "note": "the file layout, the schema sketch, the lock, the journal and the revisions"
+      }
+    ],
+    "steps": [
+      {
+        "id": "s_0f4tzn",
+        "number": 1,
+        "title": "Plan the milestone",
+        "goal": "The campaign `__roadmap__/m1-core-foundation/` exists and Eliott has approved it.",
+        "implementation_logic": [
+          "In plan mode, author the campaign with `managing-roadmaps`, deciding: the id minting, to the format M0b fixes; … [cut]"
+        ],
+        "deliverables": [
+          "`__roadmap__/m1-core-foundation/README.md` and its leaves"
+        ],
+        "references": [],
+        "checks": [
+          {
+            "text": "`bash skills/managing-roadmaps/scripts/dirtree-rdm.sh validate __roadmap__/m1-core-foundation/`",
+            "expected": "PASS"
+          }
+        ],
+        "commit": {
+          "type": "chore",
+          "scope": "roadmap",
+          "breaking": false,
+          "summary": "plan the m1-core-foundation milestone"
+        },
+        "done": false
+      }
+    ],
+    "progress": {
+      "notes": []
+    },
+    "step_progress": {
+      "done": 0,
+      "total": 3
+    },
+    "history": [],
+    "marks": [],
+    "comments": [],
+    "amendments": []
+  },
+  "holders": {
+    "n_2b5t8w0z": {
+      "path": "m0_feasibility_spike",
+      "title": "M0 Feasibility spike",
+      "status": "ongoing"
+    },
+    "n_6e1g4j9p": {
+      "path": "m0b_domain_model_spec",
+      "title": "M0b Domain model spec",
+      "status": "ongoing"
+    }
+  }
+}

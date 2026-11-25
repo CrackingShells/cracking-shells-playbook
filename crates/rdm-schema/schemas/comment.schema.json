@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Comment",
+  "description": "`_comments/<ulid>.json`.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "$ref": "#/$defs/CommentId"
+    },
+    "node_id": {
+      "$ref": "#/$defs/NodeId"
+    },
+    "ts": {
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "text": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "op_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "node_id",
+    "ts",
+    "actor",
+    "text"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "CommentId": {
+      "type": "string",
+      "pattern": "^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$"
+    },
+    "NodeId": {
+      "type": "string",
+      "pattern": "^n_[0123456789abcdefghjkmnpqrstvwxyz]{8}$"
+    },
+    "Actor": {
+      "description": "Who made a move, a comment or an amendment.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "ActorKind": {
+      "description": "`Actor.kind`.",
+      "type": "string",
+      "enum": [
+        "agent",
+        "human",
+        "import"
+      ]
+    },
+    "OpId": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]{1,128}$"
+    }
+  }
+}
