@@ -16,7 +16,7 @@ R01 and `read-model.md` describe the design of `store.md` and `contracts.md`.
 ## Status
 ```mermaid
 graph TD
-    r01_sync[R01 sync]:::planned
+    r01_sync[R01 sync]:::done
     build[Build]:::planned
     classDef done       fill:#166534,color:#bbf7d0
     classDef inprogress fill:#854d0e,color:#fef08a
@@ -28,7 +28,7 @@ graph TD
 ## Nodes
 | Node | Type | Status |
 |:-----|:-----|:-------|
-| `r01_sync.md` | 📄 Leaf Task | ⬜ Planned |
+| `r01_sync.md` | 📄 Leaf Task | ✅ Done |
 | `build/` | 📁 Directory | ⬜ Planned |
 
 ## Amendment Log

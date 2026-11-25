@@ -18,7 +18,7 @@ Milestone M1 of the rdm meta-roadmap (`__roadmap__/roadmap-mcp-rework/core/m1_co
 - [x] The shared target directory `$CARGO_TARGET_DIR` is set for every agent (see Gotchas)
 
 ## Success Gates
-- ⬜ Eliott has reviewed `__design__/rdm/store.md` and `__design__/rdm/contracts.md`, and R01 matches them in the same merge
+- ✅ Eliott has reviewed `__design__/rdm/store.md` and `__design__/rdm/contracts.md`, and R01 matches them in the same merge
 - ⬜ `cargo test --workspace --locked` and `cargo +1.88 check --workspace --locked` pass on `feat/m1-core-foundation`
 - ⬜ The three-OS CI matrix (macOS, Linux, Windows) and the MSRV job are green on `feat/m1-core-foundation`, soak included
 - ⬜ `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes: no confirm is left
