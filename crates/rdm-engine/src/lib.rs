@@ -11,7 +11,8 @@
 //! - Reads and writes: [`store`] (the state and its options), [`cache`] (the entries and the
 //!   handle), [`mod@write`] (the write algorithm and recovery).
 //! - Primitives under the writes: [`fs`] (the `Fs` trait, `atomic_replace`), [`lock`] (the writer
-//!   lock and its holder record) and [`intent`] (the redo record). Every effect goes through
+//!   lock and its holder record) and [`intent`] (the redo record), with `layout`
+//!   owning every path under `.rdm/`. Every effect goes through
 //!   [`fs::Fs`], so a recording implementation can log them in order.
 //! Filesystem primitives of the rdm store: atomic file replacement, the writer lock with its
 //! holder record, and the intent record. Every effect goes through the [`fs::Fs`] trait so a
@@ -24,6 +25,7 @@ pub mod codec;
 pub mod fs;
 pub mod ids;
 pub mod intent;
+pub(crate) mod layout;
 pub mod links;
 pub mod lock;
 pub mod order;

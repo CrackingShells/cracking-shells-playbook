@@ -7,7 +7,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
 
 use rdm_schema::campaign::{Campaign, node_file};
 use rdm_schema::diff::{diff, is_state};
@@ -29,6 +28,7 @@ use crate::clock::{rfc3339, unix_ms};
 use crate::codec::{decode, encode};
 use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
+use crate::layout;
 use crate::links::Record;
 use crate::lock::{LockError, WriterLock};
 use crate::order::{MAX_KEY_LEN, between, spread};
@@ -125,10 +125,6 @@ impl Store {
         &*self.options.fs
     }
 
-    fn tmp_dir(&self) -> PathBuf {
-        self.root.join(".rdm").join("tmp")
-    }
-
     fn now(&self) -> std::time::SystemTime {
         (self.options.clock)()
     }
@@ -162,24 +158,24 @@ impl Store {
                     holder: holder.and_then(|b| serde_json::from_slice(&b).ok()),
                 })
             }
-            Err(LockError::Io(e)) => Err(io_error(".rdm/lock", &e)),
+            Err(LockError::Io(e)) => Err(io_error(layout::LOCK_NAME, &e)),
         }
     }
 
     /// Makes sure `.rdm/.gitignore` holds `*`, so the repository needs no entry of its own.
     fn ignore_scratch(&self) -> Result<(), StoreError> {
-        let path = self.root.join(".rdm").join(".gitignore");
+        let path = layout::gitignore_path(&self.root);
         match self.fs().read(&path) {
             Ok(_) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => publish::put(
                 self.fs(),
                 &path,
-                &self.tmp_dir(),
+                &layout::tmp_dir(&self.root),
                 b"*\n",
                 self.options.durability,
             )
-            .map_err(|e| io_error(".rdm/.gitignore", &e)),
-            Err(e) => Err(io_error(".rdm/.gitignore", &e)),
+            .map_err(|e| io_error(layout::GITIGNORE_NAME, &e)),
+            Err(e) => Err(io_error(layout::GITIGNORE_NAME, &e)),
         }
     }
 
@@ -189,23 +185,24 @@ impl Store {
         let fs = self.fs();
         let tier = self.options.durability;
         let mut report = Recovered::default();
-        let tmp = self.tmp_dir();
+        let tmp = layout::tmp_dir(&self.root);
         match fs.list_dir(&tmp) {
             Ok(names) => {
                 for name in names {
                     match fs.remove_file(&tmp.join(&name)) {
                         Ok(()) => report.stray_temp_files += 1,
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                        Err(e) => return Err(io_error(&format!(".rdm/tmp/{name}"), &e)),
+                        Err(e) => return Err(io_error(&layout::tmp_file_name(&name), &e)),
                     }
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => return Err(io_error(".rdm/tmp", &e)),
+            Err(e) => return Err(io_error(layout::TMP_NAME, &e)),
         }
-        let pending = intent::pending(fs, &self.root).map_err(|e| io_error(".rdm/intent", &e))?;
+        let pending =
+            intent::pending(fs, &self.root).map_err(|e| io_error(layout::INTENT_NAME, &e))?;
         for p in pending {
-            let file = format!(".rdm/intent/{}.json", p.ulid());
+            let file = layout::intent_record_name(p.ulid());
             match p {
                 Pending::Newer { found, .. } => {
                     let found = u16::try_from(found).unwrap_or(u16::MAX);
@@ -252,9 +249,10 @@ impl Store {
         effect: &IntentEffect,
         existing: ExistingCreate,
     ) -> Result<(), StoreError> {
-        let (fs, tier, tmp) = (self.fs(), self.options.durability, self.tmp_dir());
+        let (fs, tier) = (self.fs(), self.options.durability);
+        let tmp = layout::tmp_dir(&self.root);
         let path = effect.path();
-        let dest = self.root.join(path);
+        let dest = layout::record_path(&self.root, path);
         let io_err = |e: io::Error| io_error(path, &e);
         let holds = |bytes: &str| fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes());
         match effect {
@@ -885,14 +883,14 @@ impl Store {
                 &Intent::new(plan.effects.clone()),
                 tier,
             )
-            .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
+            .map_err(|e| io_error(&layout::intent_record_name(ulid), &e))?;
         }
         for effect in &plan.effects {
             self.apply_effect(effect, ExistingCreate::Collision)?;
         }
         if let Some(ulid) = &intent_ulid {
             intent::complete(fs, &self.root, ulid, tier)
-                .map_err(|e| io_error(&format!(".rdm/intent/{ulid}.json"), &e))?;
+                .map_err(|e| io_error(&layout::intent_record_name(ulid), &e))?;
         }
         Ok(())
     }
