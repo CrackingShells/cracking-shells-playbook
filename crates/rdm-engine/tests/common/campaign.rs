@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 use rdm_engine::codec::encode;
@@ -11,11 +12,14 @@ use rdm_engine::fs::Fs;
 use rdm_engine::ids::IdRng;
 use rdm_engine::store::Options;
 use rdm_schema::ids::*;
-use rdm_schema::ops::{EditNote, Header};
+use rdm_schema::ops::{EditNote, Header, Request};
 use rdm_schema::stored::*;
 use std::sync::Arc;
 
-const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
+/// The schema version every builder stamps.
+pub const SCHEMA_VERSION: &str = "0.1.0";
+
+pub const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
 
 /// A deterministic id body of `len` characters for `n`.
 pub fn body(mut n: u32, len: usize) -> String {
@@ -40,6 +44,25 @@ pub fn file_of(id: &NodeId) -> String {
     format!("nodes/{id}.json")
 }
 
+/// `file_of` for the node numbered `n`.
+pub fn file(n: u32) -> String {
+    file_of(&nid(n))
+}
+
+pub fn cid(n: u32) -> CriterionId {
+    CriterionId::parse(&format!("c_{}", body(n, 6))).unwrap()
+}
+
+/// A criterion no builder makes, named by `n`.
+pub fn extra_criterion(n: u32) -> Criterion {
+    Criterion {
+        id: cid(n),
+        text: format!("criterion {n}"),
+        met: false,
+        extra: Default::default(),
+    }
+}
+
 /// The ids of the criteria and the step of a node are derived from its own id, so they are
 /// unique wherever the node id is.
 fn item(prefix: &str, lead: char, id: &NodeId) -> String {
@@ -59,7 +82,7 @@ fn criterion(lead: char, id: &NodeId) -> Criterion {
 /// A directory (`parent` given) or the campaign root (`parent` none).
 pub fn dir_node(id: NodeId, nm: &str, parent: Option<NodeId>, order: &str) -> Node {
     Node::Directory(Directory {
-        schema_version: "0.1.0".into(),
+        schema_version: SCHEMA_VERSION.into(),
         kind: if parent.is_some() {
             DirectoryKind::Directory
         } else {
@@ -84,7 +107,7 @@ pub fn dir_node(id: NodeId, nm: &str, parent: Option<NodeId>, order: &str) -> No
 
 pub fn leaf_node(id: NodeId, nm: &str, parent: NodeId, order: &str) -> Node {
     Node::Leaf(Leaf {
-        schema_version: "0.1.0".into(),
+        schema_version: SCHEMA_VERSION.into(),
         kind: LeafKind::Leaf,
         name: name(nm),
         parent_id: parent,
@@ -142,6 +165,33 @@ pub fn leaf_node(id: NodeId, nm: &str, parent: NodeId, order: &str) -> Node {
     })
 }
 
+/// `dir_node` with numbered nodes.
+pub fn dir_n(n: u32, nm: &str, parent: Option<u32>, order: &str) -> Node {
+    dir_node(nid(n), nm, parent.map(nid), order)
+}
+
+/// `leaf_node` with numbered nodes.
+pub fn leaf_n(n: u32, nm: &str, parent: u32, order: &str) -> Node {
+    leaf_node(nid(n), nm, nid(parent), order)
+}
+
+/// The sound campaign most rows start from:
+///
+/// ```text
+/// demo (1)
+///   core (2)         alpha (3), beta (4)
+///   spare (5)
+/// ```
+pub fn base() -> Vec<Node> {
+    vec![
+        dir_n(1, "demo", None, ""),
+        dir_n(2, "core", Some(1), "V"),
+        leaf_n(3, "alpha", 2, "V"),
+        leaf_n(4, "beta", 2, "k"),
+        dir_n(5, "spare", Some(1), "k"),
+    ]
+}
+
 /// Writes `nodes` as the campaign `demo` under a fresh temporary directory.
 pub struct Disk {
     pub _tmp: tempfile::TempDir,
@@ -149,30 +199,80 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn with(nodes: &[Node]) -> Self {
+    /// An empty campaign directory.
+    pub fn new() -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("demo");
         std::fs::create_dir_all(root.join("nodes")).unwrap();
-        for n in nodes {
-            std::fs::write(root.join(file_of(n.id())), encode(n)).unwrap();
-        }
         Self { _tmp: tmp, root }
+    }
+
+    pub fn with(nodes: &[Node]) -> Self {
+        let disk = Self::new();
+        disk.write_all(nodes);
+        disk
+    }
+
+    pub fn write(&self, node: &Node) {
+        std::fs::write(self.root.join(file_of(node.id())), encode(node)).unwrap();
+    }
+
+    pub fn write_all(&self, nodes: &[Node]) {
+        nodes.iter().for_each(|n| self.write(n));
+    }
+
+    pub fn path(&self, rel: &str) -> PathBuf {
+        self.root.join(rel)
+    }
+}
+
+/// Runs git in `dir`, which must succeed.
+pub fn git(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+pub fn actor() -> Actor {
+    Actor {
+        kind: ActorKind::Agent,
+        name: Some("tester".into()),
+        extra: Default::default(),
     }
 }
 
 pub fn header(note: Option<&str>, op_id: Option<&str>) -> Header {
     Header {
         op_id: op_id.map(|o| OpId::parse(o).unwrap()),
-        actor: Actor {
-            kind: ActorKind::Agent,
-            name: Some("crash-test".into()),
-            extra: Default::default(),
-        },
+        actor: actor(),
         note: note.map(|d| EditNote {
             description: d.into(),
             source: None,
             correction: false,
         }),
+    }
+}
+
+pub fn req<T>(note: Option<&str>, op_id: Option<&str>, op: T) -> Request<T> {
+    Request {
+        header: header(note, op_id),
+        op,
     }
 }
 
@@ -232,7 +332,11 @@ pub fn files_of(root: &Path) -> Files {
     fn walk(dir: &Path, base: &Path, out: &mut Files) {
         for e in std::fs::read_dir(dir).unwrap() {
             let p = e.unwrap().path();
-            let rel = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             if rel == ".rdm" || rel == ".git" {
                 continue;
             }

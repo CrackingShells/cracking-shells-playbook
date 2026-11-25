@@ -6,22 +6,23 @@
 //! child), an editor writing in place, `git checkout`, a copy, an `rm`. The campaign files come
 //! from the codec and from store writes.
 
+mod common;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+use common::campaign::*;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::decode;
-use rdm_engine::codec::encode;
 use rdm_engine::fs::{Durability, Effect, FileStat, Fs, RealFs, RecordingFs};
 use rdm_engine::rev::rev;
 use rdm_engine::store::{Options, Store};
 use rdm_schema::ids::*;
 use rdm_schema::ops::{
-    BatchOp, CommentOp, CreateOp, DeleteOp, EditNote, Header, Op, Position, RelocateOp, ReplaceOp,
-    Request,
+    BatchOp, CommentOp, CreateOp, DeleteOp, Op, Position, RelocateOp, ReplaceOp,
 };
 use rdm_schema::stored::*;
 use serde_json::Value;
@@ -29,229 +30,8 @@ use serde_json::Value;
 // ---------------------------------------------------------------------------------------------
 // Building campaigns
 
-const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
-
-/// A deterministic body of `len` characters for `n`.
-fn body(mut n: u32, len: usize) -> String {
-    let a = ALPHABET.as_bytes();
-    let mut s = vec![b'0'; len];
-    for i in (0..len).rev() {
-        s[i] = a[(n % 32) as usize];
-        n /= 32;
-    }
-    String::from_utf8(s).unwrap()
-}
-
-fn nid(n: u32) -> NodeId {
-    NodeId::parse(&format!("n_{}", body(n, 8))).unwrap()
-}
-
-fn cid(n: u32) -> CriterionId {
-    CriterionId::parse(&format!("c_{}", body(n, 6))).unwrap()
-}
-
-fn sid(n: u32) -> StepId {
-    StepId::parse(&format!("s_{}", body(n, 6))).unwrap()
-}
-
-fn name(s: &str) -> Name {
-    Name::parse(s).unwrap()
-}
-
-fn criterion(n: u32) -> Criterion {
-    Criterion {
-        id: cid(n),
-        text: format!("criterion {n}"),
-        met: false,
-        extra: Default::default(),
-    }
-}
-
-/// A directory (`parent` given) or the campaign root (`parent` none).
-fn dir_node(n: u32, nm: &str, parent: Option<u32>, order: &str) -> Node {
-    Node::Directory(Directory {
-        schema_version: "0.1.0".into(),
-        id: nid(n),
-        kind: if parent.is_some() {
-            DirectoryKind::Directory
-        } else {
-            DirectoryKind::Campaign
-        },
-        name: name(nm),
-        parent_id: parent.map(nid),
-        order: parent.map(|_| OrderKey::new(order)),
-        title: format!("Directory {nm}"),
-        context: vec!["context".into()],
-        references: vec![],
-        goal: "a goal".into(),
-        preconditions: vec![criterion(n * 10 + 1)],
-        success_gates: vec![criterion(n * 10 + 2)],
-        gotchas: vec![],
-        notes: vec![],
-        marks: vec![],
-        extra: Default::default(),
-    })
-}
-
-fn leaf_node(n: u32, nm: &str, parent: u32, order: &str) -> Node {
-    Node::Leaf(Leaf {
-        schema_version: "0.1.0".into(),
-        id: nid(n),
-        kind: LeafKind::Leaf,
-        name: name(nm),
-        parent_id: nid(parent),
-        order: OrderKey::new(order),
-        title: format!("Leaf {nm}"),
-        status: Status::Planned,
-        status_reason: None,
-        goal: "a goal".into(),
-        preconditions: vec![criterion(n * 10 + 1)],
-        success_gates: vec![criterion(n * 10 + 2)],
-        references: vec![Reference {
-            label: None,
-            title: "design".into(),
-            target: Some("__design__/x.md".into()),
-            note: None,
-            node_id: None,
-            extra: Default::default(),
-        }],
-        steps: vec![Step {
-            id: sid(n * 10 + 3),
-            title: "step".into(),
-            goal: "a goal".into(),
-            implementation_logic: vec!["do it".into()],
-            deliverables: vec!["a file".into()],
-            references: vec![],
-            checks: vec![Check {
-                text: "check".into(),
-                expected: Expected::Pass,
-                command: None,
-                extra: Default::default(),
-            }],
-            commit: Commit {
-                r#type: "feat".into(),
-                scope: None,
-                breaking: false,
-                summary: "do".into(),
-                extra: Default::default(),
-            },
-            requires: None,
-            done: false,
-            commit_sha: None,
-            done_at: None,
-            extra: Default::default(),
-        }],
-        progress: Progress {
-            branch: None,
-            commits: None,
-            notes: vec![],
-            extra: Default::default(),
-        },
-        history: vec![],
-        marks: vec![],
-        extra: Default::default(),
-    })
-}
-
-/// A campaign directory under a temporary one.
-struct Disk {
-    _tmp: tempfile::TempDir,
-    root: PathBuf,
-}
-
-impl Disk {
-    fn new() -> Self {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().join("demo");
-        std::fs::create_dir_all(root.join("nodes")).unwrap();
-        Self { _tmp: tmp, root }
-    }
-
-    fn write(&self, node: &Node) {
-        std::fs::write(
-            self.root.join(format!("nodes/{}.json", node.id())),
-            encode(node),
-        )
-        .unwrap();
-    }
-
-    fn write_all(&self, nodes: &[Node]) {
-        nodes.iter().for_each(|n| self.write(n));
-    }
-
-    fn path(&self, rel: &str) -> PathBuf {
-        self.root.join(rel)
-    }
-}
-
-/// The sound campaign every row of `open_names_invalid_campaigns` starts from:
-///
-/// ```text
-/// demo (1)
-///   core (2)         alpha (3), beta (4)
-///   spare (5)
-/// ```
-fn base() -> Vec<Node> {
-    vec![
-        dir_node(1, "demo", None, ""),
-        dir_node(2, "core", Some(1), "V"),
-        leaf_node(3, "alpha", 2, "V"),
-        leaf_node(4, "beta", 2, "k"),
-        dir_node(5, "spare", Some(1), "k"),
-    ]
-}
-
-fn git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .args([
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@example.com",
-            "-c",
-            "commit.gpgsign=false",
-        ])
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .expect("git runs");
-    assert!(
-        out.status.success(),
-        "git {args:?}: {}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
 // ---------------------------------------------------------------------------------------------
 // Requests
-
-fn actor() -> Actor {
-    Actor {
-        kind: ActorKind::Agent,
-        name: Some("tester".into()),
-        extra: Default::default(),
-    }
-}
-
-fn header(note: Option<&str>, op_id: Option<&str>) -> Header {
-    Header {
-        op_id: op_id.map(|o| OpId::parse(o).unwrap()),
-        actor: actor(),
-        note: note.map(|d| EditNote {
-            description: d.into(),
-            source: None,
-            correction: false,
-        }),
-    }
-}
-
-fn req<T>(note: Option<&str>, op_id: Option<&str>, op: T) -> Request<T> {
-    Request {
-        header: header(note, op_id),
-        op,
-    }
-}
 
 fn leaf_of(store: &Store, n: u32) -> Leaf {
     match store.campaign().get(&nid(n)).unwrap() {
@@ -554,7 +334,7 @@ fn cached_read_equals_cold_read() {
                 Some("new"),
                 None,
                 CreateOp {
-                    node: leaf_node(20, "added", 2, "t"),
+                    node: leaf_n(20, "added", 2, "t"),
                     position: None,
                 },
             ))
@@ -577,7 +357,7 @@ fn cached_read_equals_cold_read() {
     // Bug caught: a cache that never lists the directory again.
     let disk = sound();
     let mut cache = opened(&disk);
-    disk.write(&leaf_node(30, "dropped-in", 2, "t"));
+    disk.write(&leaf_n(30, "dropped-in", 2, "t"));
     read_same("a file added", &mut cache, &disk.root);
     assert!(cache.read().unwrap().campaign().get(&nid(30)).is_some());
 
@@ -708,7 +488,7 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
     read_same("a content edit with an op_id", &mut cache, &root);
 
     // A node that points at another: the reverse index must learn the link.
-    let mut linked = leaf_node(21, "linked", 2, "t");
+    let mut linked = leaf_n(21, "linked", 2, "t");
     if let Node::Leaf(l) = &mut linked {
         l.references[0].target = None;
         l.references[0].node_id = Some(nid(4));
@@ -790,7 +570,7 @@ fn a_write_by_this_process_then_a_read_equals_a_cold_read() {
     let ops = vec![
         Op::Replace(edit_goal(store, 4, "batched")),
         Op::Create(CreateOp {
-            node: leaf_node(22, "batch-new", 2, "u"),
+            node: leaf_n(22, "batch-new", 2, "u"),
             position: None,
         }),
     ];
@@ -856,7 +636,7 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
     // create below is refused with `name_collision`; or a report of the recovery that the
     // write-through lost.
     let disk = sound();
-    disk.write(&leaf_node(6, "child", 5, "V"));
+    disk.write(&leaf_n(6, "child", 5, "V"));
     let pre = tempfile::tempdir().unwrap();
     copy_tree(&disk.root, &pre.path().join("demo"));
     let rec = Arc::new(RecordingFs::new(&disk.root));
@@ -906,7 +686,7 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
             Some("reuse the name"),
             None,
             CreateOp {
-                node: leaf_node(60, "spare", 1, "x"),
+                node: leaf_n(60, "spare", 1, "x"),
                 position: None,
             },
         ))
@@ -980,19 +760,6 @@ fn names_under(root: &Path) -> BTreeSet<String> {
     out
 }
 
-fn copy_tree(src: &Path, dst: &Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for e in std::fs::read_dir(src).unwrap() {
-        let e = e.unwrap();
-        let to = dst.join(e.file_name());
-        if e.path().is_dir() {
-            copy_tree(&e.path(), &to);
-        } else {
-            std::fs::copy(e.path(), &to).unwrap();
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------------------------
 // write_through_visible_to_cold_reader_on_return
 
@@ -1019,7 +786,7 @@ fn write_through_visible_to_cold_reader_on_return() {
             Some("c"),
             None,
             CreateOp {
-                node: leaf_node(40, "fresh", 2, "t"),
+                node: leaf_n(40, "fresh", 2, "t"),
                 position: None,
             },
         ))
@@ -1279,7 +1046,7 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
     // from the disk bytes: the edit survives, with its new key.
     let disk = Disk::new();
     let mut nodes = base();
-    nodes[3] = leaf_node(4, "beta", 2, "V");
+    nodes[3] = leaf_n(4, "beta", 2, "V");
     disk.write_all(&nodes);
     age(&disk.root);
     let first_seen = std::sync::Mutex::new(BTreeMap::<PathBuf, FileStat>::new());
@@ -1309,7 +1076,7 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
             Some("between"),
             None,
             CreateOp {
-                node: leaf_node(70, "between", 2, "V"),
+                node: leaf_n(70, "between", 2, "V"),
                 position: Some(Position::After(nid(3))),
             },
         ))
