@@ -9,6 +9,7 @@
 use crate::fs::{Durability, Fs, RealFs, atomic_replace};
 use crate::layout;
 use std::fs::{File, OpenOptions};
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -27,8 +28,8 @@ pub enum LockError {
     Io(io::Error),
 }
 
-impl std::fmt::Display for LockError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LockError::Busy {
                 holder: Some(bytes),

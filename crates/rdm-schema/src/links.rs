@@ -2,6 +2,8 @@
 //! another, so an update or a delete reaches every reference and a value derivable from an id is
 //! never stored. The reverse index is derived from [`LINKS`] on load, by the engine.
 
+use std::fmt;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -87,6 +89,16 @@ pub enum RecordRef {
     Node(NodeId),
     Comment(CommentId),
     Amendment(AmendmentId),
+}
+
+impl fmt::Display for RecordRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Node(id) => write!(f, "node {id}"),
+            Self::Comment(id) => write!(f, "comment {id}"),
+            Self::Amendment(id) => write!(f, "amendment {id}"),
+        }
+    }
 }
 
 /// One record that points at a node, as the reverse index and the delete report give it.

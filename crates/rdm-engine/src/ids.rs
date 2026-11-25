@@ -5,6 +5,8 @@
 //! the store mints only the ULIDs of the amendments, comments and intents it writes
 //! ([`UlidMint`]).
 
+use std::fmt;
+
 use rdm_schema::ids::{
     CRITERION_PREFIX, CriterionId, ID_ALPHABET, ITEM_BODY_LEN, NODE_BODY_LEN, NODE_PREFIX, NodeId,
     STEP_PREFIX, StepId, ULID_ALPHABET, ULID_LEN,
@@ -38,9 +40,9 @@ pub enum MintError {
     Exhausted,
 }
 
-impl std::fmt::Display for MintError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("no free id after 32 draws")
+impl fmt::Display for MintError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "no free id after {MAX_COLLISIONS} draws")
     }
 }
 

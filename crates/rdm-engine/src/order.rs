@@ -4,6 +4,8 @@
 //! Keys compare bytewise. [`between`] gives a key strictly between two bounds; [`spread`] gives
 //! `n` evenly spaced keys at once, for a rebalance or a bulk create.
 
+use std::fmt;
+
 const DIGITS: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /// A key longer than this makes an insert rebalance its siblings.
@@ -17,6 +19,17 @@ pub enum KeyError {
     /// A bound is empty, ends in `0`, or holds a character outside the digits.
     BadKey,
 }
+
+impl fmt::Display for KeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NotAscending => "the lower order key is not below the upper one",
+            Self::BadKey => "an order key is empty, ends in 0 or holds a character outside 0-9A-Za-z",
+        })
+    }
+}
+
+impl std::error::Error for KeyError {}
 
 fn value(c: u8) -> Option<usize> {
     DIGITS.iter().position(|d| *d == c)

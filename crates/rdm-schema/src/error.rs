@@ -162,6 +162,14 @@ pub struct NotInVersion {
     pub behaviour: &'static str,
 }
 
+impl fmt::Display for NotInVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "`{}` is not defined by the format's layers", self.behaviour)
+    }
+}
+
+impl std::error::Error for NotInVersion {}
+
 /// The answer of a layer: the behaviour, or `NotInVersion`.
 pub type Behaviour<T> = Result<T, NotInVersion>;
 
@@ -266,7 +274,7 @@ impl fmt::Display for StoreError {
                 version_string(*supported)
             ),
             Self::Invalid { file, rule, detail } => write!(f, "{file}: {}: {detail}", rule.code()),
-            Self::NotFound { target } => write!(f, "not found: {target:?}"),
+            Self::NotFound { target } => write!(f, "not found: {target}"),
             Self::Io { file, message } => write!(f, "{file}: {message}"),
             Self::InBatch { index, source } => write!(f, "op {index} of the batch failed: {source}"),
         }
