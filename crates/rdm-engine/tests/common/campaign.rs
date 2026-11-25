@@ -232,7 +232,7 @@ pub fn files_of(root: &Path) -> Files {
     fn walk(dir: &Path, base: &Path, out: &mut Files) {
         for e in std::fs::read_dir(dir).unwrap() {
             let p = e.unwrap().path();
-            let rel = p.strip_prefix(base).unwrap().to_string_lossy().into_owned();
+            let rel = p.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
             if rel == ".rdm" || rel == ".git" {
                 continue;
             }
