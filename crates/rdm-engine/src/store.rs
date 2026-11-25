@@ -131,6 +131,8 @@ pub struct Store {
     pub(crate) options: Options,
     pub(crate) ulids: UlidMint,
     pub(crate) state: State,
+    /// What the last recovery did, kept until the next one.
+    pub(crate) last_recovered: Option<crate::write::Recovered>,
 }
 
 pub(crate) fn io_error(file: &str, e: &io::Error) -> StoreError {
@@ -279,6 +281,7 @@ impl Store {
             options,
             ulids: UlidMint::default(),
             state,
+            last_recovered: None,
         })
     }
 

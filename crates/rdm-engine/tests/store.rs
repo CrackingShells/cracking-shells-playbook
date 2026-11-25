@@ -2614,3 +2614,240 @@ fn an_op_id_the_records_cannot_answer_is_refused_not_made_up() {
     );
     assert_eq!(snapshot(&disk), before_gone, "a refusal writes nothing");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Recovery, at the store level
+
+use rdm_engine::fs::{Durability, RealFs};
+use rdm_engine::intent::{self, INTENT_FORMAT, Intent, IntentEffect};
+use rdm_engine::lock::WriterLock;
+use std::time::Duration;
+
+const PLANTED: &str = "01M88Y1HSKTXC19PQH7AQK75A3";
+
+fn plant(disk: &Disk, effects: Vec<IntentEffect>) {
+    intent::begin(
+        &RealFs,
+        &disk.root,
+        PLANTED,
+        &Intent::new(effects),
+        Durability::default(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn an_intent_naming_a_file_outside_the_records_is_removed_not_redone() {
+    let outside = |disk: &Disk, f: &str| disk.root.parent().unwrap().join(f);
+    let rows: Vec<(&str, Box<dyn Fn(&Disk) -> IntentEffect>)> = vec![
+        (
+            "a parent directory",
+            Box::new(|_| IntentEffect::Del {
+                path: "../victim.txt".into(),
+            }),
+        ),
+        (
+            "a parent inside a record path",
+            Box::new(|_| IntentEffect::Del {
+                path: "nodes/../../victim.txt".into(),
+            }),
+        ),
+        (
+            "an absolute path",
+            Box::new(move |d| IntentEffect::Del {
+                path: outside(d, "victim.txt").display().to_string(),
+            }),
+        ),
+        (
+            "the lock file",
+            Box::new(|_| IntentEffect::Del {
+                path: ".rdm/lock".into(),
+            }),
+        ),
+        (
+            "a file of the campaign that is no record",
+            Box::new(|_| IntentEffect::Del {
+                path: "README.md".into(),
+            }),
+        ),
+        (
+            "a directory alone",
+            Box::new(|_| IntentEffect::Del {
+                path: "nodes".into(),
+            }),
+        ),
+        (
+            "a create outside",
+            Box::new(|_| IntentEffect::Create {
+                path: "../made.txt".into(),
+                bytes: "x".into(),
+            }),
+        ),
+    ];
+    for (row, effect) in rows {
+        let disk = Disk::new();
+        disk.write_all(&base());
+        let victim = disk.root.parent().unwrap().join("victim.txt");
+        std::fs::write(&victim, "keep").unwrap();
+        std::fs::write(disk.path("README.md"), "keep").unwrap();
+        // A second effect that is fine: it must not run either, the record is one unit.
+        plant(
+            &disk,
+            vec![effect(&disk), IntentEffect::Del { path: file(3) }],
+        );
+        let mut store = disk.open().unwrap();
+        let report = store.recover().unwrap();
+        assert_eq!(report.undecodable, vec![PLANTED.to_owned()], "{row}");
+        assert!(report.redone.is_empty(), "{row}");
+        assert!(victim.exists(), "{row}: the file outside is untouched");
+        assert!(disk.path("README.md").exists(), "{row}");
+        assert!(
+            disk.path(&file(3)).exists(),
+            "{row}: nothing of the record ran"
+        );
+        assert!(
+            !disk.root.parent().unwrap().join("made.txt").exists(),
+            "{row}"
+        );
+        assert!(scratch_is_empty(&disk.root), "{row}: the record is gone");
+    }
+}
+
+#[test]
+fn a_write_completes_an_interrupted_operation_first_and_keeps_the_report() {
+    let (pre_dir, _pre, post, log) = recorded(|s| {
+        let mut edited = leaf_of(s, 4);
+        edited.goal = "edit".into();
+        let ops = vec![
+            Op::Delete(delete_op(s, 5)),
+            Op::Replace(ReplaceOp {
+                expected_rev: Some(rev_of(s, 4)),
+                node: Node::Leaf(edited),
+            }),
+        ];
+        s.batch(req(
+            Some("two kinds"),
+            BatchOp {
+                expected_tree_rev: None,
+                ops,
+                dry_run: false,
+            },
+        ))
+        .unwrap();
+    });
+    let intent_at = log
+        .iter()
+        .position(|e| matches!(e, Effect::Link { link, .. } | Effect::Rename { to: link, .. } if link.starts_with(".rdm/intent")))
+        .unwrap();
+    let work_dir = tempfile::tempdir().unwrap();
+    let work = at_prefix(pre_dir.path(), &log, intent_at + 1, work_dir.path());
+    let mut store = Store::open(&work, &name("demo"), Options::default()).unwrap();
+    assert!(store.last_recovered().is_none(), "no recovery has run yet");
+    // An unrelated write: a comment on a node the interrupted operation does not touch.
+    store
+        .comment(req(
+            None,
+            CommentOp {
+                node_id: nid(3),
+                text: vec!["hi".into()],
+            },
+        ))
+        .unwrap();
+    let report = store.last_recovered().expect("the write ran a recovery");
+    assert_eq!(
+        report.redone.len(),
+        1,
+        "it completed the interrupted operation"
+    );
+    let mut now = snapshot_dir(&work);
+    now.retain(|k, _| !k.starts_with("_comments/"));
+    assert_eq!(now, post, "the interrupted operation is complete");
+    assert_eq!(store.campaign().get(&nid(5)), None);
+    // The next write recovers nothing, and the store says so.
+    store
+        .comment(req(
+            None,
+            CommentOp {
+                node_id: nid(3),
+                text: vec!["again".into()],
+            },
+        ))
+        .unwrap();
+    assert_eq!(store.last_recovered().unwrap().redone.len(), 0);
+}
+
+#[test]
+fn an_intent_newer_than_this_binary_refuses_recovery_and_every_write() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let newer = Intent {
+        format: INTENT_FORMAT + 1,
+        effects: vec![IntentEffect::Del { path: file(3) }],
+    };
+    intent::begin(&RealFs, &disk.root, PLANTED, &newer, Durability::default()).unwrap();
+    let mut store = disk.open().unwrap();
+    let before = snapshot(&disk);
+    let want = |e: StoreError| match e {
+        StoreError::NewerFormat {
+            found,
+            supported,
+            file,
+        } => {
+            assert_eq!(found, (0, u16::try_from(INTENT_FORMAT + 1).unwrap(), 0));
+            assert_eq!(supported, (0, u16::try_from(INTENT_FORMAT).unwrap(), 0));
+            assert!(file.ends_with(&format!("{PLANTED}.json")), "{file}");
+        }
+        other => panic!("want NewerFormat, got {other:?}"),
+    };
+    want(store.recover().unwrap_err());
+    let mut edited = leaf_of(&store, 3);
+    edited.goal = "edit".into();
+    let rev = rev_of(&store, 3);
+    want(
+        store
+            .replace(replace_req(
+                header(Some("e"), None),
+                Some(&rev),
+                Node::Leaf(edited),
+            ))
+            .unwrap_err(),
+    );
+    assert_eq!(snapshot(&disk), before, "nothing was written");
+    assert!(
+        disk.path(&format!(".rdm/intent/{PLANTED}.json")).exists(),
+        "the record is left"
+    );
+}
+
+#[test]
+fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let held = WriterLock::acquire(&disk.root, Duration::from_secs(1), b"\xff garbage").unwrap();
+    let mut store = Store::open(
+        &disk.root,
+        &name("demo"),
+        Options {
+            lock_timeout: Duration::from_millis(60),
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let before = snapshot(&disk);
+    let mut edited = leaf_of(&store, 3);
+    edited.goal = "edit".into();
+    let rev = rev_of(&store, 3);
+    let err = store
+        .replace(replace_req(
+            header(Some("e"), None),
+            Some(&rev),
+            Node::Leaf(edited),
+        ))
+        .unwrap_err();
+    assert!(
+        matches!(err, StoreError::Locked { holder: None }),
+        "{err:?}"
+    );
+    assert_eq!(snapshot(&disk), before);
+    drop(held);
+}

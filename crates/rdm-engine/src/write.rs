@@ -205,6 +205,14 @@ impl Store {
                         .map_err(|e| io_error(&file, &e))?;
                     report.undecodable.push(ulid);
                 }
+                Pending::Record { ulid, intent }
+                    if !intent.effects.iter().all(effect_path_is_ours) =>
+                {
+                    // A record that names a file outside the campaign's records does not decode.
+                    intent::complete(fs, &self.root, &ulid, tier)
+                        .map_err(|e| io_error(&file, &e))?;
+                    report.undecodable.push(ulid);
+                }
                 Pending::Record { ulid, intent } => {
                     for effect in &intent.effects {
                         self.redo(effect)?;
@@ -225,6 +233,9 @@ impl Store {
         match effect {
             IntentEffect::Put { path, bytes } => {
                 let dest = self.root.join(path);
+                if fs.read(&dest).is_ok_and(|b| b == bytes.as_bytes()) {
+                    return Ok(());
+                }
                 publish::put(fs, &dest, &tmp, bytes.as_bytes(), tier)
                     .map_err(|e| io_error(path, &e))
             }
@@ -274,7 +285,8 @@ impl Store {
         // 1. Take the lock. 2. Recover. The guard releases the lock on every return.
         let _lock = self.lock()?;
         self.ignore_scratch()?;
-        self.recover_locked()?;
+        let report = self.recover_locked()?;
+        self.last_recovered = Some(report);
         // 3. Read the campaign from disk, not from what an earlier read held.
         self.state = load(self.fs(), &self.root, self.state.campaign.slug())?;
 
@@ -842,6 +854,13 @@ impl Store {
     // -----------------------------------------------------------------------------------------
     // The primitives
 
+    /// What the last recovery did: the one a write ran on taking the lock, or [`Store::recover`].
+    /// `None` until a recovery has run; it holds the report until the next one replaces it.
+    #[must_use]
+    pub fn last_recovered(&self) -> Option<&Recovered> {
+        self.last_recovered.as_ref()
+    }
+
     /// Recovery on request: takes the writer lock, removes the stray temporary files, redoes every
     /// intent record left by an interrupted write, and reads the campaign again. Every write does
     /// this on its own on taking the lock; a reader that wants the settled state calls it.
@@ -854,6 +873,7 @@ impl Store {
         self.ignore_scratch()?;
         let report = self.recover_locked()?;
         self.state = load(self.fs(), &self.root, self.state.campaign.slug())?;
+        self.last_recovered = Some(report.clone());
         Ok(report)
     }
 
@@ -1428,6 +1448,22 @@ fn introduced_marks_name_criteria(before: Option<&Node>, after: &Node) -> Result
         }
     }
     Ok(())
+}
+
+/// A recorded effect may touch only a campaign record: a relative path with no `..`, under
+/// `nodes/`, `_amendments/` or `_comments/`.
+fn effect_path_is_ours(effect: &IntentEffect) -> bool {
+    use std::path::{Component, Path};
+    let (IntentEffect::Put { path, .. }
+    | IntentEffect::Create { path, .. }
+    | IntentEffect::Del { path }) = effect;
+    let mut parts = Path::new(path).components();
+    let under = matches!(
+        parts.next(),
+        Some(Component::Normal(d)) if ["nodes", "_amendments", "_comments"].iter().any(|k| d == *k)
+    );
+    let rest: Vec<Component> = parts.collect();
+    under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
 }
 
 /// An op that is a batch of one returns exactly one result of its own kind.
