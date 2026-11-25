@@ -11,8 +11,9 @@ use std::process::Command;
 use rdm_engine::codec::encode;
 use rdm_engine::ids::{IdRng, MAX_COLLISIONS, MintError, mint_id};
 use rdm_engine::store::{Options, Store};
-use rdm_schema::error::{Rule, StoreError};
+use rdm_schema::error::{Current, Rule, StoreError};
 use rdm_schema::ids::*;
+use rdm_schema::ops::{EditNote, Header, ReplaceOp, Request};
 use rdm_schema::stored::*;
 use serde_json::{Value, json};
 
@@ -554,4 +555,381 @@ fn minting_retries_on_collision() {
     assert!(c.as_str().starts_with("c_") && c.as_str().len() == 8);
     let s: StepId = mint_id(&mut Script::new(vec![1; 6]), |_| false).unwrap();
     assert!(s.as_str().starts_with("s_") && s.as_str().len() == 8);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Revisions and replace
+
+fn actor() -> Actor {
+    Actor {
+        kind: ActorKind::Agent,
+        name: Some("tester".into()),
+        extra: Default::default(),
+    }
+}
+
+fn header(note: Option<&str>, op_id: Option<&str>) -> Header {
+    Header {
+        op_id: op_id.map(|o| OpId::parse(o).unwrap()),
+        actor: actor(),
+        note: note.map(|d| EditNote {
+            description: d.into(),
+            source: None,
+            correction: false,
+        }),
+    }
+}
+
+fn replace_req(h: Header, expected: Option<&Rev>, node: Node) -> Request<ReplaceOp> {
+    Request {
+        header: h,
+        op: ReplaceOp {
+            expected_rev: expected.cloned(),
+            node,
+        },
+    }
+}
+
+/// Every file of the campaign directory except the scratch area, by relative path.
+fn snapshot(disk: &Disk) -> std::collections::BTreeMap<String, Vec<u8>> {
+    fn walk(dir: &Path, base: &Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            let rel = p.strip_prefix(base).unwrap().to_string_lossy().into_owned();
+            if rel == ".rdm" || rel == ".git" {
+                continue;
+            }
+            if p.is_dir() {
+                walk(&p, base, out);
+            } else {
+                out.insert(rel, std::fs::read(&p).unwrap());
+            }
+        }
+    }
+    let mut out = Default::default();
+    walk(&disk.root, &disk.root, &mut out);
+    out
+}
+
+fn leaf_of(store: &Store, n: u32) -> Leaf {
+    match store.campaign().get(&nid(n)).unwrap() {
+        Node::Leaf(l) => l.clone(),
+        Node::Directory(_) => panic!("not a leaf"),
+    }
+}
+
+fn sha16_of_jq(bytes: &[u8]) -> String {
+    use std::io::Write;
+    let mut jq = Command::new("jq")
+        .args(["del(.schema_version)"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    jq.stdin.take().unwrap().write_all(bytes).unwrap();
+    let out = jq.wait_with_output().unwrap().stdout;
+    let mut sum = Command::new("shasum")
+        .args(["-a", "256"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    sum.stdin.take().unwrap().write_all(&out).unwrap();
+    let hash = String::from_utf8(sum.wait_with_output().unwrap().stdout).unwrap();
+    hash[..16].to_owned()
+}
+
+#[test]
+fn rev_tracks_value_not_formatting() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let original = std::fs::read_to_string(disk.path(&file(3))).unwrap();
+    let rev_of = |text: &str| {
+        std::fs::write(disk.path(&file(3)), text).unwrap();
+        disk.open()
+            .unwrap()
+            .rev(&nid(3))
+            .unwrap()
+            .as_str()
+            .to_owned()
+    };
+    let known = rev_of(&original);
+    // The answer, computed by jq and shasum from the producer's bytes.
+    assert_eq!(
+        known,
+        sha16_of_jq(original.as_bytes()),
+        "the rev is SHA-256 of the file without schema_version"
+    );
+
+    let compact =
+        serde_json::to_string(&serde_json::from_str::<Value>(&original).unwrap()).unwrap();
+    assert_eq!(rev_of(&compact), known, "whitespace does not count");
+    assert_eq!(
+        rev_of(&original.replace('\n', "\r\n")),
+        known,
+        "CRLF does not count"
+    );
+    assert_eq!(
+        rev_of(&original.replace("a goal", "a \\u0067oal")),
+        known,
+        "a \\u escape does not count"
+    );
+
+    assert_ne!(
+        rev_of(&original.replace("a goal", "another goal")),
+        known,
+        "a value counts"
+    );
+    let with_unknown = |v: &str| original.replacen("{\n", &format!("{{\n  \"zz\": {v},\n"), 1);
+    let one = rev_of(&with_unknown("100000"));
+    assert_ne!(one, known, "an unknown key counts");
+    assert_ne!(
+        rev_of(&with_unknown("1e5")),
+        one,
+        "an unknown value is kept as written"
+    );
+}
+
+#[test]
+fn stale_replace_changes_nothing() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut a = disk.open().unwrap();
+    let mut b = disk.open().unwrap();
+    let old = a.rev(&nid(3)).unwrap().clone();
+    let mut changed = leaf_of(&b, 3);
+    changed.goal = "b was here".into();
+    let won = b
+        .replace(replace_req(
+            header(Some("b edits"), None),
+            Some(&old),
+            Node::Leaf(changed),
+        ))
+        .unwrap();
+    let fresh = won.result.rev.clone();
+    let before = snapshot(&disk);
+
+    // `a` still holds the old revision in memory; the write is judged against the disk.
+    let mut mine = leaf_of(&a, 3);
+    mine.goal = "a was here".into();
+    let err = a
+        .replace(replace_req(
+            header(Some("a edits"), None),
+            Some(&old),
+            Node::Leaf(mine),
+        ))
+        .unwrap_err();
+    match err {
+        StoreError::Stale {
+            current: Current::Node { id, rev },
+        } => {
+            assert_eq!((id, rev), (nid(3), Some(fresh)));
+        }
+        other => panic!("want Stale, got {other:?}"),
+    }
+    assert_eq!(snapshot(&disk), before, "a stale replace writes no file");
+    assert_eq!(
+        std::fs::read_dir(disk.path(".rdm/intent"))
+            .map(|d| d.count())
+            .unwrap_or(0),
+        0
+    );
+}
+
+#[test]
+fn replayed_op_id_writes_nothing() {
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut store = disk.open().unwrap();
+    let old = store.rev(&nid(3)).unwrap().clone();
+    let mut changed = leaf_of(&store, 3);
+    changed.goal = "retry me".into();
+    let req = replace_req(
+        header(Some("edit"), Some("op-1")),
+        Some(&old),
+        Node::Leaf(changed),
+    );
+    let first = store.replace(req.clone()).unwrap();
+    assert!(!first.replayed && first.amendment.is_some());
+    let after_first = snapshot(&disk);
+
+    // The same request again: its `expected_rev` is now stale, and it must not matter.
+    let again = store.replace(req.clone()).unwrap();
+    assert!(again.replayed);
+    assert_eq!(
+        (again.result.clone(), again.amendment.clone()),
+        (first.result.clone(), first.amendment.clone())
+    );
+    assert_eq!(snapshot(&disk), after_first, "a replay writes nothing");
+
+    // A new process learns the op from the files.
+    let mut reopened = disk.open().unwrap();
+    let third = reopened.replace(req).unwrap();
+    assert!(third.replayed);
+    assert_eq!(third.amendment, first.amendment);
+    assert_eq!(snapshot(&disk), after_first);
+}
+
+#[test]
+fn requests_breaking_a_rule_are_refused() {
+    let mut nodes = base();
+    nodes.push(leaf_node(6, "orphan", 99, "V"));
+    let disk = Disk::new();
+    disk.write_all(&nodes);
+    let mut store = disk.open().unwrap();
+    let before = snapshot(&disk);
+    let rev3 = store.rev(&nid(3)).unwrap().clone();
+    let rev2 = store.rev(&nid(2)).unwrap().clone();
+    let rev6 = store.rev(&nid(6)).unwrap().clone();
+
+    let edit = |f: &dyn Fn(&mut Leaf)| {
+        let mut l = leaf_of(&store, 3);
+        f(&mut l);
+        Node::Leaf(l)
+    };
+    let one_step_less = edit(&|l| l.steps.clear());
+    let renamed = edit(&|l| l.name = name("renamed"));
+    let reparented = edit(&|l| l.parent_id = nid(5));
+    let reordered = edit(&|l| l.order = OrderKey::new("z"));
+    let dangling = edit(&|l| {
+        l.references.push(Reference {
+            label: None,
+            title: "t".into(),
+            target: None,
+            note: None,
+            node_id: Some(nid(77)),
+            extra: Default::default(),
+        })
+    });
+    let edited = edit(&|l| l.goal = "edited".into());
+    let mut as_leaf = leaf_of(&store, 3);
+    as_leaf.id = nid(2);
+    as_leaf.parent_id = nid(1);
+    as_leaf.name = name("core");
+    as_leaf.order = OrderKey::new("V");
+    let mut orphan = leaf_of(&store, 3);
+    orphan.id = nid(6);
+    orphan.name = name("orphan");
+    orphan.parent_id = nid(99);
+    orphan.goal = "x".into();
+    let mut missing = leaf_of(&store, 3);
+    missing.id = nid(42);
+
+    let note = Some("why");
+    let rows: Vec<(&str, Request<ReplaceOp>, String, Rule)> = vec![
+        (
+            "no expected_rev",
+            replace_req(header(note, None), None, edited.clone()),
+            "<request>".to_owned(),
+            Rule::ExpectedRevRequired,
+        ),
+        (
+            "a content edit without a note",
+            replace_req(header(None, None), Some(&rev3), edited.clone()),
+            "<request>".to_owned(),
+            Rule::NoteRequired,
+        ),
+        (
+            "a blank note",
+            replace_req(header(Some("  "), None), Some(&rev3), edited.clone()),
+            "<request>".to_owned(),
+            Rule::NoteRequired,
+        ),
+        (
+            "a note with nothing changed",
+            replace_req(
+                header(note, None),
+                Some(&rev3),
+                Node::Leaf(leaf_of(&store, 3)),
+            ),
+            "<request>".to_owned(),
+            Rule::EmptyEdit,
+        ),
+        (
+            "a new name",
+            replace_req(header(note, None), Some(&rev3), renamed),
+            file(3),
+            Rule::UseRelocate,
+        ),
+        (
+            "a new parent",
+            replace_req(header(note, None), Some(&rev3), reparented),
+            file(3),
+            Rule::UseRelocate,
+        ),
+        (
+            "a new order",
+            replace_req(header(note, None), Some(&rev3), reordered),
+            file(3),
+            Rule::UseRelocate,
+        ),
+        (
+            "no steps",
+            replace_req(header(note, None), Some(&rev3), one_step_less),
+            file(3),
+            Rule::StepsRange,
+        ),
+        (
+            "a reference to a missing node",
+            replace_req(header(note, None), Some(&rev3), dangling),
+            file(3),
+            Rule::DanglingId,
+        ),
+        (
+            "a directory with children made a leaf",
+            replace_req(header(note, None), Some(&rev2), Node::Leaf(as_leaf)),
+            file(2),
+            Rule::LeafHasChildren,
+        ),
+        (
+            "a node that is not validated",
+            replace_req(header(note, None), Some(&rev6), Node::Leaf(orphan)),
+            file(6),
+            Rule::UnvalidatedNode,
+        ),
+    ];
+    for (row, req, want_file, want_rule) in rows {
+        match store.replace(req) {
+            Err(StoreError::Invalid { file, rule, .. }) => {
+                assert_eq!((file, rule), (want_file, want_rule), "{row}");
+            }
+            other => panic!("{row}: want Invalid, got {other:?}"),
+        }
+        assert_eq!(snapshot(&disk), before, "{row}: nothing was written");
+    }
+    match store.replace(replace_req(
+        header(note, None),
+        Some(&rev3),
+        Node::Leaf(missing),
+    )) {
+        Err(StoreError::NotFound { .. }) => {}
+        other => panic!("a missing node: want NotFound, got {other:?}"),
+    }
+
+    // The accepted side: a state-only edit needs no note and leaves no amendment; a content edit
+    // with a note writes exactly one.
+    let mut done = leaf_of(&store, 3);
+    done.status = Status::Ongoing;
+    done.steps[0].done = true;
+    done.steps[0].commit_sha = Some("abc1234".into());
+    done.steps[0].done_at = Some("2026-01-01T00:00:00Z".into());
+    let state_only = store
+        .replace(replace_req(
+            header(None, None),
+            Some(&rev3),
+            Node::Leaf(done),
+        ))
+        .unwrap();
+    assert!(
+        state_only.amendment.is_none(),
+        "a state change is not an amendment"
+    );
+    assert!(leaf_of(&store, 3).steps[0].done);
+    let rev3 = state_only.result.rev;
+    let content = store
+        .replace(replace_req(header(note, None), Some(&rev3), edited))
+        .unwrap();
+    assert!(content.amendment.is_some());
+    assert_eq!(store.amendments().len(), 1);
+    assert_eq!(disk.open().unwrap().amendments().len(), 1);
 }

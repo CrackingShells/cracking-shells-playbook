@@ -30,7 +30,8 @@ fn lines<'a>(domain: &str, entries: impl Iterator<Item = (&'a NodeId, &'a Rev)>)
 pub fn rev(node: &Node) -> Rev {
     let mut value = serde_json::to_value(node).unwrap_or(Value::Null);
     if let Value::Object(map) = &mut value {
-        map.remove("schema_version");
+        // `remove` would swap the last key into the first slot under `preserve_order`.
+        map.shift_remove("schema_version");
     }
     // Cannot fail: a `Value` has string keys only.
     let mut text = serde_json::to_string_pretty(&value).unwrap_or_default();

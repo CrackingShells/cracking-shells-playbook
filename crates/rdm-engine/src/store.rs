@@ -2,7 +2,7 @@
 //! [`rdm_schema::campaign::Campaign`] model, validates it, computes revisions, keeps the reverse
 //! link index, and applies every primitive through ordered writes under the writer lock.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
 use rdm_schema::error::{Rule, StoreError};
-use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, Rev, SubtreeRev, TreeRev};
+use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, Rev, SubtreeRev, TreeRev};
 use rdm_schema::stored::{Amendment, Comment, Node};
 
 use crate::codec::{Stored, decode};
@@ -53,17 +53,78 @@ pub(crate) struct State {
     pub(crate) comments: BTreeMap<CommentId, Comment>,
     pub(crate) amendments: BTreeMap<AmendmentId, Amendment>,
     pub(crate) revs: BTreeMap<NodeId, Rev>,
-    /// The warnings of every file, sorted by `(file, rule, detail)`.
-    pub(crate) diagnostics: Vec<Diagnostic>,
+    /// The warnings of each file the codec read (`unknown_key`), by file.
+    pub(crate) file_diags: BTreeMap<String, Vec<Diagnostic>>,
     pub(crate) reverse: ReverseIndex,
+    pub(crate) ops: OpIndex,
+}
+
+/// A record that carries an `op_id`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum OpRef {
+    Amendment(AmendmentId),
+    Comment(CommentId),
+    /// A node with a `History.op_id` entry.
+    History(NodeId),
+}
+
+/// Maps an `op_id` to the records that carry it (`store.md`, §Cache): amendments, comments and
+/// `History.op_id` entries. Built on open and kept in step by write-through.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct OpIndex {
+    by_op: BTreeMap<OpId, BTreeSet<OpRef>>,
+    /// The op ids each node's history holds, so a replaced node drops its old entries.
+    by_node: BTreeMap<NodeId, Vec<OpId>>,
+}
+
+impl OpIndex {
+    pub(crate) fn records(&self, op: &OpId) -> Option<&BTreeSet<OpRef>> {
+        self.by_op.get(op)
+    }
+
+    fn add(&mut self, op: &OpId, r: OpRef) {
+        self.by_op.entry(op.clone()).or_default().insert(r);
+    }
+
+    pub(crate) fn add_amendment(&mut self, a: &Amendment) {
+        if let Some(op) = &a.op_id {
+            self.add(op, OpRef::Amendment(a.id.clone()));
+        }
+    }
+
+    pub(crate) fn add_comment(&mut self, c: &Comment) {
+        if let Some(op) = &c.op_id {
+            self.add(op, OpRef::Comment(c.id.clone()));
+        }
+    }
+
+    /// Replaces what the history of node `id` contributes; `None`: the node is gone.
+    pub(crate) fn replace_node(&mut self, id: &NodeId, node: Option<&Node>) {
+        for op in self.by_node.remove(id).unwrap_or_default() {
+            if let Some(set) = self.by_op.get_mut(&op) {
+                set.remove(&OpRef::History(id.clone()));
+                if set.is_empty() {
+                    self.by_op.remove(&op);
+                }
+            }
+        }
+        let Some(Node::Leaf(leaf)) = node else { return };
+        let mut ops: Vec<OpId> = leaf.history.iter().filter_map(|h| h.op_id.clone()).collect();
+        ops.sort();
+        ops.dedup();
+        for op in &ops {
+            self.add(op, OpRef::History(id.clone()));
+        }
+        if !ops.is_empty() {
+            self.by_node.insert(id.clone(), ops);
+        }
+    }
 }
 
 /// An open campaign.
 pub struct Store {
     pub(crate) root: PathBuf,
-    #[allow(dead_code)] // read by the writes of the next steps
     pub(crate) options: Options,
-    #[allow(dead_code)]
     pub(crate) ulids: UlidMint,
     pub(crate) state: State,
 }
@@ -159,9 +220,11 @@ pub(crate) fn load(fs: &dyn Fs, root: &Path, slug: &Name) -> Result<State, Store
         &mut diagnostics,
     )?;
     let opened = Campaign::open(nodes, slug)?;
-    diagnostics.extend(opened.diagnostics);
-    diagnostics.sort();
     let campaign = opened.campaign;
+    let mut file_diags: BTreeMap<String, Vec<Diagnostic>> = BTreeMap::new();
+    for d in diagnostics {
+        file_diags.entry(d.file.clone()).or_default().push(d);
+    }
     let revs = campaign
         .nodes()
         .map(|n| (n.id().clone(), rev::rev(n)))
@@ -175,13 +238,18 @@ pub(crate) fn load(fs: &dyn Fs, root: &Path, slug: &Name) -> Result<State, Store
         &comments.values().cloned().collect::<Vec<_>>(),
         &amendments.values().cloned().collect::<Vec<_>>(),
     );
+    let mut ops = OpIndex::default();
+    amendments.values().for_each(|a| ops.add_amendment(a));
+    comments.values().for_each(|c| ops.add_comment(c));
+    campaign.nodes().for_each(|n| ops.replace_node(n.id(), Some(n)));
     Ok(State {
         campaign,
         comments,
         amendments,
         revs,
-        diagnostics,
+        file_diags,
         reverse,
+        ops,
     })
 }
 
@@ -223,8 +291,11 @@ impl Store {
     /// Every warning of the files read, and the damage between them, sorted by
     /// `(file, rule, detail)`.
     #[must_use]
-    pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.state.diagnostics
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut all: Vec<Diagnostic> = self.state.file_diags.values().flatten().cloned().collect();
+        all.extend(self.state.campaign.diagnostics().iter().cloned());
+        all.sort();
+        all
     }
 
     /// The reverse link index.
