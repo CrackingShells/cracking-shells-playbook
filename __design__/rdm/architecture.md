@@ -9,7 +9,10 @@ meta-roadmap): the domain model and the stored types move to a fourth crate, `rd
 spec-first milestone M0b. M0b settled it on 2026-11-16: status meanings in
 [statuses.md](statuses.md), the stored schema in [stored-schema.md](stored-schema.md) with its
 [traceability.md](traceability.md), and the read model in [read-model.md](read-model.md). Where
-this document and those four differ, they win.
+this document and those four differ, they win. Amended on 2026-11-25 (A2 of the meta-roadmap, M1):
+the store is flat and id-addressed, specified in [store.md](store.md), and the contracts M1 freezes
+(ids, campaign model, `MOVES`, operations, errors, links, version chain) are in
+[contracts.md](contracts.md). Where this document and those two differ, they win.
 
 ## Executive Summary
 
@@ -72,7 +75,7 @@ graph TD
     ORD[order: waves, ready set, status FSM]
     VAL[validate]
     IO[interchange: markdown export, legacy import]
-    ST[store: canonical JSON, lock, journal, revisions]
+    ST[store: canonical JSON, lock, intent record, revisions, cache]
   end
   MCP --> OPS
   CLI --> OPS
@@ -81,13 +84,13 @@ graph TD
   OPS --> VAL
   OPS --> ST
   IO --> ST
-  ST --> FS[__roadmap__/campaign/*.json]
+  ST --> FS[__roadmap__/campaign/nodes/*.json]
 ```
 
 | Decision | Value |
 |:--|:--|
 | Graph model | Depth is ordering: siblings parallel, deeper level later. No explicit edges. |
-| Stored format | JSON, one file per node, under `__roadmap__/<campaign>/`. Markdown is export only. |
+| Stored format | JSON, one file per node, flat under `__roadmap__/<campaign>/nodes/`, named by id. Markdown is export only. |
 | Transport | stdio only. Concurrency safety comes from the filesystem. |
 | Mutations | Full CRUD, single or batch. Content and structure edits carry a mandatory amendment description and are logged. Status and progress go to a per-leaf history, with no description. |
 | Protocol | MCP 2026-07-28 conformance only. `rmcp` pinned exactly: `=3.10.0` with features `server`, `macros`, `transport-io` (3.9.0 at design time, MSRV 1.88). rmcp has no typed Apps API: the tool `_meta.ui`, the capability `io.modelcontextprotocol/ui` and the MIME type `text/html;profile=mcp-app` are built by hand. All three hosts tested speak 2026-07-28. |
@@ -103,51 +106,65 @@ defect.
 
 ```
 __roadmap__/<campaign>/
-  _dir.json                 campaign root
+  nodes/<id>.json           one file per node (root, directories, leaves), named by its id
   _amendments/<ulid>.json   one file per amendment, append-only
   _comments/<ulid>.json     one file per comment, append-only
-  <leaf>.json               leaf node
-  <dir>/_dir.json           directory node
-  <dir>/<leaf>.json
-  .rdm/                     untracked scratch: lock, journal/, staging/
+  .rdm/                     untracked: lock, holder.json, tmp/, intent/, cache/
 ```
 
-- **Names are paths.** A node's name is its path segment (`^[a-z][a-z0-9_-]*$`) and is not stored
-  in the file, so it cannot disagree with the filesystem. `_dir.json` cannot collide with a node.
-- **Identity is separate.** Every node carries an immutable `id`. Tools accept a path or an id and
-  return both. References between nodes hold ids, so they survive a rename or a move.
+- **Flat and id-addressed** (Eliott, 2026-11-25). A node file holds its `name`
+  (`^[a-z][a-z0-9_-]*$`), its `parent_id` and an `order` key among its siblings. Paths, depth and
+  children are derived from the `parent_id` chain on load and never stored, so depth is still the
+  only ordering (I1). A rename or a move rewrites one file, and no directory is ever renamed.
+- **The root** is the parentless node of kind `campaign` whose `name` is the campaign slug; `open`
+  is given that slug. It has no `parent_id` and no `order`.
+- **Ids.** A node id is `n_` and 8 characters of lower-case Crockford base32; criteria are `c_` and
+  steps `s_`, with 6. Callers mint them from a seeded or system RNG and the store refuses a
+  collision. Comments and amendments keep ULIDs, which order them. Checks and references have no
+  id. References between nodes hold ids, so they survive a rename or a move. Details in
+  [store.md](store.md) §Ids and [contracts.md](contracts.md) §Id inventory.
+- **Sibling order** is a fractional key in base 62: an insert writes one file, and a rare rebalance
+  rewrites one parent's children. It is a position, not a dependency.
+- **Merge damage is reported, not refused.** A file that cannot be read alone (unparsable, a
+  malformed id, a name that differs from its id, a newer format) fails `open`. Damage across files
+  that a git merge leaves (an orphan, a cycle, a name collision, a second root) is loaded and
+  reported, the nodes that do not trace back to the root are unvalidated, and writes that build on
+  them are refused except repairs.
 - **Stored:** node prose, leaf status, steps, progress, per-leaf status history.
 - **Derived on every read, never stored:** directory status, the node table, the mermaid graph,
   the progress table, waves, the ready set. Derived data cannot go stale, and a status change
   never writes to an ancestor.
-- **One file per leaf and per amendment** keeps task branches in separate worktrees from touching
+- **One file per node and per amendment** keeps task branches in separate worktrees from touching
   the same file, so merges do not conflict.
 - **Canonical form:** fixed field order, two-space indent, LF, trailing newline. Multi-line prose is
   stored as an array of lines, which git merges far better than one escaped string; the API
   accepts and returns plain strings.
-- **Forward compatibility:** every file carries `schema_version` (`"0.X.Y"`, first value `"0.1.0"`); unknown fields round-trip; a
-  reader refuses a different major or a higher X with an upgrade message, and reads a higher Y. JSON Schemas are generated from
-  the Rust types and committed; CI fails when they drift.
+- **Forward compatibility:** every file carries `schema_version` (`"0.X.Y"`, `"0.1.0"` until M1
+  merges to `main`). The version is read first, and a file newer than the binary, whether X or Y is
+  higher, is refused with `NewerFormat` before anything else is parsed (Eliott, 2026-11-25). Older
+  files read through a chain of format layers, each overriding only what its version changed.
+  Unknown fields round-trip in place, and each one is reported as a warning. JSON Schemas are
+  generated from the Rust types and committed; CI fails when they drift.
 
 The stored types are settled in [stored-schema.md](stored-schema.md) and held by the
 `rdm-schema` crate, whose JSON Schemas are generated and checked for drift. In outline:
 
 ```
-_dir.json   { schema_version, id, kind: campaign|directory, title, context, goal, references[],
-              preconditions[Criterion], success_gates[Criterion], gotchas, notes, marks[] }
-<leaf>.json { schema_version, id, kind: leaf, title, status, status_reason?, goal,
+directory   { schema_version, id, kind: campaign|directory, name, parent_id?, order?, title, context,
+              goal, references[], preconditions[Criterion], success_gates[Criterion], gotchas, notes, marks[] }
+leaf        { schema_version, id, kind: leaf, name, parent_id, order, title, status, status_reason?, goal,
               preconditions[Criterion], success_gates[Criterion], references[], steps[1..5],
               progress{branch?, commits?, notes}, history[], marks[] }
 step        { id, title, goal, implementation_logic, deliverables, references[],
-              checks[{id, text, expected, command?}], commit{type, scope?, breaking, summary},
+              checks[{text, expected, command?}], commit{type, scope?, breaking, summary},
               requires?, done, commit_sha?, done_at? }
 Criterion   { id, text, met }  (enforced: see I8)
-Reference   { id, label?, title, target?, note?, node_id? }   (every sub-item id is stable, never a position)
+Reference   { label?, title, target?, note?, node_id? }   (target relative to the root, absent when node_id is set)
 history     { ts, from, to, actor{kind: agent|human|import, name?}, reason?, override?, op_id?, correction? }
 mark        { ts, actor, criterion_id, met, evidence?, reason?, correction? }   (trace of every criterion mark)
 comment     { schema_version, id, node_id, ts, actor, text }
 amendment   { schema_version, id, legacy_id?, ts, actor, description, source?, op_id?, correction?,
-              changes[{node_id, op, path_before?, path_after?, item_id?, field?, old?, new?}], snapshot? }
+              changes[{node_id, op, item_id?, field?, old?, new?}], snapshot? }   (paths derive from node_id)
 ```
 
 Every legacy grammar production is stored, derived or dropped with a reason in
@@ -168,11 +185,11 @@ sequenceDiagram
   participant A as process A
   participant L as campaign lock
   participant F as files
-  A->>F: read (returns rev, tree_rev)
-  A->>L: acquire
+  A->>F: read, no lock (returns rev, tree_rev)
+  A->>L: acquire, then recover any intent left behind
   A->>F: re-read, compare with expected rev
   alt revision matches
-    A->>F: stage, journal, apply, remove journal
+    A->>F: write intent (multi-file only), apply in order, remove intent
     A->>L: release
   else stale
     A->>L: release
@@ -180,18 +197,33 @@ sequenceDiagram
   end
 ```
 
-- **Lock:** one operating-system advisory lock per campaign (`.rdm/lock`), held only for the write
-  window. The kernel releases it when a process dies, so there is no stale lock. A waiter retries
-  for a few seconds, then returns a `LOCKED` error naming the holder.
-- **Atomic single-file write:** temporary file in the same directory, fsync, rename.
-- **Multi-file transaction:** stage the new contents, write a journal of idempotent steps, mark it
-  committed, apply, remove it. The amendment file is part of the transaction. On the next lock
-  acquisition a committed journal is rolled forward and an uncommitted one discarded.
-- **Optimistic revisions:** a read returns a content hash per node (`rev`) and per campaign
-  (`tree_rev`). A field edit presents `expected_rev`; a structural batch presents
-  `expected_tree_rev`; a status move presents the status it expects to leave. A mismatch returns an
-  error result with the current state. Nothing is merged automatically.
-- **Retries:** a write may carry an `op_id`; replaying it returns the first result.
+The algorithm and its sources are in [store.md](store.md); in outline:
+
+- **Readers take no lock.** Every file is replaced whole, so a reader sees the old or the new
+  version, never a part.
+- **Lock:** one operating-system advisory lock per campaign (`.rdm/lock`, the `fs4` crate), held
+  only for the write window. The kernel releases it when a process dies, so there is no stale lock.
+  A waiter retries for 5 s, then gets `Locked`, naming the holder from the advisory
+  `.rdm/holder.json`.
+- **Atomic single-file write** (Maildir): temporary file in `.rdm/tmp/`, fsync, rename; `link()`
+  for a file that must not exist yet. On Windows the rename retries on sharing violations.
+- **Ordered writes** (the three Soft Updates rules): a new node before anything that points at it,
+  the amendment before the deletes it records, children deleted before their parent.
+- **Intent record** for a multi-file operation: a redo-only record in `.rdm/intent/` holding the
+  whole-file after-images. Its rename is the commit point; the next writer redoes it after taking
+  the lock, and an unfinished one is dropped. The amendment is not the intent.
+- **Durability:** plain `fsync` by default, so an acknowledged write survives a killed process;
+  a full flush on macOS is opt-in.
+- **Optimistic revisions:** a read returns a hash per node (`rev`, over the decoded value, so
+  formatting never changes it), per subtree and per campaign (`tree_rev`, over the nodes only). A
+  field edit presents `expected_rev`, a delete `expected_subtree_rev`, a structural batch
+  `expected_tree_rev`. A mismatch returns `Stale` with the current state. Nothing is merged
+  automatically.
+- **Retries:** a write may carry an `op_id`; the store keeps an index of the ids its records carry
+  and, under the lock, returns the first result instead of writing again.
+- **Hot cache:** a long-lived server keeps the decoded campaign, checks every file's identity,
+  mtime and size on each read (git's racily-clean rule for edits within one tick) and writes
+  through. It is never the source of truth.
 - **Worktrees are separate copies.** A lock in one worktree does not coordinate with another.
   Status written on a task branch reaches the coordinator when that branch merges. The coordinator
   records `ongoing` in its own tree when it dispatches a leaf.
@@ -296,16 +328,16 @@ receives the same data as text and structured content.
 |:--|:--|
 | I1 | Depth is the only ordering. No stored field expresses a dependency between siblings. |
 | I2 | A consumer holds no roadmap logic; the CLI and the MCP tools give the same result on the same input. |
-| I3 | No write leaves a campaign in a state `validate` rejects, including after a crash at any point. |
+| I3 | A write cut at any point leaves a campaign that loads, and recovery takes it to the state before or after the write. No write adds a defect that `open` reports. |
 | I4 | A write based on a stale revision is refused and changes nothing. |
 | I5 | Every content or structure edit produces exactly one amendment with a non-empty description. Status, progress, criterion marks and comments never do. A content edit of a finished node needs a reason and is a correction. |
 | I6 | Derived data is never stored. |
-| I7 | A node's `id` never changes; a rename or move changes only its path. |
+| I7 | A node's `id` never changes; a rename or move rewrites that node's file only, and its descendants' paths change because they are derived. |
 | I8 | The move to `done` is allowed only when every step is done with its commit recorded and every success gate is `met`; the move to `ongoing` needs every pre-condition `met`, an override of the ready set included. Both are checked at the move, and every change of a criterion mark leaves a `mark` record. A directory is `done` only when its leaves are finished and its own gates are met. A stored `done` leaf has every step done (a leaf imported from legacy markdown has no commit SHA, and keeps its legacy count in `progress.commits`). A legacy `done` node with an unmet criterion is imported as it is, and `validate` reports it as an error to reconcile. |
 | I9 | Deleting finished work, or moving ongoing work, needs an explicit acknowledgement. Reopening done work needs a reason and is counted as a correction. |
-| I10 | The server keeps no state between calls; every call names its campaign. |
+| I10 | A cached read returns what a cold read would at that moment; every call names its campaign. |
 | I11 | No tool requires user interaction, and no read tool writes. |
-| I12 | A reader never drops a field it does not know. |
+| I12 | A reader never drops a field it does not know, and reports each one as a warning. |
 
 ## Launch and distribution (*provisional*, owned by M7)
 
@@ -318,7 +350,9 @@ receives the same data as text and structured content.
   fetches the matching prebuilt one from the release, checks its sha256, caches it per version and
   runs it. A consumer installs once; later plugin updates bring their own server. When the download
   fails, an installed binary of the same major version runs with a warning; otherwise the server
-  exits with the exact install command.
+  exits with the exact install command. (A2, 2026-11-25: M1 only refuses a newer file with
+  `NewerFormat`; M7 may start an installed binary that supports it, and never downloads one without
+  the user's consent. This paragraph is M7's to rewrite.)
 
 ## Alternatives Considered
 
@@ -326,7 +360,7 @@ receives the same data as text and structured content.
 |:--|:--|:--|:--|
 | Graph model | Explicit edges / hybrid / **depth** | depth | The tree over-sequences; "run X after Y" is a structural edit, with its impact reported |
 | Transport | HTTP daemon / stdio + HTTP / **stdio** | stdio | Concurrency is the store's job; no host that needs a URL is served |
-| File layout | One file per campaign / per directory / **per node** | per node | More files; no hot file, clean merges |
+| File layout | One file per campaign / per directory / per node in a tree / **per node, flat and id-addressed** | flat per node | Paths are derived on load, and a merge can leave damage across files, which `open` reports; a rename or move writes one file |
 | Amendments | In each node / one log file / **one file per amendment** | per amendment | A node's log is a query, not a field |
 | Revisions | Counter / **content hash** | hash | No base to merge from, so a conflict is refused, never merged |
 | Lock | Lock file as existence / per file / **one OS lock per campaign** | per campaign | Writers on one campaign are serialised, for milliseconds |
@@ -344,8 +378,9 @@ receives the same data as text and structured content.
 | A host does not speak 2026-07-28 | Settled by M0: Desktop, VS Code and the CLI all connect to a server that refuses other versions. The transport stays isolated in `rdm-mcp` |
 | A host cannot take page-to-server calls, resource reads or a stream (Claude Code Desktop) | Feed the inline page once from the result `_meta`; use polling or streaming only where the host advertises `serverTools` or the stream domain; a standalone viewer for large or live views (M6 decides) |
 | rmcp API churn, untyped Apps support, a wrong extension id in its documentation | Exact pin `=3.10.0`; M0 fixed the calls; one module owns the Apps metadata |
-| Lost or torn writes under concurrency | Lock, journal, revisions; a multi-process test with kill injection on three operating systems |
-| Directory renames fail on Windows while a handle is open | Retry with backoff; a Windows test job |
+| Lost or torn writes under concurrency | Lock, ordered writes, intent record, revisions; every write prefix tested to load and recover; a multi-process test with kill injection on three operating systems |
+| A file rename fails on Windows while another program holds the target open | Retry on sharing violations with backoff; the `replace_while_target_open` guard on a Windows runner |
+| A git merge leaves a cycle, an orphan or a name collision without a conflict | `open` reports each defect with its file and rule; writes on the damaged part are refused except repairs |
 | A consumer grows logic | I2 as a test: the same input through both consumers |
 | The graph view grows past a small bundle | M0 measured 279 to 286 KB, about 234 KB of it ext-apps with zod. Size budget in CI; a hand-written bridge if the Apps client library is heavy |
 | A binary is overwritten in place on macOS | The kernel kills it with SIGKILL. Install to a new inode (`rm` then `cp`) |
@@ -356,8 +391,8 @@ receives the same data as text and structured content.
 
 ## Deliberately open
 
-Decided by the milestone that owns it: the id minting and the journal format (M1); the
-exact operation set and its error codes (M2); whether a cross-worktree claim hint is worth having
+Decided by the milestone that owns it: the exact graph operation set above the store primitives
+and its error codes (M2); whether a cross-worktree claim hint is worth having
 (M2); markdown layout of the export and what the importer does with invalid input (M3); tool names,
 count and output budgets (M4); CLI verbs and output style (M5); layout and refresh of the view
 (M6); the launch, the release order and binary targets (M7); what the skill says and which

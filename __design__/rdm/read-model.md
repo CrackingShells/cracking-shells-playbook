@@ -31,16 +31,17 @@ field (path in `stored-schema.md`) or a derivation. A field with neither is a de
 | `read_model_version` | `string` | The constant `READ_MODEL_VERSION` |
 | `format_version` | `string` | The highest `schema_version` among the files read |
 | `projection` | `"outline"`, `"node"`, `"ready"` or `"amendments"` | Fixed by the projection |
-| `campaign` | `{id, path, title}` | `id` and `title` from the campaign `_dir.json`. `path` is the argument of the call |
+| `campaign` | `{id, path, title}` | `id` and `title` from the campaign root node. `path` is the argument of the call |
 | `tree_rev` | `string` | Opaque. Computed by M1 over the campaign |
 
 **Revisions.** `rev` (one node) and `tree_rev` (the campaign) are opaque strings. A consumer
 compares them for equality and sends them back as `expected_rev` and `expected_tree_rev`. It
-never parses them. M1 defines how they are computed. A comment never changes a `rev`
+never parses them. They are defined in [store.md](store.md) §Revisions. A comment never changes a `rev`
 (`stored-schema.md`, `Comment`).
 
-**Order.** Siblings have no stored order. Every list below orders nodes by `level`, then leaves
-before directories, then `path`. Lists of amendments and comments order by ULID, oldest first.
+**Order.** Siblings carry a stored `order` key (contracts.md §Node fields), a position for
+presentation that never expresses a dependency (I1). Every list below orders nodes by `level`, then
+siblings by `(order, id)`, as `Campaign::children` does. Lists of amendments and comments order by ULID, oldest first.
 
 **Types in `rdm-schema`.** The crate leaf holds these as types:
 

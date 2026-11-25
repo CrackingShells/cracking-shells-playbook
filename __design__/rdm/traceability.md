@@ -64,7 +64,7 @@ Constraints the grammar states outside its productions, and where each one goes:
 
 | Production | Disposition | Target or reason |
 |:--|:--|:--|
-| `<readme>` | `stored` | One `Directory` file, `_dir.json`. Section order is export layout |
+| `<readme>` | `stored` | One `Directory` file, `nodes/<id>.json`. Section order is export layout |
 | `<h1-title>` | `stored` | `title` |
 | `<section-context>` | `stored` | `context` |
 | `<h2-context>` | `dropped` | Heading literal. The field name is `context` |
@@ -92,7 +92,7 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `MERMAID_OPEN` | `dropped` | Markup; the export emits it |
 | `MERMAID_CLOSE` | `dropped` | Markup; the export emits it |
 | `<mermaid-graph-decl>` | `dropped` | The fixed line `graph TD`; the export emits it |
-| `<mermaid-node-decl>` | `derived` | One per child: the id is the child's path name, the label is its `title`, the class is its status. 13 of 95 real labels differ from the child's H1; the title wins |
+| `<mermaid-node-decl>` | `derived` | One per child: the id is the child's `name`, the label is its `title`, the class is its status. 13 of 95 real labels differ from the child's H1; the title wins |
 | `<mermaid-classdef-done>` | `dropped` | Colours are presentation; M6 owns the palette |
 | `<mermaid-classdef-inprogress>` | `dropped` | Colours are presentation. The class follows the status `ongoing` |
 | `<mermaid-classdef-planned>` | `dropped` | Colours are presentation |
@@ -118,9 +118,9 @@ Constraints the grammar states outside its productions, and where each one goes:
 | `<progress-row>` | `stored` | Leaf row: `Leaf.progress.branch`, `.commits`, `.notes`. Directory row: `Directory.notes`; its branch and commit count are dropped as copies of its leaves' |
 | `<non-blank-line>` | `dropped` | A lexical helper. The lines it matches are stored through `context`, `gotchas` and `goal` |
 | `<status-value>` | `stored` | `Leaf.status`, through the mapping in `statuses.md`, `Legacy mapping` |
-| `<node-id>` | `derived` | The path segment of the node. The stored `id` is new and minted by M1 |
-| `<node-name-file>` | `derived` | The path segment of a leaf plus `.json` |
-| `<node-name-dir>` | `derived` | The path segment of a directory |
+| `<node-id>` | `stored` | As the node's `name`. The stored `id` (`n_` and 8 characters) is new and minted by the importer |
+| `<node-name-file>` | `stored` | As the leaf's `name`, without `.md`; the file is `nodes/<id>.json` |
+| `<node-name-dir>` | `stored` | As the directory's `name`; no directory exists on disk (flat layout, 2026-11-25) |
 
 ## Stretched legacy data
 
@@ -142,7 +142,7 @@ Counts are over `__roadmap__/` at the date of this document.
 | Statuses in use | 26 planned, 4 in progress, 65 done; 0 blocked; 0 amendment | Mapping in `statuses.md` | None beyond the mapping |
 | Reference items without a label | `create-reporting-skill/README.md` lists a reference with no `R01` label, so its validation fails at that line | `Reference.label` is optional in the type | The label is absent and the importer warns. `validate` requires a label in a directory |
 | Mermaid labels | 13 of 95 differ from the child's H1 | `dropped`: derived from `title` | The H1 wins; the importer warns on a difference |
-| Sibling order | Nodes-table row order | `dropped`: siblings are parallel, order carries no meaning | Readers order by depth, kind and name |
+| Sibling order | Nodes-table row order | `stored` as each node's `order` key, in row order: a position for presentation, never a dependency | Readers order siblings by `(order, id)` |
 | Bulleted References | `create-reporting-skill/write_test_definition_reference.md` (lines 13-14 and 34-35) and `write_knowledge_transfer_reference.md` (lines 11-12) write `**References**:` followed by bullet lines, not one `; `-separated line | `stored`: `references[]`, one `Reference` per bullet | Each bullet is one `Reference`, split as a directory item (`label`, `title`, `target`, `note`). Bullets and the one-line form give the same array |
 | Sub-item identity | The legacy markdown has no id for a criterion, a reference, a check or a step: they are addressed by position or by text | `stored`: `Criterion.id`, `Reference.id`, `Check.id`, `Step.id` | The importer mints every id, once, at import (stable ids, `stored-schema.md`, `Stable identity`). A re-import of an edited file is not supported, so no id has to be matched to a legacy position |
 | Step count | 23 leaves with 1 step, 16 with 2, 23 with 3, 3 with 4, 2 with 5 | `validate` rule: 1 to 5 | None needed; none exceeds 5 |
@@ -152,5 +152,5 @@ Counts are over `__roadmap__/` at the date of this document.
 | # | Decision | Decided |
 |:--|:--|:--|
 | 1 | Criteria are enforced; legacy done nodes with open criteria are imported unchanged and reported by `validate`; the importer never ticks and writes no `Mark` | Eliott, 2026-11-16 |
-| 2 | The importer mints the id of every addressable sub-item (criteria, references, checks, steps). Legacy position is never stored as identity | Eliott, 2026-11-16 |
+| 2 | The importer mints the id of every addressable sub-item (criteria and steps; checks and references have no id since 2026-11-25, contracts.md §Id inventory). Legacy position is never stored as identity | Eliott, 2026-11-16 |
 | 3 | A `done` legacy node with an open gate is reconciled by an ordinary reasoned mark (`correction: true`); the importer still writes no `Mark` | Eliott, 2026-11-16 |
