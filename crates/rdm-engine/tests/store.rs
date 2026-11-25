@@ -1185,6 +1185,18 @@ fn tree_rev_changes_on_node_ops_not_comments() {
     let disk = Disk::new();
     disk.write_all(&base());
     let mut store = disk.open().unwrap();
+    // The tree and subtree domains, against hex computed outside the code over the files the
+    // codec wrote for `base()` (a rev is the first 16 hex digits of SHA-256 of the file without
+    // `schema_version`; the tree line is `<id> <rev>`):
+    //   cd <campaign>/nodes
+    //   for f in n_*.json; do echo "${f%.json} $(jq 'del(.schema_version)' $f | shasum -a 256 | cut -c1-16)"; done > revs
+    //   (printf 'rdm-tree\n'; cat revs) | shasum -a 256 | cut -c1-16                          # 4d9d2d44c7bc77b4
+    //   (printf 'rdm-subtree\n'; grep -E 'n_0000000[234]' revs) | shasum -a 256 | cut -c1-16  # cfe39e89990ef78c
+    assert_eq!(store.tree_rev().as_str(), "4d9d2d44c7bc77b4");
+    assert_eq!(
+        store.subtree_rev(&nid(2)).unwrap().as_str(),
+        "cfe39e89990ef78c"
+    );
     let mut seen = BTreeSet::from([store.tree_rev()]);
 
     let mut changed = leaf_of(&store, 3);
@@ -1739,22 +1751,61 @@ mod reverse {
     use super::*;
     use proptest::prelude::*;
 
+    fn step_reference(node: Node, target: u32) -> Node {
+        let Node::Leaf(mut l) = node else { return node };
+        l.steps[0].references.push(Reference {
+            label: None,
+            title: "step ref".into(),
+            target: None,
+            note: None,
+            node_id: Some(nid(target)),
+            extra: Default::default(),
+        });
+        Node::Leaf(l)
+    }
+
+    fn dir_reference(node: Node, target: u32) -> Node {
+        let Node::Directory(mut d) = node else {
+            return node;
+        };
+        d.references.push(Reference {
+            label: None,
+            title: "dir ref".into(),
+            target: None,
+            note: None,
+            node_id: Some(nid(target)),
+            extra: Default::default(),
+        });
+        Node::Directory(d)
+    }
+
     fn apply(store: &mut Store, step: (u8, u8, u8), next: &mut u32) {
         let ids: Vec<NodeId> = ids_of(store).into_iter().collect();
         let pick = |x: u8| ids[x as usize % ids.len()].clone();
         let number = |id: &NodeId| (1..400).find(|n| nid(*n) == *id).unwrap_or(0);
         let (kind, a, b) = step;
+        let of = |id: &NodeId| store.campaign().get(id).cloned();
         let leaves: Vec<NodeId> = ids
             .iter()
-            .filter(|i| matches!(store.campaign().get(i), Some(Node::Leaf(_))))
+            .filter(|i| matches!(of(i), Some(Node::Leaf(_))))
             .cloned()
             .collect();
         let dirs: Vec<NodeId> = ids
             .iter()
-            .filter(|i| matches!(store.campaign().get(i), Some(Node::Directory(_))))
+            .filter(|i| matches!(of(i), Some(Node::Directory(_))))
             .cloned()
             .collect();
-        match kind % 6 {
+        let replace = |store: &mut Store, node: Node| {
+            let rev = store.rev(node.id()).cloned();
+            let _ = store.replace(Request {
+                header: header(Some("r"), None),
+                op: ReplaceOp {
+                    expected_rev: rev,
+                    node,
+                },
+            });
+        };
+        match kind % 10 {
             0 => {
                 *next += 1;
                 let parent = dirs[a as usize % dirs.len()].clone();
@@ -1766,23 +1817,17 @@ mod reverse {
             }
             1 if !leaves.is_empty() => {
                 let id = leaves[a as usize % leaves.len()].clone();
-                let node =
-                    with_reference(store.campaign().get(&id).unwrap().clone(), number(&pick(b)));
-                let rev = store.rev(&id).unwrap().clone();
-                let _ = store.replace(replace_req(header(Some("r"), None), Some(&rev), node));
+                let node = with_reference(of(&id).unwrap(), number(&pick(b)));
+                replace(store, node);
             }
             2 if !leaves.is_empty() => {
                 let id = leaves[a as usize % leaves.len()].clone();
-                let Node::Leaf(mut l) = store.campaign().get(&id).unwrap().clone() else {
+                let Some(Node::Leaf(mut l)) = of(&id) else {
                     return;
                 };
                 l.references.clear();
-                let rev = store.rev(&id).unwrap().clone();
-                let _ = store.replace(replace_req(
-                    header(Some("r"), None),
-                    Some(&rev),
-                    Node::Leaf(l),
-                ));
+                l.steps[0].references.clear();
+                replace(store, Node::Leaf(l));
             }
             3 => {
                 let id = pick(a);
@@ -1804,6 +1849,62 @@ mod reverse {
                 };
                 let _ = store.delete_subtree(req(Some("d"), op));
             }
+            5 => {
+                let _ = store.comment(req(
+                    None,
+                    CommentOp {
+                        node_id: pick(a),
+                        text: vec!["c".into()],
+                    },
+                ));
+            }
+            6 if !leaves.is_empty() => {
+                let id = leaves[a as usize % leaves.len()].clone();
+                let node = step_reference(of(&id).unwrap(), number(&pick(b)));
+                replace(store, node);
+            }
+            7 => {
+                // A batch: a leaf with a step reference, and a comment on a node.
+                *next += 1;
+                let parent = dirs[a as usize % dirs.len()].clone();
+                let node = step_reference(
+                    leaf_node(*next, &format!("x{next}"), number(&parent), "V"),
+                    number(&pick(b)),
+                );
+                let ops = vec![
+                    Op::Create(create_op(node, None)),
+                    Op::Comment(CommentOp {
+                        node_id: pick(b),
+                        text: vec!["c".into()],
+                    }),
+                ];
+                let _ = store.batch(req(
+                    Some("b"),
+                    BatchOp {
+                        expected_tree_rev: None,
+                        ops,
+                        dry_run: false,
+                    },
+                ));
+            }
+            8 => {
+                // A rename only: no parent, no place.
+                *next += 1;
+                let id = pick(a);
+                let op = RelocateOp {
+                    id: id.clone(),
+                    expected_rev: store.rev(&id).cloned(),
+                    parent_id: None,
+                    name: Some(name(&format!("r{next}"))),
+                    position: None,
+                };
+                let _ = store.move_node(req(Some("m"), op));
+            }
+            9 if !dirs.is_empty() => {
+                let id = dirs[a as usize % dirs.len()].clone();
+                let node = dir_reference(of(&id).unwrap(), number(&pick(b)));
+                replace(store, node);
+            }
             _ => {
                 let _ = store.comment(req(
                     None,
@@ -1819,9 +1920,9 @@ mod reverse {
     proptest! {
         #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
         #[test]
-        fn reverse_index_equals_brute_force_scan(steps in prop::collection::vec((any::<u8>(), any::<u8>(), any::<u8>()), 1..14)) {
+        fn reverse_index_equals_brute_force_scan(steps in prop::collection::vec((any::<u8>(), any::<u8>(), any::<u8>()), 1..16)) {
             let mut nodes = base();
-            nodes.push(with_reference(leaf_node(6, "linked", 5, "V"), 3));
+            nodes.push(step_reference(with_reference(leaf_node(6, "linked", 5, "V"), 3), 4));
             let disk = Disk::new();
             disk.write_all(&nodes);
             let mut store = disk.open().unwrap();
@@ -2639,7 +2740,8 @@ fn plant(disk: &Disk, effects: Vec<IntentEffect>) {
 #[test]
 fn an_intent_naming_a_file_outside_the_records_is_removed_not_redone() {
     let outside = |disk: &Disk, f: &str| disk.root.parent().unwrap().join(f);
-    let rows: Vec<(&str, Box<dyn Fn(&Disk) -> IntentEffect>)> = vec![
+    type Planted = Box<dyn Fn(&Disk) -> IntentEffect>;
+    let rows: Vec<(&str, Planted)> = vec![
         (
             "a parent directory",
             Box::new(|_| IntentEffect::Del {
@@ -2850,4 +2952,133 @@ fn a_garbage_holder_record_gives_locked_with_no_holder_at_the_store() {
     );
     assert_eq!(snapshot(&disk), before);
     drop(held);
+}
+
+#[test]
+fn diagnostics_are_sorted_across_their_producers() {
+    // Three producers, each in a different file: a file warning (n3), a campaign defect (n6) and a
+    // mark diagnostic (n4). The store collects them in that order of producer, n3 then n6 then n4,
+    // so only a sort puts n4 before n6.
+    let mut nodes = base();
+    nodes.push(leaf_node(6, "orphan", 99, "V"));
+    let disk = Disk::new();
+    disk.write_all(&nodes);
+    edit_file(&disk, 3, |v| v["zz"] = json!(1));
+    edit_file(&disk, 4, |v| {
+        v["marks"] = json!([{
+            "ts": "2026-01-01T00:00:00Z",
+            "actor": {"kind": "agent"},
+            "criterion_id": cid(999).to_string(),
+            "met": true
+        }]);
+    });
+    let store = disk.open().unwrap();
+    assert_eq!(
+        rules(&store),
+        vec![
+            (file(3), Rule::UnknownKey),
+            (file(4), Rule::MarkTarget),
+            (file(6), Rule::ParentMissing)
+        ]
+    );
+}
+
+fn stamped_ok(disk: &Disk, before: &BTreeMap<String, Vec<u8>>, row: &str) {
+    let want = rdm_schema::version_string(rdm_schema::FORMAT_VERSION);
+    let after = snapshot(disk);
+    let mut checked = 0;
+    for (path, bytes) in &after {
+        if before.get(path) == Some(bytes) {
+            continue;
+        }
+        let v: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(v["schema_version"], json!(want), "{row}: {path}");
+        checked += 1;
+    }
+    assert!(checked > 0, "{row}: something was written");
+}
+
+fn with_stamp(node: &Node, stamp: &str) -> Node {
+    let mut n = node.clone();
+    match &mut n {
+        Node::Directory(d) => d.schema_version = stamp.into(),
+        Node::Leaf(l) => l.schema_version = stamp.into(),
+    }
+    n
+}
+
+#[test]
+fn every_write_stamps_the_current_format_version() {
+    // No real producer writes an older stamp the store can read, so the payloads carry one: a
+    // node a caller sends with a stale stamp is written with the current one, and so is every
+    // amendment and comment the store makes.
+    let disk = Disk::new();
+    disk.write_all(&base());
+    let mut store = disk.open().unwrap();
+    let stale = "0.0.1";
+
+    let before = snapshot(&disk);
+    let node = with_stamp(&leaf_node(20, "fresh", 2, "V"), stale);
+    store.create(req(Some("c"), create_op(node, None))).unwrap();
+    stamped_ok(&disk, &before, "create");
+
+    let before = snapshot(&disk);
+    let mut edited = leaf_of(&store, 3);
+    edited.goal = "edit".into();
+    let rev = rev_of(&store, 3);
+    store
+        .replace(replace_req(
+            header(Some("e"), None),
+            Some(&rev),
+            with_stamp(&Node::Leaf(edited), stale),
+        ))
+        .unwrap();
+    stamped_ok(&disk, &before, "replace");
+
+    let before = snapshot(&disk);
+    let op = relocate_op(&store, 4, Some("beta2"), None, None);
+    store.move_node(req(Some("m"), op)).unwrap();
+    stamped_ok(&disk, &before, "relocate");
+
+    let before = snapshot(&disk);
+    store
+        .comment(req(
+            None,
+            CommentOp {
+                node_id: nid(3),
+                text: vec!["c".into()],
+            },
+        ))
+        .unwrap();
+    stamped_ok(&disk, &before, "comment");
+
+    let before = snapshot(&disk);
+    let op = delete_op(&store, 5);
+    store.delete_subtree(req(Some("d"), op)).unwrap();
+    stamped_ok(&disk, &before, "delete");
+
+    let before = snapshot(&disk);
+    let mut edited = leaf_of(&store, 4);
+    edited.goal = "again".into();
+    let ops = vec![
+        Op::Create(create_op(
+            with_stamp(&leaf_node(21, "batched", 2, "V"), stale),
+            None,
+        )),
+        Op::Replace(ReplaceOp {
+            expected_rev: Some(rev_of(&store, 4)),
+            node: with_stamp(&Node::Leaf(edited), stale),
+        }),
+    ];
+    store
+        .batch(req(
+            Some("b"),
+            BatchOp {
+                expected_tree_rev: None,
+                ops,
+                dry_run: false,
+            },
+        ))
+        .unwrap();
+    stamped_ok(&disk, &before, "batch");
 }
