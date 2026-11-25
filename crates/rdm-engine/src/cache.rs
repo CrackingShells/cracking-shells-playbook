@@ -589,7 +589,7 @@ pub(crate) struct Published<'a> {
 /// A campaign held in memory by a long-lived process: reads are served from decoded entries
 /// revalidated against the files, writes go through to the files and into the entries.
 ///
-/// `read` returns what a fresh [`Store::open`] would return at that moment: the same campaign,
+/// `read` returns what a cold open would return at that moment: the same campaign,
 /// revisions, reverse index, diagnostics and op index. A write returns only after its files are
 /// published, so a cold reader that starts after the return sees them.
 pub struct CachedCampaign {
@@ -600,7 +600,9 @@ impl CachedCampaign {
     /// Opens the campaign at `root` and reads every file once.
     ///
     /// # Errors
-    /// As [`Store::open`].
+    /// A per-file fault refuses the open, naming the file: `Invalid` (an unparsable file, a
+    /// malformed id, `file_id_mismatch`, a rule of the node itself), `NewerFormat`, or `Io`.
+    /// Damage between files loads, and is in [`Store::diagnostics`].
     pub fn open(
         root: impl Into<PathBuf>,
         slug: &Name,
@@ -617,7 +619,7 @@ impl CachedCampaign {
     /// and is not cached: the next read tries it again.
     ///
     /// # Errors
-    /// As [`Store::open`].
+    /// As [`CachedCampaign::open`].
     pub fn read(&mut self) -> Result<&Store, StoreError> {
         self.store.refresh()?;
         Ok(&self.store)
@@ -629,42 +631,54 @@ impl CachedCampaign {
         self.store.last_recovered()
     }
 
-    /// As [`Store::recover`].
+    /// Recovery on request: takes the writer lock, removes the stray temporary files, redoes every
+    /// intent record left by an interrupted write, and reads the campaign again. Every write does
+    /// this on its own on taking the lock; a reader that wants the settled state calls it.
     ///
     /// # Errors
-    /// As [`Store::recover`].
+    /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
+    /// create finds other bytes where it must create a file, `Io`.
     pub fn recover(&mut self) -> Result<Recovered, StoreError> {
         self.store.recover()
     }
 
-    /// As [`Store::replace`].
+    /// Replaces one node file if its current `rev` is `expected_rev` (I4). It cannot change
+    /// `id`, `name`, `parent_id` or `order`; a content edit needs a note and writes an amendment.
     ///
     /// # Errors
-    /// As [`Store::replace`].
+    /// `Stale`, `Locked`, `NotFound`, `Invalid` with the rule that is broken, `Io`.
     pub fn replace(&mut self, req: Request<ReplaceOp>) -> Result<Receipt<Written>, StoreError> {
         self.store.replace(req)
     }
 
-    /// As [`Store::create`].
+    /// Writes a new node file. The caller minted the ids in `node`; `node.order` is not read, the
+    /// store sets it from `position` (default last) and rebalances the siblings when a key grows
+    /// past the limit.
     ///
     /// # Errors
-    /// As [`Store::create`].
+    /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
+    /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
+    /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
     pub fn create(&mut self, req: Request<CreateOp>) -> Result<Receipt<Written>, StoreError> {
         self.store.create(req)
     }
 
-    /// As [`Store::move_node`].
+    /// Renames or moves one node: one node file and one amendment, no id changes.
     ///
     /// # Errors
-    /// As [`Store::move_node`].
+    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
+    /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
+    /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
     pub fn move_node(&mut self, req: Request<RelocateOp>) -> Result<Receipt<Written>, StoreError> {
         self.store.move_node(req)
     }
 
-    /// As [`Store::delete_subtree`].
+    /// Removes a node and every descendant if the `SubtreeRev` matches. The amendment, with the
+    /// snapshot of the removed nodes, is written before the first node file is removed.
     ///
     /// # Errors
-    /// As [`Store::delete_subtree`].
+    /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
+    /// `expected_rev_required`), `Io`.
     pub fn delete_subtree(
         &mut self,
         req: Request<DeleteOp>,
@@ -672,18 +686,21 @@ impl CachedCampaign {
         self.store.delete_subtree(req)
     }
 
-    /// As [`Store::comment`].
+    /// Writes one comment file. It has no revision and never conflicts.
     ///
     /// # Errors
-    /// As [`Store::comment`].
+    /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
     pub fn comment(&mut self, req: Request<CommentOp>) -> Result<Receipt<Commented>, StoreError> {
         self.store.comment(req)
     }
 
-    /// As [`Store::batch`].
+    /// Applies the ops in order as one transaction: each is checked against the state the
+    /// earlier ones produced, the whole result is checked once, and either everything is
+    /// written or nothing. `dry_run` runs every check and writes nothing.
     ///
     /// # Errors
-    /// As [`Store::batch`].
+    /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
+    /// `expected_tree_rev`; `Locked`; `Io`.
     pub fn batch(&mut self, req: Request<BatchOp>) -> Result<Receipt<Vec<OpResult>>, StoreError> {
         self.store.batch(req)
     }

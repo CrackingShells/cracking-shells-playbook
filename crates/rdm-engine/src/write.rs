@@ -967,7 +967,7 @@ impl Store {
     // -----------------------------------------------------------------------------------------
     // The primitives
 
-    /// What the last recovery did: the one a write ran on taking the lock, or [`Store::recover`].
+    /// What the last recovery did: the one a write ran on taking the lock, or a recovery on request.
     /// `None` until a recovery has run; it holds the report until the next one replaces it.
     #[must_use]
     pub fn last_recovered(&self) -> Option<&Recovered> {
@@ -981,7 +981,7 @@ impl Store {
     /// # Errors
     /// `Locked`, `NewerFormat` for an intent record newer than this binary, `Invalid` when a
     /// create finds other bytes where it must create a file, `Io`.
-    pub fn recover(&mut self) -> Result<Recovered, StoreError> {
+    pub(crate) fn recover(&mut self) -> Result<Recovered, StoreError> {
         let _lock = self.lock()?;
         self.ignore_scratch()?;
         let report = self.recover_locked()?;
@@ -995,7 +995,10 @@ impl Store {
     ///
     /// # Errors
     /// `Stale`, `Locked`, `NotFound`, `Invalid` with the rule that is broken, `Io`.
-    pub fn replace(&mut self, req: Request<ReplaceOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn replace(
+        &mut self,
+        req: Request<ReplaceOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Replace(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1013,7 +1016,10 @@ impl Store {
     /// `Locked`, `Invalid` with the rule that is broken (`duplicate_id`, `parent_missing`,
     /// `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch`,
     /// `unvalidated_node`, `position_not_sibling`, `note_required`, a shape rule), `Io`.
-    pub fn create(&mut self, req: Request<CreateOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn create(
+        &mut self,
+        req: Request<CreateOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Create(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1027,7 +1033,10 @@ impl Store {
     /// `Stale`, `Locked`, `NotFound`, `Invalid` (`nothing_to_do`, `parent_missing`,
     /// `parent_not_directory`, `cycle`, `name_collision`, `position_not_sibling`,
     /// `root_delete_or_move`, `unvalidated_node`, `note_required`), `Io`.
-    pub fn move_node(&mut self, req: Request<RelocateOp>) -> Result<Receipt<Written>, StoreError> {
+    pub(crate) fn move_node(
+        &mut self,
+        req: Request<RelocateOp>,
+    ) -> Result<Receipt<Written>, StoreError> {
         let one = self.run(&req.header, &[Op::Relocate(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Written(w) => Some(w),
@@ -1041,7 +1050,7 @@ impl Store {
     /// # Errors
     /// `Stale`, `Locked`, `NotFound`, `Invalid` (`root_delete_or_move`, `note_required`,
     /// `expected_rev_required`), `Io`.
-    pub fn delete_subtree(
+    pub(crate) fn delete_subtree(
         &mut self,
         req: Request<DeleteOp>,
     ) -> Result<Receipt<Deleted>, StoreError> {
@@ -1056,7 +1065,10 @@ impl Store {
     ///
     /// # Errors
     /// `Locked`, `NotFound` for a missing node, `Invalid` (`note_forbidden`), `Io`.
-    pub fn comment(&mut self, req: Request<CommentOp>) -> Result<Receipt<Commented>, StoreError> {
+    pub(crate) fn comment(
+        &mut self,
+        req: Request<CommentOp>,
+    ) -> Result<Receipt<Commented>, StoreError> {
         let one = self.run(&req.header, &[Op::Comment(req.op)], None, false, false)?;
         single(one, |r| match r {
             OpResult::Commented(c) => Some(c),
@@ -1071,7 +1083,10 @@ impl Store {
     /// # Errors
     /// The first failing op as `InBatch { index, source }`; `Stale` for a stale
     /// `expected_tree_rev`; `Locked`; `Io`.
-    pub fn batch(&mut self, req: Request<BatchOp>) -> Result<Receipt<Vec<OpResult>>, StoreError> {
+    pub(crate) fn batch(
+        &mut self,
+        req: Request<BatchOp>,
+    ) -> Result<Receipt<Vec<OpResult>>, StoreError> {
         let BatchOp {
             expected_tree_rev,
             ops,

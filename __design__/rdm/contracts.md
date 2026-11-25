@@ -151,7 +151,7 @@ everything about the tree derived from `parent_id`, `name` and `order`. A **pare
 subtree.
 
 ```rust
-// In rdm-schema, pure: no I/O. The engine's `Store` reads and decodes the files and calls `open`.
+// In rdm-schema, pure: no I/O. The engine's `Store` (held by the public `CachedCampaign` handle) reads and decodes the files and calls `open`.
 pub struct Campaign { /* nodes; root: Option<NodeId>; children index; depth memo;
                          unvalidated: set of NodeId; diagnostics: Vec<Diagnostic> */ }
 #[must_use = "an opened campaign carries diagnostics; read them"]

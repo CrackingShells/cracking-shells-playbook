@@ -10,8 +10,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::campaign::*;
+use rdm_engine::cache::CachedCampaign;
 use rdm_engine::fs::{Durability, Effect, Fs, RecordingFs, replay_prefix};
-use rdm_engine::store::{Options, Store};
+use rdm_engine::store::Options;
 use rdm_schema::error::Rule;
 use rdm_schema::ids::*;
 use rdm_schema::ops::{
@@ -76,22 +77,33 @@ fn req<T>(note: Option<&str>, op: T) -> Request<T> {
     }
 }
 
-fn node_of(store: &Store, n: u32) -> Node {
-    store.campaign().get(&nid(n)).unwrap().clone()
+fn node_of(store: &mut CachedCampaign, n: u32) -> Node {
+    store
+        .read()
+        .unwrap()
+        .campaign()
+        .get(&nid(n))
+        .unwrap()
+        .clone()
 }
 
-fn rev_of(store: &Store, n: u32) -> Rev {
-    store.rev(&nid(n)).unwrap().clone()
+fn rev_of(store: &mut CachedCampaign, n: u32) -> Rev {
+    store.read().unwrap().rev(&nid(n)).unwrap().clone()
 }
 
-fn delete_op(store: &Store, n: u32) -> DeleteOp {
+fn delete_op(store: &mut CachedCampaign, n: u32) -> DeleteOp {
     DeleteOp {
         id: nid(n),
-        expected_subtree_rev: store.subtree_rev(&nid(n)),
+        expected_subtree_rev: store.read().unwrap().subtree_rev(&nid(n)),
     }
 }
 
-fn move_op(store: &Store, n: u32, parent: Option<u32>, new_name: Option<&str>) -> RelocateOp {
+fn move_op(
+    store: &mut CachedCampaign,
+    n: u32,
+    parent: Option<u32>,
+    new_name: Option<&str>,
+) -> RelocateOp {
     RelocateOp {
         id: nid(n),
         expected_rev: Some(rev_of(store, n)),
@@ -101,7 +113,7 @@ fn move_op(store: &Store, n: u32, parent: Option<u32>, new_name: Option<&str>) -
     }
 }
 
-fn edited_goal(store: &Store, n: u32) -> ReplaceOp {
+fn edited_goal(store: &mut CachedCampaign, n: u32) -> ReplaceOp {
     let Node::Leaf(mut leaf) = node_of(store, n) else {
         panic!("a leaf")
     };
@@ -112,7 +124,11 @@ fn edited_goal(store: &Store, n: u32) -> ReplaceOp {
     }
 }
 
-fn batch(store: &mut Store, note: &str, ops: Vec<Op>) -> Receipt<Vec<rdm_schema::ops::OpResult>> {
+fn batch(
+    store: &mut CachedCampaign,
+    note: &str,
+    ops: Vec<Op>,
+) -> Receipt<Vec<rdm_schema::ops::OpResult>> {
     let op = BatchOp {
         expected_tree_rev: None,
         ops,
@@ -121,7 +137,7 @@ fn batch(store: &mut Store, note: &str, ops: Vec<Op>) -> Receipt<Vec<rdm_schema:
     store.batch(req(Some(note), op)).unwrap()
 }
 
-type Run = Box<dyn Fn(&mut Store)>;
+type Run = Box<dyn Fn(&mut CachedCampaign)>;
 
 struct Row {
     name: &'static str,
@@ -274,13 +290,15 @@ fn copy_options(fs: Option<Arc<dyn Fs + Send + Sync>>) -> Options {
     }
 }
 
-fn open(root: &Path) -> Store {
-    Store::open(root, &name("demo"), copy_options(None))
+fn open(root: &Path) -> CachedCampaign {
+    CachedCampaign::open(root, &name("demo"), copy_options(None))
         .unwrap_or_else(|e| panic!("the campaign must load: {e:?}"))
 }
 
-fn diagnostic_keys(store: &Store) -> BTreeSet<(String, Rule)> {
+fn diagnostic_keys(store: &mut CachedCampaign) -> BTreeSet<(String, Rule)> {
     store
+        .read()
+        .unwrap()
         .diagnostics()
         .iter()
         .map(|d| (d.file.clone(), d.rule))
@@ -288,7 +306,7 @@ fn diagnostic_keys(store: &Store) -> BTreeSet<(String, Rule)> {
 }
 
 fn diagnostics(root: &Path) -> BTreeSet<(String, Rule)> {
-    diagnostic_keys(&open(root))
+    diagnostic_keys(&mut open(root))
 }
 
 /// The ids a stored amendment lists in its `snapshot`.
@@ -423,7 +441,7 @@ struct Oracle {
 
 /// What a state that is neither whole before nor whole after may look like to a reader: the
 /// three rules of `store.md` (Write order) as properties of the files on disk.
-fn assert_reader_sees_a_valid_state(label: &str, o: &Oracle, work: &Path) -> Store {
+fn assert_reader_sees_a_valid_state(label: &str, o: &Oracle, work: &Path) -> CachedCampaign {
     let state = files_of(work);
     // Whole files only: each file is as it was before or as it will be after.
     for (path, bytes) in &state {
@@ -431,8 +449,8 @@ fn assert_reader_sees_a_valid_state(label: &str, o: &Oracle, work: &Path) -> Sto
         assert!(known, "{label}: {path} holds bytes of neither state");
     }
     // The campaign loads, and shows no damage the two states do not show (no orphan).
-    let store = open(work);
-    let shown = diagnostic_keys(&store);
+    let mut store = open(work);
+    let shown = diagnostic_keys(&mut store);
     let extra: Vec<_> = shown.difference(&o.allowed).collect();
     assert!(extra.is_empty(), "{label}: a reader sees damage: {extra:?}");
     // Rule 3: a node that is gone has its before-image in the snapshot of an amendment that is
@@ -471,7 +489,7 @@ fn assert_reader_sees_a_valid_state(label: &str, o: &Oracle, work: &Path) -> Sto
 /// Recovery on a copy: the state must be the one before or the one after, with nothing left in
 /// the scratch area, and a second recovery must find nothing to do. Returns whether it is after.
 /// `store` is the one a reader opened on the cut state.
-fn recover_and_judge(label: &str, o: &Oracle, work: &Path, mut store: Store) -> bool {
+fn recover_and_judge(label: &str, o: &Oracle, work: &Path, mut store: CachedCampaign) -> bool {
     let committed = has_intent(work);
     store
         .recover()
@@ -524,7 +542,7 @@ fn record(row: &Row) -> (tempfile::TempDir, Vec<Effect>, Files) {
     let pre_dir = tempfile::tempdir().unwrap();
     copy_tree(&disk.root, &pre_dir.path().join("demo"));
     let rec = Arc::new(RecordingFs::new(&disk.root));
-    let mut store = Store::open(
+    let mut store = CachedCampaign::open(
         &disk.root,
         &name("demo"),
         seeded_options(SEED, Some(rec.clone())),
@@ -647,7 +665,8 @@ fn every_write_prefix_loads_and_recovers_to_pre_or_post() {
             at_prefix(&pre_dir, &log, k, &work);
             let rec = Arc::new(RecordingFs::new(&work));
             let mut store =
-                Store::open(&work, &name("demo"), copy_options(Some(rec.clone()))).unwrap();
+                CachedCampaign::open(&work, &name("demo"), copy_options(Some(rec.clone())))
+                    .unwrap();
             store.recover().unwrap();
             let recovery = rec.effects();
             for j in 0..=recovery.len() {
