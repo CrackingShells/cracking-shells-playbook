@@ -11,10 +11,10 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 
 use common::campaign::*;
+use common::{child_role, spawn_child};
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::decode;
 use rdm_engine::fs::{Durability, Effect, FileStat, Fs, RealFs, RecordingFs};
@@ -155,6 +155,11 @@ fn sound() -> Disk {
 // ---------------------------------------------------------------------------------------------
 // Another process
 
+/// Runs `test` again as a child process that executes `child_job` on `root`.
+fn run_child(test: &str, root: &Path) {
+    spawn_child(test, "job", root, &[]).wait_ok();
+}
+
 /// What the child process does: a content edit and a comment, each with an `op_id`, through a
 /// store of its own.
 fn child_job(root: &Path) {
@@ -166,25 +171,6 @@ fn child_job(root: &Path) {
     store
         .comment(req(None, Some("child-op-2"), comment_on(4, "child says")))
         .unwrap();
-}
-
-/// Runs `test` again as a child process that executes `child_job` on `root`.
-fn run_child(test: &str, root: &Path) {
-    let out = Command::new(std::env::current_exe().unwrap())
-        .args([test, "--exact", "--nocapture", "--test-threads=1"])
-        .env("RDM_CACHE_CHILD", root)
-        .output()
-        .expect("the test binary runs again");
-    assert!(
-        out.status.success(),
-        "the child failed: {}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
-fn child_role() -> Option<PathBuf> {
-    std::env::var_os("RDM_CACHE_CHILD").map(PathBuf::from)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -236,7 +222,7 @@ fn sound_aged() -> Disk {
 
 #[test]
 fn cached_read_equals_cold_read() {
-    if let Some(root) = child_role() {
+    if let Some((_, root)) = child_role() {
         return child_job(&root);
     }
 
@@ -703,7 +689,7 @@ fn a_write_recovers_an_interrupted_operation_and_the_cache_follows() {
 
 #[test]
 fn a_replayed_op_id_is_found_after_another_process_wrote_it() {
-    if let Some(root) = child_role() {
+    if let Some((_, root)) = child_role() {
         return child_job(&root);
     }
     // Bug caught: the replay check run on the cache as it was before the lock was taken. The

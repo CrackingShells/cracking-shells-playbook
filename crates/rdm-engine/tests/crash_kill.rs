@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use common::campaign::*;
-use common::{ChildProc, child_role, spawn_child};
+use common::{ChildProc, child_role, env_u64, spawn_child};
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::ids::mint_id;
 use rdm_engine::store::{Options, Store};
@@ -40,13 +40,6 @@ const DEFAULT_WORKERS: usize = 3;
 const HOT: [u32; 3] = [2, 3, 4];
 /// A worker that outlives its parent by this long (a parent killed without cleanup) ends itself.
 const WORKER_LIFETIME: Duration = Duration::from_secs(600);
-
-fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
 
 // ---------------------------------------------------------------------------------------------
 // The campaign

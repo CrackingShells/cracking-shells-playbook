@@ -9,6 +9,17 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
+/// How long a parent waits for a line from a child.
+pub const LIMIT: Duration = Duration::from_secs(60);
+
+/// A numeric knob from the environment, `default` when unset or unparsable.
+pub fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 pub const ROLE: &str = "RDM_CHILD_ROLE";
 pub const DIR: &str = "RDM_CHILD_DIR";
 
@@ -74,6 +85,13 @@ impl ChildProc {
                 Err(_) => panic!("child never printed a line starting with {prefix:?}"),
             }
         }
+    }
+
+    /// Wait for the child to exit, which it must do successfully.
+    pub fn wait_ok(&mut self) {
+        self.stdin = None;
+        let status = self.child.wait().expect("wait for the child");
+        assert!(status.success(), "the child failed: {status}");
     }
 
     /// Close the child's stdin, which tells a waiting child to finish.
