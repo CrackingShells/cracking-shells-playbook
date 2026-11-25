@@ -406,7 +406,11 @@ fn leaf_of(store: &mut CachedCampaign, n: u32) -> Leaf {
     }
 }
 
+/// The first 16 hex digits of SHA-256 over the file without `schema_version`: `jq` is the
+/// independent canonicaliser; the hash is the `sha2` crate's, since a stock Windows runner has
+/// no `shasum`.
 fn sha16_of_jq(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
     use std::io::Write;
     let mut jq = Command::new("jq")
         .args(["del(.schema_version)"])
@@ -416,15 +420,11 @@ fn sha16_of_jq(bytes: &[u8]) -> String {
         .unwrap();
     jq.stdin.take().unwrap().write_all(bytes).unwrap();
     let out = jq.wait_with_output().unwrap().stdout;
-    let mut sum = Command::new("shasum")
-        .args(["-a", "256"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    sum.stdin.take().unwrap().write_all(&out).unwrap();
-    let hash = String::from_utf8(sum.wait_with_output().unwrap().stdout).unwrap();
-    hash[..16].to_owned()
+    let hex: String = Sha256::digest(&out)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    hex[..16].to_owned()
 }
 
 #[test]
@@ -1321,13 +1321,15 @@ fn delete_reports_referrers_and_touches_only_the_subtree() {
 /// name, and the unlinks of one.
 fn published(effects: &[Effect]) -> Vec<String> {
     let visible = |p: &Path| !p.starts_with(".rdm/tmp") && !p.starts_with(".rdm/.gitignore");
+    // The logical name, `/`-joined, whatever the platform spells a path with.
+    let logical = |p: &Path| p.to_string_lossy().replace('\\', "/");
     effects
         .iter()
         .filter_map(|e| match e {
             Effect::Link { link: p, .. } | Effect::Rename { to: p, .. } if visible(p) => {
-                Some(format!("+{}", p.display()))
+                Some(format!("+{}", logical(p)))
             }
-            Effect::Remove { path } if visible(path) => Some(format!("-{}", path.display())),
+            Effect::Remove { path } if visible(path) => Some(format!("-{}", logical(path))),
             _ => None,
         })
         .collect()
