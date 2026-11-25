@@ -23,6 +23,127 @@ never the source of truth.
 Where a claim is this design's own and not a source's, it says so. Guard names are those of the
 [campaign README](../../__roadmap__/m1-core-foundation/README.md).
 
+## Layout
+
+```
+__roadmap__/<campaign>/
+  nodes/<id>.json            every node: the campaign root, directories and leaves (tracked)
+  _amendments/<ulid>.json    one file per amendment, append-only (tracked)
+  _comments/<ulid>.json      one file per comment, append-only (tracked)
+  .rdm/                      untracked, created by the store
+    .gitignore               holds `*`, so the repository's own .gitignore needs no entry
+    lock                     the writer lock; empty, never read or written
+    holder.json              advisory record of the lock holder
+    tmp/                     files being written, before they are published
+    intent/<ulid>.json       redo records of operations in flight
+    cache/                   optional persisted cache (the hot_cache leaf decides if any)
+```
+
+A node is one file, whatever its kind. The tree is not in the file system: a node's place is its
+`parent_id`, its place among siblings its order key.
+
+| Stored in the node file | Rule |
+|:--|:--|
+| `name` | `^[a-z][a-z0-9_-]*$`, unique among the children of one parent. For the root it is the campaign's own slug and need not equal the checkout's directory name |
+| `parent_id` | The `id` of the parent node. Absent on the root and only there |
+| `order_key` | The sibling order key (Order key). Every node has one; the root's is unused |
+
+| Derived on every read, never stored | From |
+|:--|:--|
+| Path (`a/b/c`) | The `name`s along the `parent_id` chain |
+| Depth (`level`) | The length of that chain: the one ordering rule, I1 |
+| Order of siblings | `(order_key, id)`, both compared bytewise, ascending |
+
+**What the loader reads.** In `nodes/` only entries named `n_` followed by eight characters of the id
+alphabet and `.json`; in `_amendments/` and `_comments/` only 26-character ULIDs and `.json`. Other
+names are ignored, so an editor's backup file or a stray temporary cannot be loaded as a node. The
+store's own temporary files are not in these directories at all: they live in `.rdm/tmp/`. That keeps
+them out of `git status` as well, and `nodes/` changes only when a node is published.
+
+**Why this layout.** Each fact a writer changes is one small file, so git merges two branches that
+edit different nodes without a conflict, and a rename, a move or an insert among siblings writes
+one file. No directory is ever renamed, so R01's risk "directory renames fail on Windows while a
+handle is open" disappears. A path is `nodes/n_xxxxxxxx.json` below the campaign directory
+whatever the depth of the tree, so the Windows 260-character limit no longer depends on nesting.
+A node's `name` can be any valid slug, including `con` or `nul`, because it is no longer a file name.
+
+**Structural defects the flat layout allows.** Git merges files, not the invariants between them, so
+a merge can produce these. The loader loads them as data and reports them (`validate`); it never
+refuses to load a campaign because of them, and an operation that touches an affected node fails with
+`Invalid`.
+
+| Defect | Produced by |
+|:--|:--|
+| Two siblings with one `name` | Two branches each add a node of that name under one parent. The two files differ, so git sees no conflict |
+| A `parent_id` naming no node (orphan) | One branch deletes a node while another adds or moves a child under it |
+| A cycle in the `parent_id` chain | Two branches each move one of two nodes under the other |
+| No root, or two | A merge of unrelated histories |
+| Two files with one id | Minting collided across branches: the same path, so git reports an add/add conflict and the merge cannot complete silently |
+
+These are consequences of the flat-layout ruling, not objections to it. Not tested here: the rules
+belong to `validate` (M2); the store only guarantees that loading does not fail on them.
+
+## Order key
+
+**Technique:** fractional indexing (Figma; Greenspan's midpoint algorithm as in
+`rocicorp/fractional-indexing`), in the form below. What the sources support: Sources.
+
+- **Alphabet.** The 62 digits `0-9A-Za-z`, in ascending ASCII order, value = position. A key is a non-empty string of digits that does not end in `0`, read as a base-62 fraction between 0 and 1. Keys compare with plain bytewise comparison, never locale order. `validate` rejects any other string.
+- **A first key** is `V`, the middle digit.
+- **A key between `a` and `b`** (`a < b`; `none` stands for 0 as a lower bound and for 1 as an upper bound):
+  1. Strip the common prefix (`a` is read as padded with `0`), apply the rules below to what is left, and put the prefix back.
+  2. If the first digits differ by more than one, take the middle digit (rounded down).
+  3. If they are adjacent and `b` has more than one digit, take `b`'s first digit alone: it lies between because `b` has a non-zero tail.
+  4. Otherwise take `a`'s first digit followed by a key between the rest of `a` and `none`.
+
+  | between `a` and `b` | key |
+  |:--|:--|
+  | `none`, `none` | `V` |
+  | `V`, `none` | `k` |
+  | `none`, `V` | `F` |
+  | `V`, `o` | `e` |
+  | `V`, `W` | `VV` |
+  | `V`, `VV` | `VF` |
+- **An insert** between neighbours `a` and `b` writes one file, the inserted node, and nothing else. Two branches that insert at the same spot produce equal keys; the order is then `(order_key, id)`, so every reader agrees without jitter, and jitter would only lengthen keys.
+- **Length stays short.** Each insert into one gap halves it, so a run of inserts at one spot, or appends at the end, adds about one character per six inserts. Measured on a model of this algorithm: after 10, 50, 100 and 200 appends the key is 2, 9, 17 and 34 characters; after 200 inserts at one spot, 41. Bulk creation (an import, the 160-node benchmark) uses the recursive form that places `n` keys at once: 160 keys are at most 2 characters, and so are 1 000.
+- **Rebalance.** A key longer than 24 characters (about 130 inserts at one spot, far beyond the size of a directory in a real campaign) makes the insert rebalance its siblings: the same operation rewrites all `n` order keys evenly with the bulk form, as one batch, and its amendment records each as a `set` of `/order_key`. This rule is this design's own; neither source names one. Only the nodes whose key changes get a new `rev`.
+- Guard: none of the README's names covers `between` staying strictly between its bounds. Not tested here; a property test over random inserts is a gap for the `settle` leaves (reported as a finding).
+
+Sibling order is therefore stored. This supersedes the line of `read-model.md` that says siblings have
+no stored order and are listed by `level`, leaves before directories, then `path` (reported as a finding).
+
+## Ids
+
+| Kind | Prefix | Body | Example | Unique within |
+|:--|:--|:--|:--|:--|
+| Node (root, directory, leaf) | `n_` | 8 characters | `n_7k3q9x2m` | the campaign (its file name) |
+| Criterion | `c_` | 6 characters | `c_8m2xqv` | its node file |
+| Step | `s_` | 6 characters | `s_0f4tzn` | its node file |
+| Amendment, comment | none | a ULID, 26 characters | `01J9ZQ3M8R5K7V2N4X6Y8A0B1C` | the campaign; the ULID is the order |
+
+Checks and references carry no id under the proposed inventory (`contracts.md` fixes the inventory;
+the table gains one row per kind that gets an id).
+
+- **Alphabet.** Crockford base32 in lower case, `0123456789abcdefghjkmnpqrstvwxyz`: no `i`, `l`, `o` or `u`, so no id is misread as a number. Lower case because the default macOS and Windows file systems are case-insensitive and a node's id is its file name; mixed-case ids could collide there and not on Linux. The ULIDs of amendments and comments stay in the canonical upper case that the stored schema already fixes; their order is time order.
+- **Why random.** A counter collides across worktrees (two branches mint `n_0042`). A hash of content changes with the content, and I7 says an id never changes. A UUID is 36 characters for no gain. A random body needs no coordination.
+- **Why this length.** Eight characters are 40 bits. With 2 000 nodes present, a new mint collides with probability 2 000 / 2^40 = 1.8e-9. Two branches that each mint 500 ids share one with probability about 500^2 / 2^40 = 2.3e-7, and that case is loud, not silent: the same id is the same path, which git reports as an add/add conflict. Six characters (30 bits) suffice for sub-items, which only have to be unique inside one file of a few dozen of them: 50 / 2^30 = 4.7e-8 per mint.
+- **Minting.** Draw the body from an RNG injected when the store is opened (seeded in tests, the operating system's generator otherwise). Each character takes five bits of a random byte, which is exactly uniform because 256 is a multiple of 32. Check the candidate against the ids that exist, which the writer knows under the lock: the names in `nodes/`, the ids in the file for a sub-item, and the ids the same batch has already minted. On a collision draw again; after 32 collisions in a row the operation fails (a real generator never gets there, and a test generator that always collides must still end). Guarded by `minting_retries_on_collision`.
+- **Never reused.** The check sees live ids only. A deleted node's id could be minted again with probability under 2e-9 per mint, and a reference to the deleted id would then resolve to the new node instead of the amendment's snapshot. This residual risk is accepted and not tested: scanning every amendment on each mint would cost more than the risk is worth.
+
+## Revisions
+
+| | Definition |
+|:--|:--|
+| `rev` of a node | The first 16 hexadecimal characters (64 bits) of SHA-256 over the canonical encoding of the node as decoded, with `schema_version` left out |
+| `tree_rev` | The first 16 hexadecimal characters of SHA-256 over the text `rdm-tree\n` followed by one line `<id> <rev>\n` per node, in ascending bytewise order of `id` |
+
+- **What `rev` counts:** every field of the node file in canonical order, including `name`, `parent_id` and `order_key`, and the unknown fields the file carries (I12), in their order. Not counted: the file's bytes (whitespace, CRLF, `1e5` against `100000`, `\u` escapes), its mtime, the `schema_version` stamp, amendments and comments. The hash is taken over what the serialiser would write for the decoded value, so a whitespace-only edit keeps the `rev` and a change of any value changes it. Guarded by `rev_tracks_value_not_formatting`.
+- **Consequences.** A move changes the `rev` of the moved node only: its children keep theirs because they name their parent by id. A comment or an amendment changes no `rev` and not the `tree_rev`, because `tree_rev` covers `nodes/` only. Creating, deleting, moving or editing any node, a status move included, changes `tree_rev`. It is deliberately coarse: a batch that presents `expected_tree_rev` is refused when any node changed anywhere, which is what a structural batch wants and a field edit does not use. Guarded by `tree_rev_changes_on_node_ops_not_comments`.
+- **Why SHA-256.** It is a published function with an independent implementation in every language, so another tool (the importer, a CI script) can recompute a `rev` from a file. It needs no C build (`blake3` compiles C and assembly by default and declares an MSRV of exactly 1.88). A node is a few kilobytes, so speed does not matter, and an unchanged node is not re-hashed (see Cache).
+- **Why 64 bits.** `rev` is compared only with the value the same node had when the caller read it. A different value with the same `rev` would let one stale write through, with probability 2^-64. Sixteen characters keep the opaque string short in every tool output. It is not a security boundary.
+- **A function of the value and of the current types.** The decoder upgrades an older file through the version chain before the encoder runs, so one old file read by two binaries with different layers can have two `rev`s. A consumer compares `rev`s it got from one server, and the `rev` of an unmodified file is stable for a given binary.
+- **Opaque to consumers** (`read-model.md`): they send it back as `expected_rev` and never parse it.
+
 ## Probe answers
 
 Four probes were assigned to this leaf. Probe code lived in a scratch directory and is deleted;
