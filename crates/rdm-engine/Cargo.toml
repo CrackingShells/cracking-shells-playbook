@@ -1,0 +1,21 @@
+[package]
+name = "rdm-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Filesystem primitives of the rdm store: atomic replace, writer lock and intent record"
+publish = false
+
+[dependencies]
+rdm-schema = { path = "../rdm-schema" }
+fs4 = { version = "=1.1.0", default-features = false, features = ["sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+
+[dev-dependencies]
+tempfile = "3"
