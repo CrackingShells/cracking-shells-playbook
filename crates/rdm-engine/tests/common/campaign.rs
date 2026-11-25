@@ -3,6 +3,7 @@
 //! producer of node files; everything after that is written by the store itself.
 
 use std::collections::BTreeMap;
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
@@ -359,4 +360,37 @@ pub fn scratch_is_empty(root: &Path) -> bool {
             .map(|e| e.count() == 0)
             .unwrap_or(true)
     })
+}
+
+/// A file that an editor rewrote in place: the same descriptor is not reopened with truncation,
+/// the bytes are overwritten from offset 0, and the modification time is the one the file had,
+/// which is what a coarse timestamp (FAT's two seconds, HFS+'s one) gives two writes in one tick,
+/// and what `touch -r` gives at any age.
+pub fn rewrite_in_place(path: &Path, from: &str, to: &str) {
+    let before = std::fs::metadata(path).unwrap();
+    let text = std::fs::read_to_string(path).unwrap();
+    assert!(text.contains(from));
+    let bytes = text.replace(from, to).into_bytes();
+    let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.rewind().unwrap();
+    file.write_all(&bytes).unwrap();
+    file.set_modified(before.modified().unwrap()).unwrap();
+}
+
+/// Backdates every record file past the racy window, as time does: afterwards a cache that reads
+/// them holds clean entries, and only the signature can tell it that one changed.
+pub fn age(root: &Path) {
+    for dir in ["nodes", "_comments", "_amendments"] {
+        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
+            continue;
+        };
+        for e in entries {
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(e.unwrap().path())
+                .unwrap();
+            file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+                .unwrap();
+        }
+    }
 }

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::campaign::*;
+use common::hooked::{frozen_stat, options_with};
 use common::soak_cases;
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::encode;
@@ -482,52 +483,100 @@ fn rev_tracks_value_not_formatting() {
 
 #[test]
 fn stale_replace_changes_nothing() {
-    let disk = Disk::new();
-    disk.write_all(&base());
-    let mut a = disk.open().unwrap();
-    let mut b = disk.open().unwrap();
-    let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
-    let mut changed = leaf_of(&mut b, 3);
-    changed.goal = "b was here".into();
-    let won = b
-        .replace(replace_req(
-            header(Some("b edits"), None),
-            Some(&old),
-            Node::Leaf(changed),
-        ))
-        .unwrap();
-    let fresh = won.result.rev.clone();
-    let before = files_of(&disk.root);
+    // Bug caught: a write judged against what the cache holds instead of the disk. The cache `a`
+    // holds the old revision of node 3 while the disk has moved on, as two actors leave it: another
+    // handle replaced the node through the store, or an editor wrote in place at the same size and
+    // the signature hides it (a coarse-timestamp file system), which only the write's own read
+    // from the disk can see. The stale `expected_rev` would match the entry and the write would go
+    // over the other actor's edit.
+    type Make = fn(&Disk) -> (CachedCampaign, Rev);
+    let rows: [(&str, Make, &str); 2] = [
+        (
+            "another handle replaced the node",
+            |disk| {
+                let mut a = disk.open().unwrap();
+                let mut b = disk.open().unwrap();
+                let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
+                let mut changed = leaf_of(&mut b, 3);
+                changed.goal = "b was here".into();
+                b.replace(replace_req(
+                    header(Some("b edits"), None),
+                    Some(&old),
+                    Node::Leaf(changed),
+                ))
+                .unwrap();
+                (a, old)
+            },
+            "b was here",
+        ),
+        (
+            "an editor wrote in place at the same size",
+            |disk| {
+                age(&disk.root);
+                let mut a =
+                    CachedCampaign::open(&disk.root, &name("demo"), options_with(frozen_stat()))
+                        .unwrap();
+                let old = a.read().unwrap().rev(&nid(3)).unwrap().clone();
+                rewrite_in_place(&disk.path(&file(3)), "a goal", "b goal");
+                assert_eq!(
+                    leaf_of(&mut a, 3).goal,
+                    "a goal",
+                    "the signature hides the edit from a read (the documented limit)"
+                );
+                (a, old)
+            },
+            "b goal",
+        ),
+    ];
+    for (row, make, goal) in rows {
+        let disk = Disk::new();
+        disk.write_all(&base());
+        let (mut a, old) = make(&disk);
+        let fresh = disk
+            .open()
+            .unwrap()
+            .read()
+            .unwrap()
+            .rev(&nid(3))
+            .unwrap()
+            .clone();
+        assert_ne!(fresh, old, "{row}: the disk moved on");
+        let before = files_of(&disk.root);
 
-    // `a` still holds the old revision in memory; the write is judged against the disk.
-    let mut mine = leaf_of(&mut a, 3);
-    mine.goal = "a was here".into();
-    let err = a
-        .replace(replace_req(
+        // `a` still holds the old revision in memory; the write is judged against the disk.
+        let mut mine = leaf_of(&mut a, 3);
+        mine.goal = "a was here".into();
+        let Err(err) = a.replace(replace_req(
             header(Some("a edits"), None),
             Some(&old),
             Node::Leaf(mine),
-        ))
-        .unwrap_err();
-    match err {
-        StoreError::Stale {
-            current: Current::Node { id, rev },
-        } => {
-            assert_eq!((id, rev), (nid(3), fresh));
+        )) else {
+            panic!("{row}: the stale replace was accepted");
+        };
+        match err {
+            StoreError::Stale {
+                current: Current::Node { id, rev },
+            } => assert_eq!((id, rev), (nid(3), fresh), "{row}"),
+            other => panic!("{row}: want Stale, got {other:?}"),
         }
-        other => panic!("want Stale, got {other:?}"),
+        assert_eq!(
+            files_of(&disk.root),
+            before,
+            "{row}: a stale replace writes no file"
+        );
+        assert_eq!(
+            std::fs::read_dir(disk.path(".rdm/intent"))
+                .map(|d| d.count())
+                .unwrap_or(0),
+            0,
+            "{row}"
+        );
+        assert_eq!(
+            leaf_of(&mut a, 3).goal,
+            goal,
+            "{row}: the write learnt the file it read"
+        );
     }
-    assert_eq!(
-        files_of(&disk.root),
-        before,
-        "a stale replace writes no file"
-    );
-    assert_eq!(
-        std::fs::read_dir(disk.path(".rdm/intent"))
-            .map(|d| d.count())
-            .unwrap_or(0),
-        0
-    );
 }
 
 #[test]

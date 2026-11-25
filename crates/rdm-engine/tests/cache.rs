@@ -9,15 +9,16 @@
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Seek, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use common::campaign::*;
+use common::hooked::{At, frozen_stat, options_with, vanish_at};
 use common::{child_role, spawn_child};
 use rdm_engine::cache::CachedCampaign;
 use rdm_engine::codec::decode;
-use rdm_engine::fs::{Durability, Effect, FileStat, Fs, RealFs, RecordingFs};
+use rdm_engine::fs::{Effect, RecordingFs};
 use rdm_engine::rev::rev;
 use rdm_engine::store::{Options, Store};
 use rdm_schema::ids::*;
@@ -176,44 +177,6 @@ fn child_job(root: &Path) {
 // ---------------------------------------------------------------------------------------------
 // cached_read_equals_cold_read
 
-/// A file that an editor rewrote in place: the same descriptor is not reopened with truncation,
-/// the bytes are overwritten from offset 0, and the modification time is the one the file had,
-/// which is what a coarse timestamp (FAT's two seconds, HFS+'s one) gives two writes in one tick,
-/// and what `touch -r` gives at any age.
-fn rewrite_in_place(path: &Path, from: &str, to: &str) {
-    let before = std::fs::metadata(path).unwrap();
-    let text = std::fs::read_to_string(path).unwrap();
-    assert!(text.contains(from));
-    let bytes = text.replace(from, to).into_bytes();
-    let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
-    file.rewind().unwrap();
-    file.write_all(&bytes).unwrap();
-    file.set_modified(before.modified().unwrap()).unwrap();
-}
-
-fn rewrite_in_place_same_size(path: &Path, from: &str, to: &str) {
-    assert_eq!(from.len(), to.len());
-    rewrite_in_place(path, from, to);
-}
-
-/// Backdates every record file past the racy window, as time does: afterwards a cache that reads
-/// them holds clean entries, and only the signature can tell it that one changed.
-fn age(root: &Path) {
-    for dir in ["nodes", "_comments", "_amendments"] {
-        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
-            continue;
-        };
-        for e in entries {
-            let file = std::fs::OpenOptions::new()
-                .write(true)
-                .open(e.unwrap().path())
-                .unwrap();
-            file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
-                .unwrap();
-        }
-    }
-}
-
 fn sound_aged() -> Disk {
     let disk = sound();
     age(&disk.root);
@@ -240,47 +203,6 @@ fn cached_read_equals_cold_read() {
             .is_some(),
         "the op index holds the comment the child wrote"
     );
-
-    // Bug caught: revalidating by the directory's modification time alone (an in-place write
-    // does not change it), or skipping the racy re-read (the write leaves the size and the
-    // modification time as they were).
-    let disk = sound();
-    let mut cache = opened(&disk);
-    let file = disk.path(&format!("nodes/{}.json", nid(3)));
-    rewrite_in_place_same_size(&file, "a goal", "b goal");
-    read_same(
-        "an editor writing in place at the same size within one tick",
-        &mut cache,
-        &disk.root,
-    );
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
-
-    // Bug caught: skipping the racy re-read. On Unix the ctime already moves for the row above, so
-    // this one runs on a file system whose signature has none (Windows), where a fresh file edited
-    // in place at the same size within one tick has the same identity, mtime and size.
-    let disk = sound();
-    let no_ctime = Hooked::new(
-        Box::new(|_, _| {}),
-        Box::new(|_, s| FileStat { ctime: None, ..s }),
-    );
-    let mut cache = CachedCampaign::open(
-        &disk.root,
-        &name("demo"),
-        Options {
-            fs: no_ctime,
-            ..plain()
-        },
-    )
-    .unwrap();
-    read_same("opened without ctime", &mut cache, &disk.root);
-    let file = disk.path(&format!("nodes/{}.json", nid(3)));
-    rewrite_in_place_same_size(&file, "a goal", "b goal");
-    read_same(
-        "an editor writing in place at the same size within one tick, no ctime",
-        &mut cache,
-        &disk.root,
-    );
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
 
     // Bug caught: a cache that keeps the unknown key an editor added out of the diagnostics.
     let disk = sound();
@@ -386,64 +308,66 @@ fn cached_read_equals_cold_read() {
     copied.iter().for_each(|p| std::fs::remove_file(p).unwrap());
     read_same("a comment and an amendment removed", &mut cache, &disk.root);
     assert!(cache.read().unwrap().comments().is_empty());
+}
 
-    // Aged entries are clean, so the racy re-read cannot rescue these rows: only the signature
-    // sees the change. On Unix the ctime moves for all three, so each is red only when the
-    // component it is named for is dropped together with the ctime.
-    //
-    // Bug caught: a signature without the identity: a same-size replace by rename that keeps the
-    // old mtime (what a synchroniser or `git checkout` with a preserved time does).
-    let disk = sound_aged();
-    let mut cache = opened(&disk);
-    let file = disk.path(&format!("nodes/{}.json", nid(3)));
-    let kept = std::fs::metadata(&file).unwrap().modified().unwrap();
-    let text = std::fs::read_to_string(&file)
-        .unwrap()
-        .replace("a goal", "b goal");
-    let side = disk.path("replacement.tmp");
-    std::fs::write(&side, text).unwrap();
-    std::fs::OpenOptions::new()
-        .write(true)
-        .open(&side)
-        .unwrap()
-        .set_modified(kept)
-        .unwrap();
-    std::fs::rename(&side, &file).unwrap();
-    read_same(
-        "an aged file replaced by rename at the same size and mtime",
-        &mut cache,
-        &disk.root,
-    );
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
-
-    // Bug caught: a signature without the size: an in-place edit that grows the file and
-    // restores the mtime.
-    let disk = sound_aged();
-    let mut cache = opened(&disk);
-    let file = disk.path(&format!("nodes/{}.json", nid(3)));
-    rewrite_in_place(&file, "a goal", "a much longer goal");
-    read_same(
-        "an aged file edited in place to another size, mtime restored",
-        &mut cache,
-        &disk.root,
-    );
-    assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "a much longer goal");
-
-    // Bug caught: a signature without the ctime: `touch -r` after an in-place edit at the same
-    // size leaves identity, mtime and size as they were (Unix only: Windows has no ctime and
-    // documents the limit).
-    #[cfg(unix)]
-    {
-        let disk = sound_aged();
+/// A file changes and the directory's listing does not. Each row is an actor and what it leaves:
+/// the signature (identity, mtime, size, and on Unix the ctime) is all a read has to see it by.
+/// Aged files are clean to the cache, so the racy re-read cannot rescue them; the fresh file of
+/// the last row is racy, which is what a coarse timestamp gives two writes in one tick. On Unix
+/// the ctime moves for every row, so each row is red only when the component it is named for is
+/// dropped together with the ctime (what Windows, which has none, runs natively).
+#[test]
+fn an_aged_file_changes_and_the_directory_does_not() {
+    // Bug caught, by row: a signature without the identity (a same-size rename-over that keeps the
+    // mtime); a signature without the size (an in-place edit that grows the file and restores the
+    // mtime); a signature without the mtime, or a skipped racy re-read (an in-place edit at the same
+    // size inside one tick).
+    type Change = fn(&Path);
+    let rows: [(&str, bool, Change, &str); 3] = [
+        (
+            "rename-over keeping the mtime (rsync --times, a checkout)",
+            true,
+            |file| {
+                let kept = std::fs::metadata(file).unwrap().modified().unwrap();
+                let text = std::fs::read_to_string(file)
+                    .unwrap()
+                    .replace("a goal", "b goal");
+                let side = file
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .join("replacement.tmp");
+                std::fs::write(&side, text).unwrap();
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&side)
+                    .unwrap()
+                    .set_modified(kept)
+                    .unwrap();
+                std::fs::rename(&side, file).unwrap();
+            },
+            "b goal",
+        ),
+        (
+            "touch -r after an edit that changes the size",
+            true,
+            |file| rewrite_in_place(file, "a goal", "a much longer goal"),
+            "a much longer goal",
+        ),
+        (
+            "the racy same-tick in-place edit",
+            false,
+            |file| rewrite_in_place(file, "a goal", "b goal"),
+            "b goal",
+        ),
+    ];
+    for (row, aged, change, goal) in rows {
+        let disk = if aged { sound_aged() } else { sound() };
         let mut cache = opened(&disk);
-        let file = disk.path(&format!("nodes/{}.json", nid(3)));
-        rewrite_in_place_same_size(&file, "a goal", "b goal");
-        read_same(
-            "an aged file edited in place at the same size, mtime restored",
-            &mut cache,
-            &disk.root,
-        );
-        assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, "b goal");
+        change(&disk.path(&file(3)));
+        read_same(row, &mut cache, &disk.root);
+        assert_eq!(leaf_of(cache.read().unwrap(), 3).goal, goal, "{row}");
     }
 }
 
@@ -830,117 +754,6 @@ fn write_through_visible_to_cold_reader_on_return() {
 // ---------------------------------------------------------------------------------------------
 // Faults the real file system cannot be made to produce on cue: the seam
 
-#[derive(Clone, Copy, PartialEq)]
-enum At {
-    Stat,
-    Read,
-}
-
-type Before = Box<dyn Fn(At, &Path) + Send + Sync>;
-type Report = Box<dyn Fn(&Path, FileStat) -> FileStat + Send + Sync>;
-
-/// The real file system with two hooks: one runs before a stat or a read (a concurrent actor
-/// acting between the listing and the access), one rewrites what a stat reports (a file system
-/// whose signature hides a change: Windows, which has no ctime in the signature, or a
-/// synchroniser that restores every timestamp).
-struct Hooked {
-    before: Before,
-    report: Report,
-}
-
-impl Hooked {
-    fn new(before: Before, report: Report) -> Arc<Self> {
-        Arc::new(Self { before, report })
-    }
-}
-
-impl Fs for Hooked {
-    fn create_dir_all(&self, p: &Path) -> std::io::Result<()> {
-        RealFs.create_dir_all(p)
-    }
-    fn write_new(&self, p: &Path, b: &[u8]) -> std::io::Result<()> {
-        RealFs.write_new(p, b)
-    }
-    fn sync_file(&self, p: &Path, t: Durability) -> std::io::Result<()> {
-        RealFs.sync_file(p, t)
-    }
-    fn sync_dir(&self, p: &Path, t: Durability) -> std::io::Result<()> {
-        RealFs.sync_dir(p, t)
-    }
-    fn rename(&self, a: &Path, b: &Path) -> std::io::Result<()> {
-        RealFs.rename(a, b)
-    }
-    fn hard_link(&self, a: &Path, b: &Path) -> std::io::Result<()> {
-        RealFs.hard_link(a, b)
-    }
-    fn remove_file(&self, p: &Path) -> std::io::Result<()> {
-        RealFs.remove_file(p)
-    }
-    fn read(&self, p: &Path) -> std::io::Result<Vec<u8>> {
-        (self.before)(At::Read, p);
-        RealFs.read(p)
-    }
-    fn list_dir(&self, p: &Path) -> std::io::Result<Vec<String>> {
-        RealFs.list_dir(p)
-    }
-    fn stat(&self, p: &Path) -> std::io::Result<FileStat> {
-        (self.before)(At::Stat, p);
-        RealFs.stat(p).map(|s| (self.report)(p, s))
-    }
-}
-
-fn plain() -> Options {
-    Options::default()
-}
-
-#[test]
-fn a_write_judges_the_files_it_touches_against_the_disk() {
-    // Bug caught: a write that takes the revision of the node it edits from the cache. When the
-    // signature hides an external same-size edit (here a stat that always reports what it first
-    // saw), the cache still holds the old node and its old `rev`, so a stale `expected_rev`
-    // matches and the write goes over the external edit: a lost update. Step 3.2 reads the
-    // touched files from the disk.
-    let disk = sound_aged();
-    let first_seen = std::sync::Mutex::new(BTreeMap::<PathBuf, FileStat>::new());
-    let fs = Hooked::new(
-        Box::new(|_, _| {}),
-        Box::new(move |p, s| {
-            *first_seen
-                .lock()
-                .unwrap()
-                .entry(p.to_path_buf())
-                .or_insert(s)
-        }),
-    );
-    let mut cache =
-        CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
-    let stale = {
-        let store = cache.read().unwrap();
-        req(Some("mine"), None, edit_goal(store, 3, "mine"))
-    };
-    let file = disk.path(&format!("nodes/{}.json", nid(3)));
-    rewrite_in_place_same_size(&file, "a goal", "b goal");
-    assert_eq!(
-        leaf_of(cache.read().unwrap(), 3).goal,
-        "a goal",
-        "the signature hides the edit from a read (the documented limit)"
-    );
-    let err = cache.replace(stale).unwrap_err();
-    assert!(
-        matches!(err, rdm_schema::error::StoreError::Stale { .. }),
-        "{err:?}"
-    );
-    assert!(
-        std::fs::read_to_string(&file).unwrap().contains("b goal"),
-        "the external edit is untouched"
-    );
-    assert_eq!(
-        leaf_of(cache.read().unwrap(), 3).goal,
-        "b goal",
-        "the write learnt the file it read"
-    );
-}
-
 #[test]
 fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_an_error() {
     // Bug caught: a revalidation that reports a concurrent delete or rename as an `Io` error,
@@ -948,33 +761,12 @@ fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_a
     // (store.md, §Cache, revalidation step 4). The Fs seam removes the file after the listing
     // named it, at the stat or at the read.
     for at in [At::Stat, At::Read] {
-        let disk = sound();
-        let victim = disk.path(&format!("nodes/{}.json", nid(4)));
-        let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let (flag, target) = (Arc::clone(&armed), victim.clone());
-        let fs = Hooked::new(
-            Box::new(move |when, p| {
-                if when == at
-                    && p == target
-                    && flag.swap(false, std::sync::atomic::Ordering::SeqCst)
-                {
-                    std::fs::remove_file(p).unwrap();
-                }
-            }),
-            Box::new(|_, s| s),
-        );
-
         // A cold open that races a delete.
-        armed.store(true, std::sync::atomic::Ordering::SeqCst);
-        let mut store = CachedCampaign::open(
-            &disk.root,
-            &name("demo"),
-            Options {
-                fs: fs.clone(),
-                ..plain()
-            },
-        )
-        .expect("a file gone before its read is absent, not an error");
+        let disk = sound();
+        let (fs, armed) = vanish_at(at, &disk.path(&file(4)));
+        armed.store(true, Ordering::SeqCst);
+        let mut store = CachedCampaign::open(&disk.root, &name("demo"), options_with(fs))
+            .expect("a file gone before its read is absent, not an error");
         assert!(store.read().unwrap().campaign().get(&nid(4)).is_none());
         assert_same_as_cold(
             "a cold open that raced a delete",
@@ -982,25 +774,12 @@ fn a_file_that_vanishes_between_the_listing_and_its_stat_or_read_is_absent_not_a
             &disk.root,
         );
 
-        // A warm read that races a delete of a file it holds an entry for.
+        // A warm read that races a delete of a file it holds an entry for. The entry is racy
+        // (fresh files), so the read reaches the stat and the read.
         let disk = sound();
-        let victim = disk.path(&format!("nodes/{}.json", nid(4)));
-        let (flag, target) = (Arc::clone(&armed), victim.clone());
-        let fs = Hooked::new(
-            Box::new(move |when, p| {
-                if when == at
-                    && p == target
-                    && flag.swap(false, std::sync::atomic::Ordering::SeqCst)
-                {
-                    std::fs::remove_file(p).unwrap();
-                }
-            }),
-            Box::new(|_, s| s),
-        );
-        let mut cache =
-            CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
-        armed.store(true, std::sync::atomic::Ordering::SeqCst);
-        // The entry is racy (fresh files), so the read reaches the stat and the read.
+        let (fs, armed) = vanish_at(at, &disk.path(&file(4)));
+        let mut cache = CachedCampaign::open(&disk.root, &name("demo"), options_with(fs)).unwrap();
+        armed.store(true, Ordering::SeqCst);
         read_same("a warm read that raced a delete", &mut cache, &disk.root);
         assert!(cache.read().unwrap().campaign().get(&nid(4)).is_none());
     }
@@ -1021,22 +800,11 @@ fn a_rebalance_rewrites_a_sibling_from_the_disk_not_the_cache() {
     nodes[3] = leaf_n(4, "beta", 2, "V");
     disk.write_all(&nodes);
     age(&disk.root);
-    let first_seen = std::sync::Mutex::new(BTreeMap::<PathBuf, FileStat>::new());
-    let fs = Hooked::new(
-        Box::new(|_, _| {}),
-        Box::new(move |p, s| {
-            *first_seen
-                .lock()
-                .unwrap()
-                .entry(p.to_path_buf())
-                .or_insert(s)
-        }),
-    );
     let mut cache =
-        CachedCampaign::open(&disk.root, &name("demo"), Options { fs, ..plain() }).unwrap();
+        CachedCampaign::open(&disk.root, &name("demo"), options_with(frozen_stat())).unwrap();
     read_same("opened", &mut cache, &disk.root);
-    let file = disk.path(&format!("nodes/{}.json", nid(4)));
-    rewrite_in_place_same_size(&file, "a goal", "b goal");
+    let file = disk.path(&file(4));
+    rewrite_in_place(&file, "a goal", "b goal");
     assert_eq!(
         leaf_of(cache.read().unwrap(), 4).goal,
         "a goal",

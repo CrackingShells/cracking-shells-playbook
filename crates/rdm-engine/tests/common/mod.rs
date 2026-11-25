@@ -125,3 +125,4 @@ pub fn say(line: &str) {
 }
 
 pub mod campaign;
+pub mod hooked;
