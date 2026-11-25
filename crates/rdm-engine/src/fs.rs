@@ -116,7 +116,12 @@ fn retry_wait(after_attempt: usize) -> Duration {
 /// `ERROR_ACCESS_DENIED` (5) and `ERROR_SHARING_VIOLATION` (32): how Windows reports a target
 /// another program holds open. Always false elsewhere.
 fn is_sharing_violation(err: &io::Error) -> bool {
-    cfg!(windows) && matches!(err.raw_os_error(), Some(5 | 32))
+    cfg!(windows) && is_sharing_code(err)
+}
+
+/// The two codes, on any platform (so a unit test can hold them off Windows).
+fn is_sharing_code(err: &io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(5 | 32))
 }
 
 /// Run `op`, retrying while `retryable` says its error is a held-open target.
@@ -298,7 +303,19 @@ impl<F: Fs> Fs for RecordingFs<F> {
 
     fn write_new(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let path_rel = self.rel(path)?;
-        self.inner.write_new(path, bytes)?;
+        if let Err(err) = self.inner.write_new(path, bytes) {
+            // A failure after the file was created leaves it behind: log what is there, so a
+            // later `Remove` of it replays. `AlreadyExists` created nothing.
+            if err.kind() != io::ErrorKind::AlreadyExists
+                && let Ok(left) = self.inner.read(path)
+            {
+                self.push(Effect::Write {
+                    path: path_rel,
+                    bytes: left,
+                });
+            }
+            return Err(err);
+        }
         self.push(Effect::Write {
             path: path_rel,
             bytes: bytes.to_vec(),
@@ -413,4 +430,85 @@ pub fn atomic_replace(
         fs.sync_dir(tmp_dir, tier)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn the_retry_makes_ten_attempts_with_the_documented_waits_and_names_path_and_code() {
+        let waits = RefCell::new(Vec::new());
+        let calls = Cell::new(0);
+        let err = with_retry(
+            "rename to",
+            Path::new("nodes/n.json"),
+            |_| true,
+            |d| waits.borrow_mut().push(d.as_millis()),
+            || {
+                calls.set(calls.get() + 1);
+                Err::<(), _>(io::Error::from_raw_os_error(32))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(calls.get(), 10);
+        assert_eq!(*waits.borrow(), vec![5, 10, 20, 40, 80, 100, 100, 100, 100]);
+        assert_eq!(waits.borrow().iter().sum::<u128>(), 555);
+        let text = err.to_string();
+        assert!(
+            text.contains("nodes/n.json") && text.contains("os error 32"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_non_retryable_error_is_returned_after_one_call_and_a_retryable_one_can_recover() {
+        let calls = Cell::new(0);
+        let err = with_retry(
+            "r",
+            Path::new("x"),
+            |_| false,
+            |_| panic!("no wait"),
+            || {
+                calls.set(calls.get() + 1);
+                Err::<(), _>(io::Error::from_raw_os_error(2))
+            },
+        )
+        .unwrap_err();
+        assert_eq!((calls.get(), err.raw_os_error()), (1, Some(2)));
+
+        let calls = Cell::new(0);
+        let ok = with_retry(
+            "r",
+            Path::new("x"),
+            |e| e.raw_os_error() == Some(5),
+            |_| {},
+            || {
+                calls.set(calls.get() + 1);
+                if calls.get() < 3 {
+                    Err(io::Error::from_raw_os_error(5))
+                } else {
+                    Ok(7)
+                }
+            },
+        );
+        assert_eq!((ok.unwrap(), calls.get()), (7, 3));
+    }
+
+    #[test]
+    fn only_access_denied_and_sharing_violation_count_as_a_held_open_target() {
+        for (code, retried) in [(5, true), (32, true), (2, false), (33, false), (31, false)] {
+            assert_eq!(
+                is_sharing_code(&io::Error::from_raw_os_error(code)),
+                retried,
+                "code {code}"
+            );
+        }
+        assert!(!is_sharing_violation(&io::Error::from_raw_os_error(2)));
+        assert_eq!(
+            is_sharing_violation(&io::Error::from_raw_os_error(32)),
+            cfg!(windows)
+        );
+    }
 }

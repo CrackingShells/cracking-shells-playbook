@@ -3,7 +3,7 @@
 mod common;
 
 use common::{child_role, say, spawn_child};
-use rdm_engine::fs::{Durability, RealFs, atomic_replace};
+use rdm_engine::fs::{Durability, Effect, RealFs, RecordingFs, atomic_replace};
 use std::path::Path;
 use std::time::Duration;
 
@@ -168,7 +168,7 @@ fn replace_fails_cleanly_when_the_target_stays_open() {
     let target = dir.path().join("node.json");
     let tmp = dir.path().join(".rdm").join("tmp");
     atomic_replace(&RealFs, &target, &tmp, b"old", Durability::Fsync).unwrap();
-    let mut child = spawn_child(
+    let child = spawn_child(
         "replace_fails_cleanly_when_the_target_stays_open",
         "holder",
         dir.path(),
@@ -190,4 +190,52 @@ fn replace_fails_cleanly_when_the_target_stays_open() {
     assert_eq!(std::fs::read(&target).unwrap(), b"old");
     assert_eq!(std::fs::read_dir(&tmp).unwrap().count(), 0);
     child.wait_line("released", LIMIT);
+}
+
+#[test]
+fn atomic_replace_writes_only_under_tmp_and_syncs_before_publishing() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("nodes").join("n.json");
+    let tmp = dir.path().join(".rdm").join("tmp");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, b"old").unwrap();
+
+    let rec = RecordingFs::new(dir.path());
+    atomic_replace(&rec, &target, &tmp, b"new", Durability::Fsync).unwrap();
+    let log = rec.effects();
+
+    let tmp_rel = std::path::Path::new(".rdm").join("tmp");
+    let mut written = Vec::new();
+    for (i, effect) in log.iter().enumerate() {
+        if let Effect::Write { path, .. } = effect {
+            assert!(
+                path.starts_with(&tmp_rel),
+                "a file was written outside the tmp dir: {path:?}"
+            );
+            written.push((i, path.clone()));
+        }
+    }
+    assert_eq!(written.len(), 1, "exactly one temporary file is written");
+    let (write_at, temp) = &written[0];
+    let rename_at = log
+        .iter()
+        .position(
+            |e| matches!(e, Effect::Rename { from, to } if from == temp && to.ends_with("n.json")),
+        )
+        .expect("the temporary file is renamed over the target");
+    let sync_at = log
+        .iter()
+        .position(|e| matches!(e, Effect::SyncFile { path, .. } if path == temp))
+        .expect("the temporary file is synced under Fsync");
+    assert!(
+        write_at < &sync_at && sync_at < rename_at,
+        "write, then sync, then rename: {log:?}"
+    );
+    assert!(
+        log[rename_at + 1..]
+            .iter()
+            .any(|e| matches!(e, Effect::SyncDir { path, .. } if path.ends_with("nodes"))),
+        "the target's directory is synced after the rename"
+    );
+    assert_eq!(std::fs::read(&target).unwrap(), b"new");
 }
