@@ -100,3 +100,5 @@ pub fn say(line: &str) {
     println!("\n!{line}");
     let _ = std::io::stdout().flush();
 }
+
+pub mod campaign;
