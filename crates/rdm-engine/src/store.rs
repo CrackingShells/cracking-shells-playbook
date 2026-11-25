@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use rdm_schema::campaign::{Campaign, Diagnostic, node_file};
+use rdm_schema::campaign::{Campaign, Diagnostic};
 use rdm_schema::error::{Rule, StoreError};
 use rdm_schema::ids::{AmendmentId, CommentId, Name, NodeId, OpId, Rev, SubtreeRev, TreeRev};
 use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
@@ -18,6 +18,7 @@ use rdm_schema::stored::{Amendment, ChangeOp, Comment, Node};
 use crate::cache::Entries;
 use crate::fs::{Durability, Fs, RealFs};
 use crate::ids::{IdRng, OsRng, UlidMint};
+use crate::layout::RecordKind;
 use crate::links::ReverseIndex;
 use crate::rev;
 
@@ -255,7 +256,7 @@ impl Store {
                     && !removed.contains(&(node.id().to_string(), target.to_owned()))
                 {
                     out.push(Diagnostic {
-                        file: node_file(node.id()),
+                        file: RecordKind::Node.logical(&node.id()),
                         rule: Rule::MarkTarget,
                         detail: format!(
                             "/marks/{i} names the criterion {target}, which the file does not hold"
@@ -316,6 +317,6 @@ impl Store {
     /// The relative path of a node's file.
     #[must_use]
     pub fn file_of(id: &NodeId) -> String {
-        node_file(id)
+        RecordKind::Node.logical(id)
     }
 }

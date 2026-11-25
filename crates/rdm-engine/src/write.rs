@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use rdm_schema::campaign::{Campaign, node_file};
+use rdm_schema::campaign::Campaign;
 use rdm_schema::diff::{diff, is_state};
 use rdm_schema::error::LockHolder;
 use rdm_schema::error::{Current, Rule, StoreError};
@@ -28,7 +28,7 @@ use crate::clock::{rfc3339, unix_ms};
 use crate::codec::{decode, encode};
 use crate::fs::Fs;
 use crate::intent::{self, Intent, IntentEffect, Pending};
-use crate::layout;
+use crate::layout::{self, RecordKind};
 use crate::links::Record;
 use crate::lock::{LockError, WriterLock};
 use crate::order::{MAX_KEY_LEN, between, spread};
@@ -49,7 +49,7 @@ fn request_fault(rule: Rule, detail: impl Into<String>) -> StoreError {
 
 fn node_fault(id: &NodeId, rule: Rule, detail: impl Into<String>) -> StoreError {
     StoreError::Invalid {
-        file: node_file(id),
+        file: RecordKind::Node.logical(id),
         rule,
         detail: detail.into(),
     }
@@ -837,13 +837,13 @@ impl Store {
 
         let mut effects = Vec::new();
         let text = |n: &Node| encode(n);
-        let node_path = |n: &Node| format!("nodes/{}.json", n.id());
+        let node_path = |n: &Node| RecordKind::Node.logical(&n.id());
         effects.extend(creates.iter().map(|n| IntentEffect::Create {
             path: node_path(n),
             bytes: text(n),
         }));
         effects.extend(comments.iter().map(|c| IntentEffect::Create {
-            path: format!("_comments/{}.json", c.id),
+            path: RecordKind::Comment.logical(&c.id),
             bytes: encode(c),
         }));
         effects.extend(puts.iter().map(|n| IntentEffect::Put {
@@ -852,12 +852,12 @@ impl Store {
         }));
         if let Some(a) = &amendment {
             effects.push(IntentEffect::Create {
-                path: format!("_amendments/{}.json", a.id),
+                path: RecordKind::Amendment.logical(&a.id),
                 bytes: encode(a),
             });
         }
         effects.extend(deletes.iter().map(|id| IntentEffect::Del {
-            path: format!("nodes/{id}.json"),
+            path: RecordKind::Node.logical(id),
         }));
         Plan {
             effects,
@@ -916,7 +916,7 @@ impl Store {
             st.reverse
                 .replace_record(RecordRef::Node(id.clone()), Some(&Record::Node(n)));
             st.ops.replace_node(&id, Some(n));
-            let file = node_file(&id);
+            let file = RecordKind::Node.logical(&id);
             let text = encode(n);
             let diags = decode::<Node>(&file, text.as_bytes())
                 .map(|d| d.diagnostics)
@@ -932,7 +932,7 @@ impl Store {
             st.revs.remove(id);
             st.reverse.replace_record(RecordRef::Node(id.clone()), None);
             st.ops.replace_node(id, None);
-            st.file_diags.remove(&node_file(id));
+            st.file_diags.remove(&RecordKind::Node.logical(id));
             entries.deleted_node(id);
         }
         for c in &plan.comments {
@@ -1573,7 +1573,7 @@ fn effect_path_is_ours(effect: &IntentEffect) -> bool {
     let mut parts = Path::new(effect.path()).components();
     let under = matches!(
         parts.next(),
-        Some(Component::Normal(d)) if ["nodes", "_amendments", "_comments"].iter().any(|k| d == *k)
+        Some(Component::Normal(d)) if d.to_str().and_then(RecordKind::from_dir).is_some()
     );
     let rest: Vec<Component> = parts.collect();
     under && !rest.is_empty() && rest.iter().all(|c| matches!(c, Component::Normal(_)))
