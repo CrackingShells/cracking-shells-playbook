@@ -4,10 +4,11 @@
 **Pre-conditions**:
 - [ ] `../campaign_store.md` is done
 **Success Gates**:
-- ⬜ [run] `cargo test -p rdm-engine --test crash_prefix every_write_prefix_loads_and_recovers_to_pre_or_post` passes: for each store primitive, each prefix of the effects `RecordingFs` logged is applied to a copy, then opened and recovered, and equals the full state or the absent state; one row also cuts recovery's own effects and recovers again (store.md S18)
-- ⬜ [run] `cargo test -p rdm-engine --test crash_kill killed_workers_lose_no_acknowledged_write` passes with the default short, seeded run; with `RDM_CRASH_ITERS` set it runs the soak
-- ⬜ [static] The two guards were seen red: the prefix guard with node files removed before the amendment is written, the kill guard with the lock released between the revision check and the write
-- ⬜ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes
+- ✅ [run] `cargo test -p rdm-engine --test crash_prefix every_write_prefix_loads_and_recovers_to_pre_or_post` passes: for each store primitive, each prefix of the effects `RecordingFs` logged is applied to a copy, then opened and recovered, and equals the full state or the absent state; one row also cuts recovery's own effects and recovers again (store.md S18)
+- ✅ [run] `cargo test -p rdm-engine --test crash_kill killed_workers_lose_no_acknowledged_write` passes with the default short, seeded run; with `RDM_CRASH_ITERS` set it runs the soak
+- ✅ [static] The two guards were seen red: the prefix guard with node files removed before the amendment is written, the kill guard with the lock released between the revision check and the write
+- ✅ [run] `! cargo test --workspace -- --list 2>/dev/null | grep confirm_` passes
+- ✅ [run] The verifier's fix round added a check that no intent or temp file is left after the last effect, facts of each row's result derived from plain JSON and a `parent_id` walk, `recovery_does_not_overwrite_a_create_whose_destination_holds_other_bytes`, and one random stream per kill worker; a re-check saw the two mutants that had stayed green turn red. The lock released after the check is red on about one default run in three and reliably only under the soak. Deletes are ordered by depth along the on-disk parent chain (the prefix guard's finding, `store.md` delete row). The three-OS run is the harden gate
 **References**: [store.md](../../../../../../../__design__/rdm/store.md) — Write order, Intent and recovery, Durability; Pillai et al., OSDI 2014 — the prefix-replay method
 
 ## Step 1: Every prefix loads
