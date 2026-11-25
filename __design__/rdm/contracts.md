@@ -42,7 +42,7 @@ a minting rule, a uniqueness rule and a link to declare, so an id with no pointe
 | `Commit`, `Progress`, `Actor` | none | none | **no id** | Single objects reached through their owner |
 | `op_id` | the records an operation wrote | the caller | **`OpId`**, caller-supplied | A retry key, not minted by the store, never a record id |
 
-**Verdict on the proposal: confirmed.** Nodes, criteria and steps keep ids. Checks and references
+**Decided (Eliott, 2026-11-25), proposal confirmed.** Nodes, criteria and steps keep ids. Checks and references
 do not, and are recorded at the array level in a change. This **overturns** the current
 [stored-schema.md](stored-schema.md) (M0b), which gave ids to checks and references, and the
 current code, whose `Check` and `Reference` carry an `id`. The consequence is that `Change.item_id`
@@ -94,15 +94,15 @@ rest of the file is as in stored-schema.md.
 | Field | Rust type | On | Stored | Meaning and consumer |
 |:--|:--|:--|:--|:--|
 | `id` | `NodeId` | every node | yes | Identity. Immutable (I7) |
-| `name` | `Name` | every node but the campaign root | yes | The path segment, `^[a-z][a-z0-9_-]*$`. Unique among the children of one parent. Shown in paths and by M3's export |
+| `name` | `Name` | every node | yes | The path segment, `^[a-z][a-z0-9_-]*$`. Unique among the children of one parent. **For the campaign root it is the campaign slug**, which `Campaign::open` is given and checks (`Campaign model`); the root's name is not part of any path |
 | `parent_id` | `NodeId` | every node but the campaign root | yes | The directory this node is in. Always a `Directory` node |
 | `order` | `OrderKey` | every node but the campaign root | yes | Position among siblings. An opaque newtype: its format and how a key is made between two others are store.md's (§Order key). Compared as given, never parsed. Ties break by `id` |
 | `kind` | `DirectoryKind` or `LeafKind` | every node | yes | `campaign` exactly when `parent_id` is absent, so the type of the root is checked against its place |
 
-On `Directory`, `name`, `parent_id` and `order` are `Option`: they are absent for the campaign root
-and for it only (`root_shape` rule below). On `Leaf` they are required, so a leaf cannot be a root
-by construction. The campaign root has no name of its own: its path is `""` and the campaign's
-location is the argument of every call (`read-model.md`).
+On `Directory`, `parent_id` and `order` are `Option`: they are absent for the campaign root and for
+it only (`root_shape` rule below). `name` is required on every node, the root included. On `Leaf`
+all three are required, so a leaf cannot be a root by construction. The root's path is `""`. The
+campaign slug is the anchor of validation: the root is the parentless node that carries it.
 
 ```rust
 pub struct Name(String);                  // parse(&str) -> Result<Name, NameError>
@@ -110,7 +110,7 @@ pub struct OrderKey(String);              // opaque; format in store.md §Order 
 pub enum Node { Directory(Directory), Leaf(Leaf) }   // discriminated by `kind` in the file
 impl Node {
     pub fn id(&self) -> &NodeId;
-    pub fn name(&self) -> Option<&Name>;
+    pub fn name(&self) -> &Name;
     pub fn parent_id(&self) -> Option<&NodeId>;
     pub fn order(&self) -> Option<&OrderKey>;
     pub fn decode(raw: serde_json::Value) -> Result<Node, StoreError>;  // by `kind`; see Version chain
@@ -129,7 +129,7 @@ child list or a path.
 
 | Rule code | Statement |
 |:--|:--|
-| `root_shape` | `parent_id`, `name` and `order` are all absent exactly when `kind` is `campaign` |
+| `root_shape` | `parent_id` and `order` are both absent exactly when `kind` is `campaign` |
 | `name_format` | `name` matches the `Name` pattern |
 | `malformed_id` | an id field does not parse as its type |
 
@@ -151,20 +151,28 @@ everything about the tree derived from `parent_id`, `name` and `order`. A **pare
 subtree.
 
 ```rust
-pub struct Campaign { /* nodes: BTreeMap<NodeId, Node>; root: NodeId; children index; depth memo */ }
+pub struct Campaign { /* nodes; root: Option<NodeId>; children index; depth memo;
+                         unvalidated: set of NodeId; diagnostics: Vec<Diagnostic> */ }
+#[must_use = "an opened campaign carries diagnostics; read them"]
+pub struct Opened { pub campaign: Campaign, pub diagnostics: Vec<Diagnostic> }
+pub struct Diagnostic { pub file: String, pub rule: Rule, pub detail: String }  // always a warning
+
 impl Campaign {
-    pub fn load(nodes: impl IntoIterator<Item = Node>) -> Result<Campaign, StoreError>;  // Invalid on a shape rule
-    pub fn root(&self) -> &NodeId;
+    /// The only constructor. `expected_slug` is the campaign's name as its caller knows it.
+    pub fn open(nodes: impl IntoIterator<Item = Node>, expected_slug: &Name) -> Result<Opened, StoreError>;
+    pub fn diagnostics(&self) -> &[Diagnostic];                         // the same list, kept on the value
+    pub fn is_validated(&self, id: &NodeId) -> bool;
+    pub fn root(&self) -> Option<&NodeId>;                              // None: no validated root
     pub fn get(&self, id: &NodeId) -> Option<&Node>;
-    pub fn nodes(&self) -> impl Iterator<Item = &Node>;                 // by NodeId
-    pub fn parent(&self, id: &NodeId) -> Option<&NodeId>;               // None for the root
+    pub fn nodes(&self) -> impl Iterator<Item = &Node>;                 // by NodeId, validated or not
+    pub fn parent(&self, id: &NodeId) -> Option<&NodeId>;               // None for a root or an orphan
     pub fn children(&self, id: &NodeId) -> &[NodeId];                   // sorted by (order, id); empty for a leaf
-    pub fn depth(&self, id: &NodeId) -> u32;                            // I1; see below
-    pub fn path(&self, id: &NodeId) -> String;                          // "" for the root
-    pub fn resolve(&self, path: &str) -> Option<&NodeId>;               // inverse of `path`
+    pub fn depth(&self, id: &NodeId) -> Option<u32>;                    // I1; None for an unvalidated node
+    pub fn path(&self, id: &NodeId) -> Option<String>;                  // "" for the root; None if unvalidated
+    pub fn resolve(&self, path: &str) -> Option<&NodeId>;               // inverse of `path`, validated nodes only
     pub fn subtree(&self, id: &NodeId) -> impl Iterator<Item = &NodeId>; // pre-order, `id` first
-    pub fn insert(&mut self, node: Node);                               // incremental: keeps the
-    pub fn remove_subtree(&mut self, id: &NodeId) -> Vec<NodeId>;       // derived indexes equal to a rebuild
+    pub fn insert(&mut self, node: Node);                               // incremental: derived indexes and the
+    pub fn remove_subtree(&mut self, id: &NodeId) -> Vec<NodeId>;       // validated set equal a rebuild
 }
 ```
 
@@ -174,27 +182,92 @@ impl Campaign {
 | `depth(id)` | the number of **directories between the campaign root and the node**: a node directly under the root has depth 0, so this is `level` in `read-model.md`. The ordering rule I1 is this number, computed from the `parent_id` chain | it would go stale on every move of an ancestor | M2 (ready set), the read model |
 | `path(id)` | the `name`s from the root's child down to the node, joined by `/`; `""` for the root | it would go stale on every rename or move above it, and a stored path is the value a flat layout exists to avoid | M3 (export), the read model, M4 (a tool takes a path or an id) |
 
-**Shape rules**, checked by `Campaign::load` and by every write before it is acknowledged (I3). Each
-is an `Invalid` rule code naming the offending file:
+### Open: refuse a bad file, report a bad tree
 
-| Rule code | Statement |
+`open` separates two kinds of fault (Eliott, 2026-11-25).
+
+**Per-file faults refuse `open`** with a `StoreError`, because the file itself is not sound. Any
+one of these in any file fails the whole open, naming the file:
+
+| Fault | Error |
 |:--|:--|
-| `file_id_mismatch` | `nodes/<id>.json` holds that `id` (a copy or a hand-rename of a file is refused, not guessed) |
-| `duplicate_id` | no two files hold the same `NodeId` (a bad merge) |
-| `root_count` | exactly one node has `kind: campaign` |
-| `parent_missing` | every `parent_id` names a node of the campaign |
-| `parent_not_directory` | every `parent_id` names a `Directory` |
-| `cycle` | following `parent_id` from any node reaches the root |
-| `name_collision` | two children of one parent never share a `name` |
+| the text is not JSON, or not an object of the expected type | `Invalid`, rule `parse` |
+| `schema_version` missing or malformed | `Invalid`, rule `schema_version` |
+| the file is newer than the binary | `NewerFormat` (raised first, `Version chain`) |
+| an id field does not parse as its type | `Invalid`, rule `malformed_id` |
+| `nodes/<id>.json` holds another `id` | `Invalid`, rule `file_id_mismatch` |
+| a node breaks a rule of its own record: `kind`, `root_shape`, `name_format`, the stored-schema rules, `sub_item_id_unique`, `reference_target_derived` | `Invalid`, that rule |
 
-`load` builds the children index in one pass, then computes depth by walking each parent chain with
-a memo and a visiting mark (a depth-first search with three colours), so a cycle is found, not
-followed, and the whole load is O(n). `insert` and `remove_subtree` update the same indexes in
-O(depth) and O(subtree); a rebuild is the oracle for them (`derived_views_equal_a_rebuild`, below).
+**Cross-file damage is loaded and reported.** A git merge of two branches can leave files that are
+each sound and wrong together. They are loaded, and each defect is **one `Diagnostic`** naming the
+file or files and the rule. What cannot be done is validating the node against the tree.
+
+| Rule code | Defect | Which nodes become unvalidated |
+|:--|:--|:--|
+| `parent_missing` | a `parent_id` names no node (an orphan) | the node and its subtree |
+| `parent_not_directory` | a `parent_id` names a leaf | the node and its subtree |
+| `cycle` | following `parent_id` never reaches a parentless node | every node on the cycle and every node below it |
+| `root_count` | no parentless node carries the expected slug, or more than one does | every node (no validated root); a second parentless node is itself unvalidated |
+| `root_name_mismatch` | a parentless node carries another name than the slug | that node and its subtree |
+| `name_collision` | two children of one parent share a `name` | the colliding siblings and their subtrees (a path through them is ambiguous) |
+| `duplicate_id` | two node records hold one `NodeId` (reachable through `open` over nodes; through the store a copied file is already `file_id_mismatch`) | both records |
+
+**The anchor.** `expected_slug` is the campaign's slug as the caller knows it (the campaign
+directory's name, as M4 and the CLI resolve it). The **root** is the one parentless node whose
+`name` equals the slug. Every node reachable from the root by `parent_id` is **validated**: it has
+a depth and a path. Every other node is **loaded but unvalidated**: an orphan, a node on a cycle, a
+second parentless node, a node under a root whose name does not match, a node below a name
+collision. When no parentless node carries the slug, `open` still succeeds: `root()` is `None`,
+**every node is unvalidated**, and the diagnostics say so (`root_count`, and `root_name_mismatch`
+for each parentless node of another name). A caller then sees the campaign, damaged, instead of
+nothing, and cannot mistake it for a sound one.
+
+**How "loud" is enforced.** The diagnostics are part of the return value: `open` returns
+`Opened { campaign, diagnostics }`, a `#[must_use]` struct whose fields must be taken apart to reach
+the campaign, so dropping it unread is a compiler warning (the workspace builds with `-D warnings`).
+The same list stays on the `Campaign` (`diagnostics()`), so every later read can surface it again:
+M4's read tools carry it in their output, and the CLI prints it to standard error on every command.
+`depth` and `path` return `Option`, so a consumer cannot compute with a position that was never
+validated. The cache reopens with the same slug on revalidation (store.md §Cache), so a repaired
+campaign loses its warnings and a damaged one keeps them.
+
+**Writes and unvalidated nodes.**
+
+| Write | On an unvalidated node | Rule code |
+|:--|:--|:--|
+| create under it, replace its content | **refused**: the write would build on a position no one verified | `unvalidated_node` |
+| comment on it | **allowed**: a comment is an append-only record that depends on the node's id, not its position; it is how a reader annotates the damage | |
+| relocate it into the validated tree (new `parent_id` validated) | **allowed**: a repair | |
+| relocate or rename a colliding sibling | **allowed**: a repair | |
+| delete it (its subtree) | **allowed**: a repair | |
+
+A write never adds a defect: after it the set of diagnostics is a subset of the set before. A
+batch is checked as a whole under this rule, so a repair that fixes one defect and a write that
+opens another are refused.
+
+`open` builds the children index in one pass, then computes depth by walking from the root down
+with a memo and a visiting mark (a depth-first search with three colours), so a cycle is found,
+not followed, and the whole open is O(n). `insert` and `remove_subtree` update the same indexes in
+O(depth) and O(subtree); a rebuild is the oracle for them (`reverse_index_equals_brute_force_scan`
+also compares children, depth and path with a rebuild).
 
 Siblings are parallel (I1): `order` only fixes how they are listed, never when they run, and no
 stored field expresses a dependency between them. `Campaign` holds nodes only. Comments and
 amendments are separate files, read by the cache (store.md §Cache) and joined to a node by id.
+
+### Diagnostics
+
+One type for every warning, from three producers:
+
+| Producer | Rules | When |
+|:--|:--|:--|
+| a layer's `decode_*` | `unknown_key` | per unknown key kept without interpretation: `file` is the file, `detail` is the key's JSON pointer (`/steps/0/x_note`). The decode returns it with the value (`Decoded<T>`, `Version chain`) |
+| `Campaign::open` | the cross-file rules above | per defect |
+| `Campaign::open`, from the link table | `dangling_reference`, `references_empty` | per reference whose `node_id` names no node; per leaf with no reference |
+
+`open` aggregates the decode diagnostics of every file with its own and returns them sorted by
+`(file, rule, detail)`, so two opens of the same files give the same list. A diagnostic is a
+warning by type; an error is a `StoreError`.
 
 ## Moves
 
@@ -356,7 +429,7 @@ revision) cannot be skipped by a caller.
 
 ```rust
 pub struct Rev(String);        // one node: hash of its canonical encoding. Format: store.md §Revisions
-pub struct SubtreeRev(String); // a node and every descendant, same hash over their (id, rev) pairs
+pub struct SubtreeRev(String); // a node and every descendant; defined in store.md §Revisions, as tree_rev over the subtree
 pub struct TreeRev(String);    // the campaign. Consumers compare for equality, never parse
 
 pub struct Request<T> { pub header: Header, pub op: T }
@@ -396,9 +469,9 @@ same batch created earlier, which has no revision yet. The same holds for `expec
 
 | Primitive | Request, result | What it does | Refused (`Invalid` rule) |
 |:--|:--|:--|:--|
-| create | `Request<CreateOp>` → `Receipt<Written>` | writes a new node file. The ids in `node` (its own, its criteria and its steps) are minted **by the caller** from the engine's minter (store.md §Ids), so a batch can name a node it creates, an importer can build a campaign, and a replay returns the same ids. `node.order` is **not read**: the store sets it from `position`. `parent_id` is `None` only for the campaign root, which is created into an empty campaign (`position` is then `None`) | `duplicate_id`, `parent_missing`, `parent_not_directory`, `name_collision`, `root_count`, any shape or stored-schema rule, `position_not_sibling`, `note_required` |
-| replace | `Request<ReplaceOp>` → `Receipt<Written>` | replaces one node file with `node` if its current `rev` equals `expected_rev` (I4). It cannot change `id`, `name`, `parent_id` or `order`. `kind` may change (promoting a leaf to a directory keeps the id, I7) | `id_changed`, `use_relocate`, `note_required`, `empty_edit`, `leaf_has_children`, any shape or stored-schema rule |
-| relocate | `Request<RelocateOp>` → `Receipt<Written>` | **rename or move**: one primitive that changes `name`, `parent_id` and `order` of one node. A field left `None` is kept; a new `parent_id` with no `position` means `Last`. At least one of the three is given. It writes **one node file** and one amendment, and renames no directory (I7). Children follow because they point at the id | `nothing_to_do`, `parent_missing`, `parent_not_directory`, `cycle` (the new parent is in the node's own subtree), `name_collision`, `position_not_sibling`, `root_delete_or_move`, `note_required` |
+| create | `Request<CreateOp>` → `Receipt<Written>` | writes a new node file. The ids in `node` (its own, its criteria and its steps) are minted **by the caller, outside the lock**, from the engine's minter (store.md §Ids), so a batch can name a node it creates, an importer can build a campaign, and a replay returns the same ids. The store checks uniqueness **under the lock** and refuses a collision (`duplicate_id`); the caller re-mints. `node.order` is **not read**: the store sets it from `position`. `parent_id` is `None` only for the campaign root, which is created into an empty campaign (`position` is then `None`) | `duplicate_id`, `parent_missing`, `parent_not_directory`, `name_collision`, `root_count`, `root_name_mismatch` (the root's `name` is not the campaign slug), `unvalidated_node` (the parent is unvalidated), any shape or stored-schema rule, `position_not_sibling`, `note_required` |
+| replace | `Request<ReplaceOp>` → `Receipt<Written>` | replaces one node file with `node` if its current `rev` equals `expected_rev` (I4). It cannot change `id`, `name`, `parent_id` or `order`. `kind` may change (promoting a leaf to a directory keeps the id, I7) | `id_changed`, `use_relocate`, `note_required`, `empty_edit`, `leaf_has_children`, `unvalidated_node`, any shape or stored-schema rule |
+| relocate | `Request<RelocateOp>` → `Receipt<Written>` | **rename or move**: one primitive that changes `name`, `parent_id` and `order` of one node. A field left `None` is kept; a new `parent_id` with no `position` means `Last`. At least one of the three is given. It writes **one node file** and one amendment, and renames no directory (I7). Children follow because they point at the id. On the root only `name` may change: that is the repair for `root_name_mismatch` after a campaign is renamed, and the caller then opens with the new slug. A new `parent_id` or `order` on the root is `root_delete_or_move` | `nothing_to_do`, `parent_missing`, `parent_not_directory`, `cycle` (the new parent is in the node's own subtree), `name_collision`, `position_not_sibling`, `root_delete_or_move`, `note_required` |
 | delete | `Request<DeleteOp>` → `Receipt<Deleted>` | removes the node and every descendant if the `SubtreeRev` matches. Writes one amendment whose `snapshot` holds the removed nodes. Reports the `Report`-class referrers outside the subtree (`Links`); rewrites nothing outside it | `root_delete_or_move`, `note_required` |
 | comment | `Request<CommentOp>` → `Receipt<Commented>` | writes one comment file. It has no `expected_rev`: it is append-only and never conflicts, and a comment never changes a `rev` (`stored-schema.md`) | `NotFound` for a missing node; `note_forbidden` when `header.note` is set |
 | batch | `Request<BatchOp>` → `Receipt<Vec<OpResult>>` | applies `ops` in order as **one transaction**. Each op is checked against the state the earlier ops produced, then the whole result is checked once (shape rules, I3). All or nothing: a failed op leaves nothing written. `dry_run` runs every check and writes nothing, for M2's impact report. The batch writes **one amendment** carrying every change of its ops | the first failing op, as `InBatch { index, source }`; `expected_tree_rev` stale is `Stale` |
@@ -501,8 +574,8 @@ impl StoreError {
 | `InBatch { index, source }` | one op of a batch failed. `source` is any of the above | none: a batch is atomic | as `source` |
 
 `Rule` is `#[non_exhaustive]`, each variant with a stable snake-case code.
-M2 may add codes without changing existing ones. A warning (`dangling_reference`,
-`references_empty`) is a diagnostic of `validate`, not a `StoreError`.
+M2 may add codes without changing existing ones. A warning (`unknown_key`, `dangling_reference`,
+`references_empty`, and the cross-file rules of `Campaign model`) is a `Diagnostic`, not a `StoreError`.
 
 | Rule code | Statement | Defined in |
 |:--|:--|:--|
@@ -513,9 +586,12 @@ M2 may add codes without changing existing ones. A warning (`dangling_reference`
 | `kind` | `kind` is not `leaf`, `directory` or `campaign` | `Node fields` |
 | `malformed_id` | an id field does not parse as its type | `Id types` |
 | `root_shape`, `name_format` | see `Node fields` | `Node fields` |
-| `file_id_mismatch`, `duplicate_id`, `root_count`, `parent_missing`, `parent_not_directory`, `cycle`, `name_collision` | see `Campaign model` | `Campaign model` |
+| `unknown_key` | a key the decoder keeps without interpreting (a warning) | `Campaign model`, `Diagnostics` |
+| `unvalidated_node` | a write builds on a node that does not trace back to the root | `Campaign model` |
+| `file_id_mismatch`, `sub_item_id_unique` | per-file: refuse `open` | `Campaign model` |
+| `duplicate_id`, `root_count`, `root_name_mismatch`, `parent_missing`, `parent_not_directory`, `cycle`, `name_collision` | cross-file: reported by `open`, and refused as an `Invalid` when a write would introduce one | `Campaign model` |
 | `dangling_id`, `reference_target_derived` | see `Links` | `Links` |
-| `goal_line`, `criteria_required`, `steps_range`, `status_steps`, `status_reason`, `step_state`, `mark_target`, `correction_reason`, `sub_item_id_unique` | the rules of `stored-schema.md` (`Directory`, `Leaf`, `Step`, `Mark`, `History`), one code each, in the order they are listed there | `stored-schema.md` |
+| `goal_line`, `criteria_required`, `steps_range`, `status_steps`, `status_reason`, `step_state`, `mark_target`, `correction_reason` | the rules of `stored-schema.md` (`Directory`, `Leaf`, `Step`, `Mark`, `History`), one code each, in the order they are listed there | `stored-schema.md` |
 | `expected_rev_required`, `note_required`, `note_forbidden`, `empty_edit`, `id_changed`, `use_relocate`, `leaf_has_children`, `nothing_to_do`, `position_not_sibling`, `root_delete_or_move` | request rules | `Operations` |
 
 **Stale, replay and the lock.** `Locked` is the only error a caller retries unchanged. `Stale` is
@@ -534,6 +610,7 @@ rest of the code knows one model.
 ```rust
 pub struct NotInVersion { pub behaviour: &'static str, pub version: Version }
 pub type Behaviour<T> = Result<T, NotInVersion>;
+pub struct Decoded<T> { pub value: T, pub diagnostics: Vec<Diagnostic> }   // one `unknown_key` per key kept
 
 pub trait FormatLayer: Sync {
     /// The format line this layer reads: (major, minor). A patch bump (Y) is compatible and has no layer.
@@ -541,13 +618,13 @@ pub trait FormatLayer: Sync {
     /// The layer this one overrides. `&Nothing` under the first layer.
     fn base(&self) -> &dyn FormatLayer;
     // Each behaviour defaults to the base layer's. A layer overrides only the ones that changed.
-    fn decode_node(&self, raw: serde_json::Value) -> Behaviour<Node>           { self.base().decode_node(raw) }
-    fn decode_comment(&self, raw: serde_json::Value) -> Behaviour<Comment>     { self.base().decode_comment(raw) }
-    fn decode_amendment(&self, raw: serde_json::Value) -> Behaviour<Amendment> { self.base().decode_amendment(raw) }
+    fn decode_node(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Node>>           { self.base().decode_node(file, raw) }
+    fn decode_comment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Comment>>     { self.base().decode_comment(file, raw) }
+    fn decode_amendment(&self, file: &str, raw: serde_json::Value) -> Behaviour<Decoded<Amendment>> { self.base().decode_amendment(file, raw) }
 }
 pub struct Nothing;   // the root of the chain: every behaviour is Err(NotInVersion)
 pub static CHAIN: &[&dyn FormatLayer];                          // oldest first; one entry today
-pub fn is_newer(found: Version, supported: Version) -> bool;    // (major, minor) greater; the patch is ignored
+pub fn is_newer(found: Version, supported: Version) -> bool;    // the whole triple, compared field by field
 pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer>;  // the newest layer whose line <= found's
 ```
 
@@ -559,8 +636,9 @@ pub fn layer_for(found: Version) -> Option<&'static dyn FormatLayer>;  // the ne
 - **A layer is a struct holding `base`.** It overrides a behaviour by implementing the method, and
   inherits every other by not mentioning it. The layer of the current format (`0.1`) decodes with
   the serde of the types of this document, so its decoders are one line each. The decoded value is
-  always the current type, with every unknown key kept in `extra` (I12): old data is *upgraded on
-  read*, never converted in place.
+  always the current type, with every unknown key kept in `extra` (I12) and reported as one
+  `unknown_key` diagnostic in the returned `Decoded` (the decode produces it, `open` aggregates
+  it). Old data is *upgraded on read*, never converted in place.
 - **There is one encoder, not one per layer.** Writing always serialises the current types. A
   layer cannot write, so no version can be written that is not the current one.
 
@@ -576,22 +654,24 @@ same steps, in this order:
 2. `parse_version` the stamp (strict, as today). A malformed one is `Invalid` (rule `schema_version`).
 3. If `is_newer(found, FORMAT_VERSION)`, return `NewerFormat { found, supported: FORMAT_VERSION, file }`
    **and stop**. Nothing of the file is parsed past the stamp. A load that meets such a file fails
-   as a whole, because a campaign with a missing node breaks the shape rules; it names the file.
+   as a whole (a per-file fault, `Campaign model`); the error names the file.
 4. Otherwise pick `layer_for(found)`. If there is none (older than the first layer), `Invalid`
    (rule `unknown_format`).
 5. Call the layer's `decode_*` on the value. An older version falls through to its own layer
    here, not through the current one, and the layer's inherited behaviours come from its `base`.
 
-`is_newer` replaces `is_readable` for stored files. `is_readable` stays for the read model, whose
-rule is the consumer's (`read-model.md`, `Versions`), and it agrees with `is_newer` on every case
-that has a newer file: a higher major, or a higher minor at major 0, is refused; a higher patch is
-read. Making the refusal transparent is M7's (A2, ruling 5, and the answer recorded for M7).
+**Every newer file is refused, a higher Y included** (Eliott, 2026-11-25). He is not convinced a
+patch change will only ever add optional fields, and an older binary that misread one would break
+the rule that old code never misreads a field. So `is_newer` compares the whole triple, and `0.1.1`
+is refused by a `0.1.0` binary. This **overrules** the earlier reading of the `Format version`
+table, which read a higher Y; stored-schema.md is edited to match. Unknown keys still survive in
+place (I12), but only in a file the binary can read at all; each one is reported
+(`unknown_key`).
 
-**A higher Y is read, not refused.** A Y change is by definition an optional field or an enum value
-that old readers can ignore, and unknown keys survive in `extra` (I12). This follows the `Format
-version` table of `stored-schema.md`; ruling 5 says "a file newer than the binary" and no layer
-could interpret an X change, which is the case that is refused. See the finding in the report of
-this leaf.
+`is_newer` replaces `is_readable` for stored files. `is_readable` stays for the read model, whose
+rule is the consumer's (`read-model.md`, `Versions`), and it **differs** from `is_newer` on a higher
+Y, which it reads. Making the refusal transparent is M7's (A2, ruling 5, and the answer recorded
+for M7).
 
 ### Write-version rule
 
@@ -601,15 +681,14 @@ touch keeps its version; **a read never writes** (readers need no coordination).
 hold files of different versions, and of different patch levels, and that is legal.
 
 Consequences, accepted: after a new binary edits a node, an older binary refuses the campaign on
-that file with `NewerFormat`, which is the refusal doing its job. Rewriting on touch (not keeping
-the old stamp) is the only choice that needs no per-layer encoder, and it stops an old shape from
-outliving the code that reads it. A patch-level bump can make a file's stamp understate its content:
-an older-Y binary that rewrites a file keeps the unknown keys of a newer Y and stamps its own
-`0.1.0`. That is harmless, since a Y change never changes the meaning of an existing field.
+that file with `NewerFormat`, which is the refusal doing its job, and now whether the bump was X or
+Y. Rewriting on touch (not keeping the old stamp) is the only choice that needs no per-layer
+encoder, and it stops an old shape from outliving the code that reads it. A stamp never
+understates its content, since a binary cannot read, hence cannot rewrite, a file newer than it.
 
 ### `FORMAT_VERSION`
 
-**It stays `0.1.0`.** Nothing is stored yet: the importer is M3, the store is built after this
+**It stays `0.1.0`, redefined, and is frozen when M1 merges to `main`** (decided, Eliott, 2026-11-25). Nothing is stored yet: the importer is M3, the store is built after this
 document, and the only `0.1.0` files that exist are the crate's own hand-written fixtures, in a
 shape this document replaces (the flat node fields, no ids on checks and references, no `Change`
 paths). There is no old file to read, so no layer for the old shape, and the campaign rule
@@ -622,7 +701,7 @@ edits layer `0.1` in place and amends this document):
 | Change to a stored type | Bump | Chain |
 |:--|:--|:--|
 | a field removed, renamed, given another meaning, or made required; a record kind removed | X (`0.X.y`) | a **new layer**, with `base` the previous one; `CHAIN` gains an entry; the older layer stays |
-| a new optional field, a new enum value old readers can ignore, a new record kind in a new directory | Y (`0.x.Y`) | none: the same layer reads it, and unknown keys survive |
+| a new optional field, a new enum value, a new record kind in a new directory: additive in meaning | Y (`0.x.Y`) | none: the same layer reads it. **Older binaries refuse it too** (`NewerFormat`); the bump is a promise about meaning, not about compatibility |
 | a field added with a default for old files | Y if optional, else X | a layer only if the default needs code |
 
 A bump changes, in one commit: `FORMAT_VERSION`, the types, the committed JSON Schemas (re-blessed
@@ -633,39 +712,71 @@ decides X or Y.
 
 ## Invariants and guards
 
-Every invariant of this document, with the guard that holds it. The names are those of the campaign
-README, or of [store.md](store.md) for what it owns. A name marked † is **new here** and is added
-to the README's guard list by the coordinator. "Not tested" is followed by the reason.
+Every invariant of this document, with its final guard. The names are those of the campaign
+README, of [store.md](store.md) for what it owns, or **new** (marked †, to be added to the README's
+guard list by the coordinator). Several rows share one guard when a distinct failure each row
+turns red is a parameter row of it (the guards below say which). "Not tested" is followed by the
+reason.
 
 | # | Invariant | Guarded by |
 |:--|:--|:--|
 | C1 | An id field holds a string of the format of store.md §Ids with its type's kind prefix; a malformed one is refused at deserialisation | `malformed_ids_are_refused` |
-| C2 | `NodeId`s are unique in the campaign; `CriterionId`s and `StepId`s are unique within their node file | `duplicate_ids_are_refused` † |
+| C2 | `NodeId`s are unique in the campaign; `CriterionId`s and `StepId`s are unique within their node file | `open_names_invalid_campaigns` (rows: a sub-item duplicate is refused; a cross-file `duplicate_id` is reported) |
 | C3 | Checks and references have no id; `Change.item_id` names a criterion or a step | `committed_schemas_match_the_types` (the generated schema has no such field) |
-| C4 | A node holds `name`, `parent_id` and `order`; the root shape rule holds | `directory_and_leaf_shape_rules_refuse_bad_nodes` † |
-| C5 | The campaign shape rules hold: one root, parents exist and are directories, no cycle, sibling names unique, file name equals `id` | `bad_campaign_shapes_are_refused` † |
-| C6 | Children, depth and path are derived from the `parent_id` chain and never stored; the incremental indexes equal a rebuild | `derived_views_equal_a_rebuild` † |
+| C4 | A node holds `name`, `parent_id` and `order`; the root shape rule holds | `open_names_invalid_campaigns` (row: per-file faults are refused) |
+| C5 | Per-file faults refuse `open`; each cross-file defect is reported, naming file and rule, and the sound files load; nodes off the root are unvalidated | `open_names_invalid_campaigns` (rows: per-file faults are refused; each cross-file defect is reported naming file and rule, and the sound files load; no parentless node with the slug leaves every node unvalidated) |
+| C6 | Children, depth and path are derived from the `parent_id` chain and never stored; the incremental indexes equal a rebuild | `reverse_index_equals_brute_force_scan` (the proptest also compares children, depth and path with a rebuild) |
 | C7 | A move or rename writes one node file and one amendment, and changes no id (I7) | `move_writes_one_file_and_keeps_ids` |
 | C8 | `MOVES` equals the move table of `statuses.md` | `move_table_matches_statuses_doc` |
 | C9 | `LINKS` lists every id field of every record | `links_cover_every_id_field` |
 | C10 | The reverse index equals a brute-force scan, after any operation sequence | `reverse_index_equals_brute_force_scan` |
 | C11 | A delete rewrites nothing outside the subtree, and reports every `Report` referrer | `delete_reports_referrers_and_touches_only_the_subtree` † |
-| C12 | No stored field holds a value derivable from an id: a `Reference` with both `node_id` and `target` is refused | `reference_target_is_derived` † |
+| C12 | No stored field holds a value derivable from an id: a `Reference` with both `node_id` and `target` is refused | `open_names_invalid_campaigns` (row: an editor adds `target` beside `node_id`) |
 | C13 | The committed JSON Schemas equal those generated from the types, request and result types included | `committed_schemas_match_the_types` |
-| C14 | Every object keeps the keys it does not know, in place, at every level (I12) | `unknown_keys_survive_in_place_at_every_level` |
-| C15 | A canonical file round-trips byte for byte; valid non-canonical input reads and re-encodes canonically | `canonical_files_round_trip_byte_for_byte` † |
-| C16 | A file newer than the binary is refused with `NewerFormat { found, supported }` before anything else of it is parsed | `newer_file_refused_before_parsing` |
-| C17 | An older version reads through its own layer; a removed behaviour is `NotInVersion` | Not tested: one layer exists, and the README defers chain fall-through "until a second real layer exists". The trait and `Nothing` are exercised by that first second layer |
-| C18 | An edit rewrites only the files it touches, in the current version; a read writes nothing | `written_files_carry_the_current_version` †; "a read writes nothing" is `cached_read_equals_cold_read` of store.md (the files do not change) |
+| C14 | Every object keeps the keys it does not know, in place, at every level (I12), and each one yields exactly one `unknown_key` diagnostic with its JSON path | `unknown_keys_survive_in_place_at_every_level` (extended: also asserts one diagnostic per unknown key, with its path) |
+| C15 | A canonical file round-trips byte for byte; valid non-canonical input reads and re-encodes canonically | `canonical_files_round_trip_byte_for_byte` (the codec guard of the campaign) |
+| C16 | A file newer than the binary, whether the higher part is X or Y, is refused with `NewerFormat { found, supported }` before anything else of it is parsed | `newer_file_refused_before_parsing` (rows: a higher X; a higher Y; each a hand-written canonical file of the shape a newer layer would write, with a body that would not parse as the current type) |
+| C17 | An older version reads through its own layer; a removed behaviour is `NotInVersion` | Not tested: one layer exists, and the README defers chain fall-through "until a second real layer exists" |
+| C18 | An edit rewrites only the files it touches, in the current version; a read writes nothing | Not tested for the version stamp: with one layer every write is the current version, so the test would restate the encoder (as C17). "A read writes nothing" is `cached_read_equals_cold_read` of store.md (the files do not change) |
 | C19 | A stale `expected_rev`, `expected_subtree_rev` or `expected_tree_rev` changes nothing (I4) | `stale_replace_changes_nothing` |
-| C20 | No content change goes unrecorded; an amendment is written exactly when a note is present, and never empty (I5) | `content_edit_needs_one_amendment` † |
-| C21 | A replace cannot change `id`, `name`, `parent_id` or `order` | `replace_cannot_move_a_node` † |
+| C20 | No content change goes unrecorded; an amendment is written only with a note, and never empty (I5) | `requests_breaking_a_rule_are_refused` † (rows: `note_required`, `empty_edit`); the success path is exercised by every store write with a note |
+| C21 | A replace cannot change `id`, `name`, `parent_id` or `order` | `requests_breaking_a_rule_are_refused` † (row: a replace that changes `parent_id` or `name` is refused with `use_relocate`) |
 | C22 | A batch is atomic: a failed op leaves nothing written; a dry run writes nothing | `every_write_prefix_loads_and_recovers_to_pre_or_post` (store.md) for the crash side; `failed_batch_writes_nothing` † for the logical side |
 | C23 | A retried `op_id` returns the first outcome and writes nothing | `replayed_op_id_writes_nothing` † |
 | C24 | A held lock yields `Locked { holder }` and is released when the holder dies | `lock_survives_holder_kill` (store.md) |
 | C25 | Every `StoreError` variant has a stable `code()`, and `root()` unwraps `InBatch` | Not tested: a total `match` the compiler checks; M4 tests its own mapping |
 | C26 | `FORMAT_VERSION` is `0.1.0` and its string round-trips | `version_constants_and_strings` (existing) |
 | C27 | A bump of X or Y accompanies a change to a stored type | Not tested: needs the git history of the schemas; a reviewer reads the drift diff |
+| C28 | A write builds on no unvalidated node, except to repair; a write never adds a defect | `requests_breaking_a_rule_are_refused` † (rows: create under, and replace of, an unvalidated node are refused with `unvalidated_node`; relocate into the tree, rename of a colliding sibling or of the root, and delete are accepted) |
+| C29 | The diagnostics of `open` cannot be dropped silently: `Opened` is `#[must_use]`, `depth` and `path` are `Option` | Not tested: a compiler check (`-D warnings` holds `unused_must_use`), and the types are the guard |
+
+### Guards by leaf
+
+What each implementing leaf owes, with the bug that turns each red (the leaf report records it
+seen red).
+
+| Leaf | Guard | Red when |
+|:--|:--|:--|
+| `schema_contracts` | `malformed_ids_are_refused` | an id newtype accepts a wrong prefix, a wrong length or a char outside the alphabet |
+| | `committed_schemas_match_the_types` | a field is added to a type and the schema is not re-blessed |
+| | `move_table_matches_statuses_doc` | one cell of `statuses.md` changes and `MOVES` does not |
+| | `links_cover_every_id_field` | an id field is added to a record and not to `LINKS` |
+| | `version_constants_and_strings` | `FORMAT_VERSION` or its string changes unnoticed |
+| `codec_and_versions` | `newer_file_refused_before_parsing` | the newer-file check runs after the typed decode (a newer body then fails as `parse`), or it ignores the patch |
+| | `unknown_keys_survive_in_place_at_every_level` | a level drops a key, moves it, or reports none or two diagnostics |
+| | `canonical_files_round_trip_byte_for_byte` | the encoder reorders keys or changes the indent |
+| `campaign_store` | `stale_replace_changes_nothing` | the revision is compared before the lock is taken |
+| | `move_writes_one_file_and_keeps_ids` | a move rewrites a child or a parent, or re-mints an id |
+| | `requests_breaking_a_rule_are_refused` | a content change passes without a note, an empty note writes an amendment, a replace moves a node, or a write builds on an unvalidated node |
+| | `replayed_op_id_writes_nothing` | the `op_id` lookup runs before the lock, or after the write |
+| | `failed_batch_writes_nothing` | a batch applies its ops one by one with no whole-batch check |
+| | `delete_reports_referrers_and_touches_only_the_subtree` | a delete rewrites a `Reference.node_id` outside the subtree, or omits a referrer from the report |
+| | `open_names_invalid_campaigns` | an orphan, a cycle, a name collision or a second root is silently loaded as sound; or a per-file fault is only reported; or a node off the root gets a path |
+| | `reverse_index_equals_brute_force_scan` | `replace_record` forgets to drop a record's old entries, or `remove_subtree` leaves a stale child |
+
+The coordinator assigned the leaves (2026-11-25): `open` and the reverse index are guarded through
+the store, where a real merge produces the damage. store.md §Invariants and guards lists the store's
+own guards (revisions, minting, order keys, crash prefixes, lock, cache).
 
 ### Existing tests that change on purpose
 
@@ -677,12 +788,13 @@ to the README's guard list by the coordinator. "Not tested" is followed by the r
 | `stored.rs`: `reordering_criteria_leaves_marks_valid` | it builds a `Criterion` with the literal id `cg_new`, which is now malformed; it mints a valid `CriterionId` |
 | `stored.rs`: `unknown_keys_keep_their_order_in_the_output_string`, `unknown_field_keeps_its_place_after_known_ones` | their inline JSON uses ids such as `"c"` and `"n"`, now malformed |
 | `stored.rs`: `amendment_fixture_round_trips_and_keeps_null_new` | the fixture's `remove` and `move` changes carry `path_before` and `path_after`, which `Change` no longer has |
-| `stored.rs`: `leaf_fixture_round_trips`, `directory_fixture_round_trips`, `comment_fixture_round_trips`, `unknown_fields_survive_at_every_level` | every fixture is rewritten with valid ids, the node fields, no check or reference ids, and no `Reference.target` beside a `node_id`; the injection counts are recomputed |
+| `stored.rs`: `unknown_fields_survive_at_every_level` | gains the assertion of exactly one `unknown_key` diagnostic per injected key, with its path |
+| `stored.rs`: `leaf_fixture_round_trips`, `directory_fixture_round_trips`, `comment_fixture_round_trips` | every fixture is rewritten with valid ids, the node fields, no check or reference ids, and no `Reference.target` beside a `node_id`; the injection counts are recomputed |
 | `stored.rs`: `marks_point_by_criterion_id_and_corrections_are_flagged` | reads fixture ids that become typed |
 | `schemas.rs`: `committed_schemas_match_the_types` | the generated schemas change on purpose and are re-blessed under review; request and result schemas join the list |
 | `read.rs` and `fixtures/{outline,node,ready,ready_scoped,amendments}.json` | read-model id fields (`id`, `leaf_ids`, `held_by`, `parent` ids) become the newtypes, and `rev` and `tree_rev` become `Rev` and `TreeRev`; their fixtures hold valid ids. The read model stays a projection, outside `LINKS` |
 | `Reference.target` fixtures (`stored_leaf.json`, `node.json`) | `target` is relative to the campaign root, not the node file (`../../../__design__/…` becomes `../../__design__/…` from `__roadmap__/<campaign>/`); a reference with `node_id` has none |
 
 `reader_refuses_per_the_read_model_rule` and `parse_version_is_strict` do not change:
-`is_readable` and `parse_version` stay as they are, and `is_newer` is added beside them with its
-own guard rows inside `newer_file_refused_before_parsing`.
+`is_readable` and `parse_version` stay as they are, and `is_newer` (the whole triple) is added beside
+them with its own rows inside `newer_file_refused_before_parsing`.
